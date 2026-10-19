@@ -31,6 +31,7 @@
 
 ```
 trading/
+  domain/        공통 값 객체·열거형·이벤트·상품 규칙·ID 생성·시계 인터페이스 (M1-01에서 추가)
   config/        설정 로딩(TOML), 환경 구분(backtest / demo / live)
   keystore/      자격 증명 관리자 접근 (`secrets`는 표준 라이브러리 이름과 겹치고 .gitignore 패턴에도 걸려서 피함)
   exchange/      ExchangeGateway 인터페이스

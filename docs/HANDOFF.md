@@ -51,3 +51,10 @@
 - 검증: `py -3 -m unittest discover -s tests -v` (Python 3.14.3) → 9개 통과. 발견 1~4는 validate 직접 호출로 재현.
 - 사용자 결정 대기: REVIEW.md의 질문 1~9 (청산 한도 면제, 반전 허용, Bybit 모드, KIS 계좌, 운영 환경, 알림, 저장소 공개, Python 버전, 협업 방식).
 - 다음 담당자: 질문 1·2 결정 후 core.py 수정 담당(Codex 또는 Claude) 지정, 다른 쪽이 검토. .gitignore 정리와 누락 테스트 추가는 결정과 무관하게 진행 가능.
+
+## 2026-10-20 — Claude Code (M0 검토, M1 명세)
+
+- PR #3(M0-01) 검토: 명세와 일치, 병합 차단 문제 없음. 이 PC Python 3.14.3에서 ruff·format·mypy·pytest(28) 통과. 제안: 패키지 탐색 `include = ["richletsgo*"]`(M1-01에 반영), `[ai] mode` 예시는 M3.
+- GitHub Actions 장애(2026-10-19 githubstatus "Degraded availability")로 PR #3 CI가 대기 중이었음. 사용자가 CI 통과 후 Claude가 병합하도록 위임.
+- M1 작업 명세 작성: `docs/tasks/M1-00-overview.md`와 M1-01~06. 03 모듈 목록에 `domain/` 추가.
+- 다음 담당자: 사용자 명세 확인 → Codex가 M1-01부터 구현(M1-05는 M1-01 이후 병행 가능).
