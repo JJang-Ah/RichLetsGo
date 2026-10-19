@@ -42,3 +42,12 @@
 - Codex 후속 확인 1건 반영: UNKNOWN 자동 부재 확정(NOT_FOUND) 제거. 거래소 상태 확인, 진입 주문의 orderLinkId 취소 성공, 사용자 수동 확정(`/resolve`, M3)으로만 종결하고 그 전까지 예약·진입 정지 유지.
 - V0에 "빈 조회·포지션 일치가 지속된 뒤 늦은 OPEN 도착" 등 4건 추가.
 - 검증: 문서 변경만. 다음 담당자: Codex 재확인.
+
+## 2026-10-19 — Claude Code
+
+- 사용자 요청: 현재 저장소를 파악하고 부족한 점을 검토해 docs/REVIEW.md에 정리, 결정 사항은 질문으로 남기기.
+- 완료: docs/REVIEW.md 작성. 코드·테스트·.gitignore는 수정하지 않음.
+- 주요 발견: 한도를 넘는 포지션의 전량 청산이 주문 한도로 거절됨(core.py:79), 단방향 반전 주문 허용, 심볼 정규화·수량 정밀도 검사 없음, .gitignore 패턴이 소스 파일까지 제외할 수 있음, Limits/position/side 검증 테스트 없음.
+- 검증: `py -3 -m unittest discover -s tests -v` (Python 3.14.3) → 9개 통과. 발견 1~4는 validate 직접 호출로 재현.
+- 사용자 결정 대기: REVIEW.md의 질문 1~9 (청산 한도 면제, 반전 허용, Bybit 모드, KIS 계좌, 운영 환경, 알림, 저장소 공개, Python 버전, 협업 방식).
+- 다음 담당자: 질문 1·2 결정 후 core.py 수정 담당(Codex 또는 Claude) 지정, 다른 쪽이 검토. .gitignore 정리와 누락 테스트 추가는 결정과 무관하게 진행 가능.
