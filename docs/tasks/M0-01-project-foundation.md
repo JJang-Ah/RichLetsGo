@@ -1,6 +1,6 @@
 # M0-01 프로젝트 기반
 
-- 상태: 명세 작성 완료, 사용자 확인 대기
+- 상태: 사용자 구현 요청 확인(2026-10-20), 구현 완료·Claude Code 검토 대기
 - 구현: Codex / 검토: Claude Code (D37)
 - 브랜치: `task/M0-01-project-foundation`
 - 근거: [05_DEVELOPMENT_PROCESS.md](../design/05_DEVELOPMENT_PROCESS.md) 3장 M0·5장, [03_SYSTEM_ARCHITECTURE.md](../design/03_SYSTEM_ARCHITECTURE.md) 1장·3장, REVIEW.md 발견 9(`.gitignore`) 및 "프로젝트 구성에서 부족한 점"

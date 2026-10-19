@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-**설계 단계**입니다. 매매 기능 코드는 아직 없습니다. `trading_lab/`은 초기 오프라인 주문 검증 초안이며, 설계에 따라 새 패키지로 대체한 뒤 삭제합니다(D39). 실거래 준비가 완료된 프로그램이 아닙니다.
+**M0 프로젝트 기반을 구현했으며 Claude Code 검토 대기 중**입니다. 매매 기능 코드는 아직 없습니다. `trading_lab/`은 초기 오프라인 주문 검증 초안이며, 설계에 따라 새 패키지로 대체한 뒤 삭제합니다(D39). 실거래 준비가 완료된 프로그램이 아닙니다.
 
 ## 설계 문서
 
@@ -35,9 +35,30 @@
 
 ## 다음 순서
 
-1. Claude: M0(기반) 작업 명세 작성 → 사용자 확인
-2. Codex: M0 구현 (Python 3.12 이상 / 운영 3.14, `pyproject.toml`, CI, `.gitignore` 정리)
-3. M1 핵심 로직 → M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
+1. Claude: M0 구현 PR을 명세와 대조해 검토 → 사용자 병합
+2. Claude: M1 작업 명세 작성 → 사용자 확인 → Codex 구현
+3. M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
+
+## 개발 환경 (M0-01)
+
+운영 기준은 **Python 3.14**, 최소 지원은 **3.12**입니다(D40). 3.12 미만은 지원하지 않습니다. 이 PC는 설치된 3.14를 그대로 사용합니다. 아래 명령은 PowerShell에서 프로젝트 루트를 기준으로 실행합니다.
+
+```powershell
+py -3.14 -m venv .venv
+.\.venv\Scripts\python.exe -m pip install -e ".[dev]"
+.\.venv\Scripts\python.exe -m ruff check .
+.\.venv\Scripts\python.exe -m ruff format --check .
+.\.venv\Scripts\python.exe -m mypy
+.\.venv\Scripts\python.exe -m pytest
+```
+
+다른 개발 환경에서도 Python 3.12 이상으로 `.venv`를 만든 뒤 같은 설치·검사 명령을 사용합니다. 가상환경 활성화 없이 해당 Python을 직접 실행하므로 PowerShell 실행 정책을 바꿀 필요가 없습니다.
+
+- CI는 모든 PR과 `main` push에서 Windows / Python 3.12·3.14 검사를 각각 실행합니다.
+- `src/richletsgo`, `src/richletsgo_watchdog`, `src/richletsgo_dashboard`는 역할을 적은 빈 패키지입니다. M0에는 실행 서비스나 매매 로직이 없습니다.
+- `trading_lab/`과 기존 테스트 9개는 M1 이전까지 유지합니다. 기존 테스트의 import를 위해 pytest의 `pythonpath = ["."]`를 임시 사용하며, 기존 패키지는 린트·타입 검사에서 제외합니다.
+- `config.example.toml`은 비밀 값 없는 설정 예시입니다. 로컬 설정은 `config.local.toml`에 두며 Git에서 제외합니다. 위험 수치는 아직 미정이므로 예시에 실행 가능한 기본값을 넣지 않았습니다.
+- 개발 도구는 테스트(`pytest`), 린트·포맷(`ruff`), 타입 검사(`mypy`)에만 사용합니다. 런타임 의존성은 없습니다.
 
 ## 키 보관
 
