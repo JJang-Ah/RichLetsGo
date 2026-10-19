@@ -82,7 +82,10 @@
    - 실제 설정 파일 `config.local.toml`은 `.gitignore`로 제외한다.
 
 9. **README 개발 환경 절**
-   - Python 3.14(이 PC 운영 기준, `py -3.14`)로 `.venv` 만들기, `pip install -e .[dev]`, 검사 명령 4개(ruff check, ruff format --check, mypy, pytest)를 PowerShell 기준으로 적는다.
+   - Python 버전 안내는 D40 기준으로 쓴다: **운영 3.14, 최소 지원 3.12**. 3.12 미만은 지원하지 않는다고 적는다.
+   - 운영 PC: 이미 있는 3.14로 `py -3.14 -m venv .venv`. 별도 설치 안내는 쓰지 않는다.
+   - 다른 개발 환경: 3.12 이상 아무 버전으로 `.venv` 생성.
+   - 이어서 `pip install -e .[dev]`, 검사 명령 4개(ruff check, ruff format --check, mypy, pytest)를 PowerShell 기준으로 적는다.
 
 ### 만들지 않을 것
 
@@ -95,7 +98,7 @@
 ## 완료 조건
 
 - [ ] PR의 CI(Windows, Python 3.12·3.14)가 둘 다 통과한다.
-- [ ] 로컬 `.venv`(Codex는 3.12, 이 PC는 3.14)에서 `ruff check .`, `ruff format --check .`, `mypy`, `pytest`가 모두 통과한다.
+- [ ] 로컬 `.venv`(3.12 이상. 이 PC는 3.14)에서 `ruff check .`, `ruff format --check .`, `mypy`, `pytest`가 모두 통과한다.
 - [ ] `pytest` 결과에 기존 테스트 9개와 스모크 테스트가 포함된다.
 - [ ] `git check-ignore`로 확인했을 때 `src/richletsgo/keystore/__init__.py`는 제외되지 **않고**, `config.local.toml`, `.env`, `data/x.csv`는 제외된다. 이 확인 결과를 PR 설명에 붙인다.
 - [ ] `config.example.toml`에 비밀 값이 없다.

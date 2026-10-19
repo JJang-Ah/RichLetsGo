@@ -20,3 +20,11 @@
 - 사용자 결정 대기: Q9~Q18, Q20~Q21 (수치와 운영 세부). 수치(Q13, Q21)는 백테스트 결과를 보고 정함.
 - 다음 담당자: Claude가 M0 작업 명세 작성 → 사용자 확인 → Codex 구현.
 - 참고: PR #1(docs/claude-review)의 REVIEW.md 발견 사항은 M0·M1 명세에 반영 예정.
+
+## 2026-10-20 — Claude Code (PR #2 검토 반영)
+
+- Codex 검토 코멘트 11건(P1 5, P2 6)을 모두 반영. 새 결정 D41~D51 (00_DECISIONS.md "2026-10-20 추가").
+- 주요 변경: 진입 주문에 Partial 손절 부착(D41), 손절의 전략 귀속과 청산 절차(D42), 승인 목표·signal_id 멱등(D43), 주문 상태 규칙과 UNKNOWN 해소(D44), DB 장애 중 보호 작업 저널(D45), 위험 게이트 검사+예약(D46), 개인 WS 선구독 동기화(D47), HALTED 재개 시 위험 기준 재설정(D48), 가상 체결 규칙(D49), 독립 그림자 장부(D50), AI 모드(D51).
+- Python 안내를 D40(운영 3.14, 최소 3.12) 기준으로 05와 M0 명세에 정리.
+- 검증: 문서 변경만. Bybit 공식 문서(create-order, trading-stop, private order WS)로 Partial 손절 수량·parentOrderLinkId·Filled 중복을 확인.
+- 다음 담당자: Codex 재검토. M3 데모에서 01 1.4절 "M3 데모에서 확인할 것" 항목을 실제로 확인해야 함.
