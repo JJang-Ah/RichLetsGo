@@ -23,8 +23,15 @@ class ValidationTests(unittest.TestCase):
             validate(self.order, self.limits, position=D("15"))
 
     def test_reduce_only_closes_both_directions(self):
-        self.assertEqual(validate(replace(self.order, reduce_only=True), self.limits, position=D("-1")), D("0"))
-        self.assertEqual(validate(replace(self.order, side="sell", reduce_only=True), self.limits, position=D("1")), D("0"))
+        self.assertEqual(
+            validate(replace(self.order, reduce_only=True), self.limits, position=D("-1")), D("0")
+        )
+        self.assertEqual(
+            validate(
+                replace(self.order, side="sell", reduce_only=True), self.limits, position=D("1")
+            ),
+            D("0"),
+        )
 
     def test_reduce_only_rejects_flat_increase_and_reversal(self):
         for position in (D("0"), D("1"), D("-0.5")):
@@ -32,7 +39,9 @@ class ValidationTests(unittest.TestCase):
                 validate(replace(self.order, reduce_only=True), self.limits, position=position)
 
     def test_oversized_position_can_be_reduced(self):
-        result = validate(replace(self.order, side="sell", reduce_only=True), self.limits, position=D("20"))
+        result = validate(
+            replace(self.order, side="sell", reduce_only=True), self.limits, position=D("20")
+        )
         self.assertEqual(result, D("19"))
 
     def test_invalid_numbers(self):
@@ -42,7 +51,12 @@ class ValidationTests(unittest.TestCase):
                     validate(replace(self.order, **{field: value}), self.limits)
 
     def test_bad_currency_flags_and_leverage(self):
-        for changes in ({"currency": "USD"}, {"reduce_only": "false"}, {"leverage": D("4")}, {"leverage": D("0.5")}):
+        for changes in (
+            {"currency": "USD"},
+            {"reduce_only": "false"},
+            {"leverage": D("4")},
+            {"leverage": D("0.5")},
+        ):
             with self.subTest(changes=changes), self.assertRaises(Rejected):
                 validate(replace(self.order, **changes), self.limits)
         with self.assertRaises(Rejected):

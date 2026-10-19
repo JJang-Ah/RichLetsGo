@@ -1,0 +1,30 @@
+# Copy to config.local.toml for local settings. Never put secrets in TOML.
+# This is a schema-free example; configuration loading starts after M0.
+environment = "backtest" # backtest / demo / live
+
+[bybit]
+category = "linear"
+symbols = ["BTCUSDT", "ETHUSDT"]
+
+[risk]
+# Q13 is undecided. No trading defaults are provided.
+# See docs/design/02_RISK_MANAGEMENT.md, sections 2-3 and Q13.
+# risk_per_trade = <user decision>
+# daily_loss_limit_usdt = <user decision>
+# max_drawdown_ratio = <user decision>
+# strategy_allocations = <user decision>
+# consecutive_loss_limit = <user decision>
+# cooldown_hours = <user decision>
+# max_leverage = <user decision>
+# max_symbol_notional_usdt = <user decision>
+# max_account_notional_usdt = <user decision>
+# liquidation_buffer_ratio = <user decision>
+
+[keystore]
+# Windows Credential Manager entry names only, never key/token/password values.
+bybit_demo_api = "richletsgo/bybit-demo"
+bybit_live_api = "richletsgo/bybit-live"
+telegram_bot = "richletsgo/telegram-bot"
+oracle_demo = "richletsgo/oracle-demo"
+oracle_live = "richletsgo/oracle-live"
+oracle_read = "richletsgo/oracle-read"
