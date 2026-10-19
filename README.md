@@ -36,7 +36,7 @@
 ## 다음 순서
 
 1. Claude: M0(기반) 작업 명세 작성 → 사용자 확인
-2. Codex: M0 구현 (Python 3.12, `pyproject.toml`, CI, `.gitignore` 정리)
+2. Codex: M0 구현 (Python 3.12 이상 / 운영 3.14, `pyproject.toml`, CI, `.gitignore` 정리)
 3. M1 핵심 로직 → M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
 
 ## 키 보관

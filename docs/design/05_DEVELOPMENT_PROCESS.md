@@ -48,7 +48,7 @@
 
 | 마일스톤 | 내용 | 완료 조건 | 검증 단계 |
 |---|---|---|---|
-| M0 기반 | `pyproject.toml`(Python 3.12, D40), 패키지 구조, CI(GitHub Actions), 린터, `.gitignore` 정리(REVIEW.md 발견 9), 비밀 정보 없는 설정 예시 파일(`config.example.toml`) | CI에서 빈 테스트 통과 | |
+| M0 기반 | `pyproject.toml`(Python 3.12 이상, D40), 패키지 구조, CI(GitHub Actions), 린터, `.gitignore` 정리(REVIEW.md 발견 9), 비밀 정보 없는 설정 예시 파일(`config.example.toml`) | CI에서 빈 테스트 통과 | |
 | M1 핵심 로직 | 도메인 모델(Decimal), 위험 엔진 L1~L7·크기 계산·정지 상태, 전략 장부, 주문 상태 관리, 가상 거래소 | V0 장애 시나리오 테스트 통과 | V0 |
 | M2 데이터·백테스트 | Bybit 과거 봉·펀딩비 수집, S1·S2 전략, 구간 이동 백테스트, 결과 보고서 | V1 통과 조건 판정 가능 | V1 |
 | M3 연결 | Bybit 데모 REST/WS 어댑터, Oracle 스키마·마이그레이션, 텔레그램, Watchdog, Windows 서비스 등록 | AI 없이 데모에서 1주 무사고 운영 | |
@@ -67,7 +67,7 @@
 
 ## 5. 코드 기준
 
-- Python 3.12 (D40). 이 PC에는 3.12를 별도로 설치해 가상환경(`.venv`)으로 쓴다.
+- Python: 운영은 이 PC의 3.14, 최소 지원은 3.12 (D40). 이 PC에서는 3.14로 가상환경(`.venv`)을 만든다. 3.13 이상에서만 되는 문법·표준 라이브러리 기능은 쓰지 않는다. CI가 두 버전 모두에서 확인한다.
 - 금액·가격·수량은 `Decimal`. `float`는 지표 계산 내부에서만 쓰고, 주문으로 넘어가기 전에 Decimal로 바꾼다.
 - 시각은 timezone 정보가 있는 UTC `datetime`.
 - 전략·위험·장부는 외부 연결 없는 순수 로직(03_SYSTEM_ARCHITECTURE.md 3장).

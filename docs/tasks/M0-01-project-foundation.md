@@ -38,7 +38,8 @@
    - `keystore`라는 이름을 쓴다. `secrets`는 표준 라이브러리와 겹친다.
 
 2. **`pyproject.toml`**
-   - `requires-python = ">=3.12,<3.13"` (D40)
+   - `requires-python = ">=3.12"` (D40: 운영 3.14, 최소 지원 3.12)
+   - 3.13 이상 전용 기능이 섞이지 않도록 `ruff`는 `target-version = "py312"`, `mypy`는 `python_version = "3.12"`로 둔다.
    - 런타임 의존성: 없음 (M3에서 추가)
    - 개발 의존성 (`[project.optional-dependencies] dev`): `pytest`, `ruff`, `mypy`. 버전 하한을 적는다.
    - 빌드 백엔드: `setuptools` (추가 도구 설치 없이 `pip install -e .[dev]`로 설치 가능해야 함)
@@ -48,7 +49,7 @@
 
 3. **스모크 테스트** `tests/test_smoke.py`
    - `richletsgo`와 모든 하위 패키지가 import되는지 확인한다.
-   - Python 버전이 3.12인지 확인한다.
+   - Python 버전이 3.12 이상인지 확인한다.
 
 4. **기존 코드 유지**
    - `trading_lab/`과 `tests/test_core.py`는 이번에 지우지 않는다(M1에서 이전 후 삭제, D39).
@@ -57,7 +58,7 @@
 
 5. **CI** `.github/workflows/ci.yml`
    - 트리거: 모든 PR, `main` push
-   - 실행 환경: `windows-latest` (운영 환경과 같은 OS), Python 3.12
+   - 실행 환경: `windows-latest` (운영 환경과 같은 OS), Python **3.12와 3.14** 매트릭스. 둘 중 하나라도 실패하면 CI 실패.
    - 단계: 의존성 설치 → `ruff check .` → `ruff format --check .` → `mypy` → `pytest`
    - 비밀 정보를 쓰지 않는다. 네트워크가 필요한 테스트는 없다.
 
@@ -81,7 +82,7 @@
    - 실제 설정 파일 `config.local.toml`은 `.gitignore`로 제외한다.
 
 9. **README 개발 환경 절**
-   - Python 3.12 설치, `.venv` 만들기, `pip install -e .[dev]`, 검사 명령 4개(ruff check, ruff format --check, mypy, pytest)를 PowerShell 기준으로 적는다.
+   - Python 3.14(이 PC 운영 기준, `py -3.14`)로 `.venv` 만들기, `pip install -e .[dev]`, 검사 명령 4개(ruff check, ruff format --check, mypy, pytest)를 PowerShell 기준으로 적는다.
 
 ### 만들지 않을 것
 
@@ -93,8 +94,8 @@
 
 ## 완료 조건
 
-- [ ] PR의 CI(Windows, Python 3.12)가 통과한다.
-- [ ] 로컬 Python 3.12 `.venv`에서 `ruff check .`, `ruff format --check .`, `mypy`, `pytest`가 모두 통과한다.
+- [ ] PR의 CI(Windows, Python 3.12·3.14)가 둘 다 통과한다.
+- [ ] 로컬 `.venv`(Codex는 3.12, 이 PC는 3.14)에서 `ruff check .`, `ruff format --check .`, `mypy`, `pytest`가 모두 통과한다.
 - [ ] `pytest` 결과에 기존 테스트 9개와 스모크 테스트가 포함된다.
 - [ ] `git check-ignore`로 확인했을 때 `src/richletsgo/keystore/__init__.py`는 제외되지 **않고**, `config.local.toml`, `.env`, `data/x.csv`는 제외된다. 이 확인 결과를 PR 설명에 붙인다.
 - [ ] `config.example.toml`에 비밀 값이 없다.
@@ -105,9 +106,8 @@
 - 패키지 구조가 03_SYSTEM_ARCHITECTURE.md 3장과 일치하는지, 하위 패키지에 로직이 들어가지 않았는지
 - `.gitignore`가 소스 파일을 실수로 제외하지 않는지
 - CI가 `main`과 PR 모두에서 돌고, 실패 시 PR이 막히는지(브랜치 보호 설정은 사용자가 GitHub에서 켠다)
-- 개발 의존성 버전 하한과 Python 3.12 고정
+- 개발 의존성 버전 하한, `requires-python`·ruff·mypy의 버전 설정이 D40과 맞는지
 
 ## 사용자 작업
 
-- 이 PC에 Python 3.12 설치 (현재 `py -3`은 3.14.3)
 - PR이 병합된 뒤 GitHub 저장소 설정에서 `main` 브랜치 보호: PR 필수, CI 통과 필수
