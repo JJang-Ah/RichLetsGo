@@ -1,0 +1,41 @@
+[build-system]
+requires = ["setuptools>=78"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "richletsgo"
+version = "0.0.1"
+description = "Foundations for KIS stocks and Bybit futures automation"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=9.0",
+    "ruff>=0.14",
+    "mypy>=1.19",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+include = ["richletsgo", "richletsgo.*", "richletsgo_watchdog", "richletsgo_dashboard"]
+namespaces = false
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+extend-exclude = ["trading_lab"]
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "B", "UP"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src/richletsgo", "src/richletsgo_watchdog", "src/richletsgo_dashboard"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Temporary until the legacy trading_lab package is retired in M1.
+pythonpath = ["."]

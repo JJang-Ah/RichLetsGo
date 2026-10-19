@@ -52,9 +52,21 @@
 - 사용자 결정 대기: REVIEW.md의 질문 1~9 (청산 한도 면제, 반전 허용, Bybit 모드, KIS 계좌, 운영 환경, 알림, 저장소 공개, Python 버전, 협업 방식).
 - 다음 담당자: 질문 1·2 결정 후 core.py 수정 담당(Codex 또는 Claude) 지정, 다른 쪽이 검토. .gitignore 정리와 누락 테스트 추가는 결정과 무관하게 진행 가능.
 
+## 2026-10-20 — Codex (PR 병합 및 M0-01 구현)
+
+- 사용자 요청: Claude 최종 수정 재검토, PR #1·#2 병합, main 보호 설정, M0 구현.
+- 최종 설계 검토: 91bcfb6의 D54 재개정 및 V0 기대 결과 확인. 앞선 재검토 항목은 설계 수준에서 반영됨. Partial 손절의 실제 동작 검증은 M3 과제.
+- PR #1·#2를 병합했다. docs/HANDOFF.md 충돌은 PR #1 검토 기록과 PR #2 설계·후속 수정 기록을 모두 보존해 해결했다.
+- 구현 브랜치: task/M0-01-project-foundation. pyproject.toml, src 패키지 17개, 빈 마이그레이션 디렉터리, 설정 예시, CI, 도구 설정, .gitignore/.gitattributes, 개발 환경 안내를 추가했다.
+- 개발 의존성 pytest/ruff/mypy는 테스트·린트/포맷·타입 검사 용도이며 런타임 의존성은 없다.
+- 검증: Windows 로컬 Python 3.14.3 및 3.12.14에서 ruff check, ruff format --check, mypy 통과. pytest는 각각 28개 통과(기존 9개 + 스모크 19개). 초기 pytest 캐시 경고는 로컬 캐시 디렉터리 생성 후 해소됨.
+- 기존 trading_lab 런타임 파일은 변경하지 않았다. tests/test_core.py는 줄바꿈 포맷만 바꿨고 AST가 기존과 같음을 확인했다.
+- git check-ignore 확인: keystore 소스·config.example.toml·하위 marketdata/data 소스는 추적 가능, config.local.toml·.env·루트 data/x.csv·.venv 산출물은 제외됨. TOML 예시 파싱 및 위험 값 미설정 확인.
+- main 보호: GitHub 화면에 비공개 저장소의 규칙 강제 요금제 제한이 표시됨. 저장에는 계정 본인 확인(sudo mode)도 요구됨. 실제 강제가 확인되기 전에는 보호 완료로 간주하지 않는다.
+- 다음 담당자: Claude Code가 M0-01 PR을 검토. CI 두 버전 통과를 확인한 뒤 사용자가 병합한다. M0 구현 PR은 Codex가 병합하지 않는다.
 ## 2026-10-20 — Claude Code (M0 검토, M1 명세)
 
 - PR #3(M0-01) 검토: 명세와 일치, 병합 차단 문제 없음. 이 PC Python 3.14.3에서 ruff·format·mypy·pytest(28) 통과. 제안: 패키지 탐색 `include = ["richletsgo*"]`(M1-01에 반영), `[ai] mode` 예시는 M3.
-- GitHub Actions 장애(2026-10-19 githubstatus "Degraded availability")로 PR #3 CI가 대기 중이었음. 사용자가 CI 통과 후 Claude가 병합하도록 위임.
+- GitHub Actions 장애(2026-10-19 githubstatus "Degraded availability")로 PR #3 CI가 30분 넘게 대기. **사용자 지시로 CI를 기다리지 않고 병합**(76cdefc, D38 예외). 근거: Codex가 3.12·3.14에서, Claude가 3.14에서 ruff·format·mypy·pytest(28) 통과. 병합 후 main에서도 3.14로 다시 확인. 장애가 풀리면 main의 CI 결과를 확인해야 함.
 - M1 작업 명세 작성: `docs/tasks/M1-00-overview.md`와 M1-01~06. 03 모듈 목록에 `domain/` 추가.
 - 다음 담당자: 사용자 명세 확인 → Codex가 M1-01부터 구현(M1-05는 M1-01 이후 병행 가능).
