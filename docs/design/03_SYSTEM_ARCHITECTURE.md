@@ -6,7 +6,7 @@
 
 | 항목 | 선택 | 비고 |
 |---|---|---|
-| 언어 | Python + asyncio (D28) | 버전은 하나로 고정한다(Q19). 금액·수량은 Decimal. |
+| 언어 | Python 3.12 + asyncio (D28, D40) | 금액·수량은 Decimal. |
 | 주 저장소 | Oracle Database Free, 이 PC에 설치 (D29) | SQL Developer로 관리. 접속은 `python-oracledb` thin 모드(별도 클라이언트 설치 불필요). |
 | 백테스트 저장소 | SQLite 파일 | 실거래 DB와 분리. 결과 비교용. |
 | 화면 | 로컬 웹 대시보드, 읽기 전용 (D30) | `127.0.0.1`에서만 접속. 주문 기능 없음. |
@@ -162,4 +162,4 @@ CREATED ──전송──→ SUBMITTED ──접수 확인──→ OPEN ──
 | Q16 | 대시보드 웹 프레임워크 (예: FastAPI + 간단한 HTML, Streamlit 등) |
 | Q17 | 이 PC 사양 확인: Oracle Free + Trader + Dashboard를 함께 돌릴 메모리 여유 |
 | Q18 | 백업 보관 기간과 위치 (같은 디스크 / 외장 / 클라우드) |
-| Q19 | Python 기준 버전 (Codex 3.12, 이 PC 3.14) |
+| ~~Q19~~ | Python 기준 버전 → D40 (3.12)로 확정 |

@@ -9,3 +9,14 @@
 - 다음 담당자: Claude Code 검토. README의 검토 요청문을 사용.
 - 미완료: 모든 거래소 연동, 전략, 모의 체결·손익, 대시보드, 운영 AI 연결, 실거래.
 - 검증: Python 3.12에서 주문 검증 테스트 9개 통과. CLI 출력의 CP949 인코딩 문제를 ASCII 문구로 수정하고 예시 실행 확인.
+
+## 2026-10-19 — Claude Code (설계)
+
+- 사용자 요청: 코딩을 멈추고 설계부터 확정. 설계는 사용자와 Claude가 진행.
+- 완료: `docs/design/00~05` 작성 (결정 D1~D40, 원칙 P1~P5). README, WORKING_RULES, ARCHITECTURE.md를 설계 기준으로 갱신.
+- 핵심: Bybit BTC/ETH USDT 무기한부터, 완전 자동, 이 PC에서 Windows 서비스, Oracle Database Free 주 저장소, AI는 진입을 막거나 줄이기만 함.
+- 역할 변경: Claude 설계·검토, Codex 구현. 모든 변경은 브랜치 + PR + 교차 검토 (main 직접 커밋 금지).
+- 검증: 문서 변경만. 코드·테스트 변경 없음.
+- 사용자 결정 대기: Q9~Q18, Q20~Q21 (수치와 운영 세부). 수치(Q13, Q21)는 백테스트 결과를 보고 정함.
+- 다음 담당자: Claude가 M0 작업 명세 작성 → 사용자 확인 → Codex 구현.
+- 참고: PR #1(docs/claude-review)의 REVIEW.md 발견 사항은 M0·M1 명세에 반영 예정.
