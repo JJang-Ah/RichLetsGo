@@ -1,52 +1,50 @@
-# RichLetsGo — 국내·미국 주식 / Bybit 선물
+# RichLetsGo — Bybit 선물 / 국내·미국 주식 자동매매
 
 2026-10-19에 시작한 Codex + Claude Code 공동 개발 프로젝트입니다.
 
 ## 현재 상태
 
-외부 패키지 없이 실행하는 **오프라인 주문 검증 초안**입니다. 시세 수집, 계좌 조회, 거래소 연결, 주문 전송, 체결, 손익 계산 및 매매 전략은 아직 없습니다. 출력 가격은 실제 시세가 아닌 고정 예시입니다. 실거래 준비가 완료된 프로그램이 아닙니다.
+**설계 단계**입니다. 매매 기능 코드는 아직 없습니다. `trading_lab/`은 초기 오프라인 주문 검증 초안이며, 설계에 따라 새 패키지로 대체한 뒤 삭제합니다(D39). 실거래 준비가 완료된 프로그램이 아닙니다.
 
-```powershell
-python -m trading_lab
-python -m unittest discover -s tests -v
-```
+## 설계 문서
 
-Python 3.11 이상을 사용합니다. 이 PC의 기본 python 실행 경로가 작동하지 않아 Codex에 포함된 Python 3.12로 검증했습니다.
+설계 문서가 구현의 기준입니다. 결정 번호(D1~)와 남은 질문(Q~)은 `00_DECISIONS.md`에서 관리합니다.
 
-## 확정 범위와 임시 기준
+| 문서 | 내용 |
+|---|---|
+| [docs/design/00_DECISIONS.md](docs/design/00_DECISIONS.md) | 확정된 결정, 설계 원칙, 남은 질문 |
+| [docs/design/01_STRATEGY_AND_AI.md](docs/design/01_STRATEGY_AND_AI.md) | 전략(S1 스윙 추세추종, S2 단기 평균회귀)과 AI 점수 |
+| [docs/design/02_RISK_MANAGEMENT.md](docs/design/02_RISK_MANAGEMENT.md) | 한도 계층, 크기 계산, 정지 상태, 텔레그램 명령 |
+| [docs/design/03_SYSTEM_ARCHITECTURE.md](docs/design/03_SYSTEM_ARCHITECTURE.md) | 프로세스, 모듈, 데이터 흐름, 주문 상태, Oracle 저장소 |
+| [docs/design/04_VALIDATION_AND_OPERATIONS.md](docs/design/04_VALIDATION_AND_OPERATIONS.md) | 백테스트 → 데모 → 실거래 단계, 운영 체크리스트 |
+| [docs/design/05_DEVELOPMENT_PROCESS.md](docs/design/05_DEVELOPMENT_PROCESS.md) | 역할 분담, PR 흐름, 마일스톤 |
 
-- 한국투자증권: 국내주식 + 미국주식. 사용자는 기존 API 키 보유.
-- Bybit: 선물. 계정 보유, API 키는 아직 없음.
-- 개발 협업: Codex와 Claude Code. 현재 Claude가 검토하거나 연결된 상태는 아님.
-- 검증용 선물 모델: USDT 선형 무기한, 단방향 포지션. 사용자 확정 전 임시 기준.
-- 전략, 종목, 자금, 거래 주기, 실거래 위험 한도는 미정.
-- 예시 금액/레버리지 한도는 검증용 숫자이며 운용 권고가 아님.
+## 범위 요약
 
-## 다음 개발 순서
+- 첫 대상: Bybit USDT 무기한 BTCUSDT·ETHUSDT, 단방향, 격리 마진, 레버리지 3~5배 범위.
+- 완전 자동매매, 사용자의 Windows PC에서 Windows 서비스로 실행, 주 저장소는 로컬 Oracle Database Free.
+- AI 점수는 진입을 막거나 크기를 줄이기만 하며, 손절·한도는 규칙 엔진이 강제합니다.
+- 한국투자증권 국내·미국 주식은 Bybit 실거래가 안정된 뒤 별도 설계로 추가합니다.
 
-1. Claude Code로 아래 검토 요청을 실행하고, 발견 사항을 공유.
-2. 한국투자증권 API 종류·모의투자 신청 여부, 해외주식 권한을 확인하고 읽기 전용 연결.
-3. Bybit 상품/포지션 모드 확정 후 데모 계정과 전용 키로 읽기 전용 연결.
-4. 실제 시세 및 상품별 수량 단위/호가 단위/최소 주문 조건을 검증.
-5. 재시작 가능한 주문·체결 기록, 계좌 동기화, 부분 체결 및 중복 방지 구현.
-6. 전략 한 개와 수수료·슬리피지·환율·펀딩비를 반영하는 모의매매 구현.
-7. 사용자와 자금/위험 한도를 정한 후 실거래 연결을 별도 검토.
+## 협업 방식
 
-## Claude Code에서 시작하기
+- 사용자: 결정, PR 병합. Claude Code: 설계·검토. Codex: 구현 (D37).
+- 모든 변경은 브랜치 + PR + 다른 AI의 검토 후 병합합니다. `main`에 직접 커밋하지 않습니다 (D38).
+- 두 AI 사이의 연락은 PR 코멘트와 [docs/HANDOFF.md](docs/HANDOFF.md)로 합니다.
+- 공통 규칙: [docs/WORKING_RULES.md](docs/WORKING_RULES.md). `CLAUDE.md`와 `AGENTS.md`가 이 규칙을 가리킵니다.
 
-이 폴더를 작업 폴더로 열고 아래 내용을 입력하세요. `CLAUDE.md`와 `AGENTS.md`는 공통 규칙을 가리킵니다.
+## 다음 순서
 
-> README.md, docs/ARCHITECTURE.md, docs/WORKING_RULES.md, docs/HANDOFF.md를 읽고 현재 주문 검증 코드와 테스트를 검토해줘. 실주문 연결은 추가하지 말고, 금액 단위 혼동, 잘못된 청산 방향, 입력 검증, 중복 주문 및 테스트의 빈틈을 중심으로 확인해줘. 발견 사항을 파일·위치·영향과 함께 docs/REVIEW.md에 작성해줘. 수정이 필요하면 변경 파일 목록과 검증 결과를 기록해줘.
-
-한 사람이 구현하는 동안 다른 AI는 검토를 맡습니다. 같은 파일을 동시에 편집하지 않습니다. 검토 결과를 이 채팅에 알려주면 다음 작업에 반영할 수 있습니다. 두 도구 사이의 자동 메시지 전달은 아직 없습니다.
+1. Claude: M0(기반) 작업 명세 작성 → 사용자 확인
+2. Codex: M0 구현 (Python 3.12 이상 / 운영 3.14, `pyproject.toml`, CI, `.gitignore` 정리)
+3. M1 핵심 로직 → M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
 
 ## 키 보관
 
-키는 채팅이나 저장소에 붙여넣지 않습니다. 후속 연결 단계에서 로컬 환경변수 또는 OS 자격증명 저장소를 사용합니다. 현재 코드는 키를 읽지도 않습니다. `.gitignore`에 비밀 파일 제외 규칙을 준비했습니다.
+키는 채팅이나 저장소에 붙여넣지 않습니다. Windows 자격 증명 관리자에 보관하며, 설정 파일·DB·로그에 넣지 않습니다. 실거래 Bybit 키는 출금 권한 없이 만듭니다.
 
 ## 참고 문서
 
-- 한국투자증권: https://github.com/koreainvestment/open-trading-api
-- Bybit 주문 규격: https://bybit-exchange.github.io/docs/v5/order/create-order
+- Bybit V5 API: https://bybit-exchange.github.io/docs/v5/intro
 - Bybit 데모: https://bybit-exchange.github.io/docs/v5/demo
-- Claude Code 지침: https://support.claude.com/en/articles/14553240-give-claude-context-claude-md-and-better-prompts
+- 한국투자증권: https://github.com/koreainvestment/open-trading-api
