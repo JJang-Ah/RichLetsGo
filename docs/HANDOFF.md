@@ -9,3 +9,12 @@
 - 다음 담당자: Claude Code 검토. README의 검토 요청문을 사용.
 - 미완료: 모든 거래소 연동, 전략, 모의 체결·손익, 대시보드, 운영 AI 연결, 실거래.
 - 검증: Python 3.12에서 주문 검증 테스트 9개 통과. CLI 출력의 CP949 인코딩 문제를 ASCII 문구로 수정하고 예시 실행 확인.
+
+## 2026-10-19 — Claude Code
+
+- 사용자 요청: 현재 저장소를 파악하고 부족한 점을 검토해 docs/REVIEW.md에 정리, 결정 사항은 질문으로 남기기.
+- 완료: docs/REVIEW.md 작성. 코드·테스트·.gitignore는 수정하지 않음.
+- 주요 발견: 한도를 넘는 포지션의 전량 청산이 주문 한도로 거절됨(core.py:79), 단방향 반전 주문 허용, 심볼 정규화·수량 정밀도 검사 없음, .gitignore 패턴이 소스 파일까지 제외할 수 있음, Limits/position/side 검증 테스트 없음.
+- 검증: `py -3 -m unittest discover -s tests -v` (Python 3.14.3) → 9개 통과. 발견 1~4는 validate 직접 호출로 재현.
+- 사용자 결정 대기: REVIEW.md의 질문 1~9 (청산 한도 면제, 반전 허용, Bybit 모드, KIS 계좌, 운영 환경, 알림, 저장소 공개, Python 버전, 협업 방식).
+- 다음 담당자: 질문 1·2 결정 후 core.py 수정 담당(Codex 또는 Claude) 지정, 다른 쪽이 검토. .gitignore 정리와 누락 테스트 추가는 결정과 무관하게 진행 가능.
