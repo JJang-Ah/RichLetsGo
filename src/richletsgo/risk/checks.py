@@ -50,13 +50,15 @@ def evaluate_pauses(
         pauses.append(Pause(PauseKind.HALTED, "L6", now))
     for strategy in StrategyId:
         figures = strategies.get(strategy)
-        if figures is None:
-            continue
-        if max(Decimal(0), -figures.daily_pnl) >= limits.strategy_daily_limit(strategy):
+        disabled = limits.strategy_daily_limit(strategy) == 0
+        if disabled or (
+            figures is not None
+            and max(Decimal(0), -figures.daily_pnl) >= limits.strategy_daily_limit(strategy)
+        ):
             pauses.append(
                 Pause(PauseKind.STRATEGY_PAUSED, "L4", now, strategy=strategy, until=next_day)
             )
-        if figures.consecutive_losses >= limits.consecutive_loss_limit:
+        if figures is not None and figures.consecutive_losses >= limits.consecutive_loss_limit:
             assert figures.last_loss_at is not None
             resume_at = figures.last_loss_at + limits.cooldown
             if now < resume_at:

@@ -31,6 +31,7 @@ class ResumePrompt:
     drawdown_ratio: Decimal
     new_risk_peak: Decimal | None
     next_halt_equity: Decimal | None
+    pause_revision: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -78,6 +79,8 @@ class ResumeService:
         if not (halted or manual):
             return ResumeRejected("nothing to resume", auth)
         equity = self._tracker.equity
+        if halted and equity <= 0:
+            return ResumeRejected("nonpositive equity", auth)
         new_peak = equity if halted else None
         prompt = ResumePrompt(
             self._ids(),
@@ -92,6 +95,7 @@ class ResumeService:
             self._tracker.drawdown_ratio,
             new_peak,
             new_peak * (1 - self._limits.max_drawdown_ratio) if new_peak is not None else None,
+            self._pauses.revision,
         )
         self._prompts[prompt.prompt_id] = prompt
         return prompt
@@ -102,19 +106,31 @@ class ResumeService:
         auth = authorize_command(actor_id, RESUME_COMMAND, self._allowed, require_utc(at))
         if not auth.allowed:
             return ResumeRejected("unauthorized", auth)
-        prompt = self._prompts.pop(prompt_id, None)
+        prompt = self._prompts.get(prompt_id)
         if prompt is None:
             return ResumeRejected("unknown prompt", auth)
         if prompt.actor_id != actor_id:
             return ResumeRejected("prompt belongs to another actor", auth)
-        if at > prompt.expires_at:
+        if at < prompt.created_at:
+            return ResumeRejected("confirmation precedes prompt", auth)
+        del self._prompts[prompt_id]
+        if at >= prompt.expires_at:
             return ResumeRejected("prompt expired", auth)
+        if (
+            self._pauses.revision != prompt.pause_revision
+            or self._tracker.equity != prompt.equity
+            or self._tracker.risk_peak != prompt.risk_peak
+            or self._tracker.record_peak != prompt.record_peak
+        ):
+            return ResumeRejected("state changed; request a new confirmation", auth)
         cleared: list[PauseKind] = []
         reset: PeakReset | None = None
-        if prompt.clears_halted and self._pauses.clear(PauseKind.HALTED):
+        if prompt.clears_halted and self._pauses.has(PauseKind.HALTED):
             assert prompt.new_risk_peak is not None
             reset = self._tracker.reset_risk_peak(prompt.new_risk_peak, at, actor_id)
+            self._pauses.clear(PauseKind.HALTED)
             cleared.append(PauseKind.HALTED)
         if prompt.clears_manual and self._pauses.clear(PauseKind.ENTRY_PAUSED_MANUAL):
             cleared.append(PauseKind.ENTRY_PAUSED_MANUAL)
+        self._prompts.clear()
         return ResumeRecord(prompt_id, actor_id, at, tuple(cleared), reset)

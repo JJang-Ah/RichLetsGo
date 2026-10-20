@@ -477,8 +477,8 @@ def test_concurrent_entries_on_two_contracts_cannot_both_pass():
         gate = make_gate(db)
         # each entry: allowed 80 / distance 10 = qty 8 -> notional 800; account cap 1000
         results = await asyncio.gather(
-            gate.admit(request(BTC, "b"), market(BTC), {}),
-            gate.admit(request(ETH, "e"), market(ETH), {}),
+            gate.admit(request(BTC, "b"), market(BTC), {S1: figures(), S2: figures()}),
+            gate.admit(request(ETH, "e"), market(ETH), {S1: figures(), S2: figures()}),
         )
         kinds = sorted(r.decision.kind for r in results)
         assert kinds == [DecisionKind.ADMITTED, DecisionKind.REJECTED]
@@ -495,7 +495,8 @@ def test_same_signal_twice_concurrently_yields_one_decision_and_order():
         db = InMemoryDatabase("acct", Environment.DEMO)
         gate = make_gate(db)
         first, second = await asyncio.gather(
-            gate.admit(request(), market(), {}), gate.admit(request(), market(), {})
+            gate.admit(request(), market(), {S1: figures(), S2: figures()}),
+            gate.admit(request(), market(), {S1: figures(), S2: figures()}),
         )
         assert {first.reused, second.reused} == {False, True}
         assert first.decision == second.decision
@@ -516,7 +517,7 @@ def test_commit_failure_leaves_nothing_behind():
         db = InMemoryDatabase("acct", Environment.DEMO)
         gate = make_gate(db, factory=lambda: FailingCommit(db))
         with pytest.raises(RuntimeError):
-            await gate.admit(request(), market(), {})
+            await gate.admit(request(), market(), {S1: figures(), S2: figures()})
         assert await stored(db) == ((), (), ())
 
     asyncio.run(scenario())
@@ -526,11 +527,15 @@ def test_open_episode_maintains_and_opposite_signal_is_rejected():
     async def scenario():
         db = InMemoryDatabase("acct", Environment.DEMO)
         gate = make_gate(db)
-        first = await gate.admit(request(signal="day1"), market(), {})
+        first = await gate.admit(request(signal="day1"), market(), {S1: figures(), S2: figures()})
         assert first.episode is not None and first.episode.state is EpisodeState.OPEN
-        again = await gate.admit(request(signal="day2"), market(), {})
+        again = await gate.admit(request(signal="day2"), market(), {S1: figures(), S2: figures()})
         assert again.decision.kind is DecisionKind.MAINTAINED and again.order is None
-        flip = await gate.admit(request(signal="day3", direction=Direction.SHORT), market(), {})
+        flip = await gate.admit(
+            request(signal="day3", direction=Direction.SHORT),
+            market(),
+            {S1: figures(), S2: figures()},
+        )
         assert flip.decision.rejections[0].code is RejectionCode.EPISODE_OPEN_OPPOSITE
         _, orders, _ = await stored(db)
         assert len(orders) == 1
@@ -543,10 +548,10 @@ def test_rejected_signal_is_stored_and_not_reevaluated():
         db = InMemoryDatabase("acct", Environment.DEMO)
         pauses = PauseState((Pause(PauseKind.ENTRY_PAUSED_MANUAL, "manual", NOW),))
         gate = make_gate(db, pauses=pauses)
-        first = await gate.admit(request(), market(), {})
+        first = await gate.admit(request(), market(), {S1: figures(), S2: figures()})
         assert first.decision.kind is DecisionKind.REJECTED
         pauses.clear(PauseKind.ENTRY_PAUSED_MANUAL)
-        second = await gate.admit(request(), market(), {})
+        second = await gate.admit(request(), market(), {S1: figures(), S2: figures()})
         assert second.reused and second.decision == first.decision
 
     asyncio.run(scenario())
@@ -558,7 +563,7 @@ def test_gate_refresh_adds_l5_pause_before_checking():
         tracker = tracker_at_midnight(wallet="1000")
         tracker.observe(AccountSnapshot(NOW, D("940"), D("0")))  # loss 60 >= 50
         gate = make_gate(db, tracker=tracker)
-        result = await gate.admit(request(), market(), {})
+        result = await gate.admit(request(), market(), {S1: figures(), S2: figures()})
         assert result.decision.kind is DecisionKind.REJECTED
         assert gate.pauses.has(PauseKind.ENTRY_PAUSED_DAILY)
 
@@ -663,3 +668,185 @@ def test_resume_refusals():
     assert isinstance(reused, ResumeRejected) and reused.reason == "unknown prompt"
     _, _, idle = resume_setup()
     assert isinstance(idle.request_resume("owner", NOW), ResumeRejected)
+
+
+# ---------------------------------------------------------------- PR #10 review regressions
+
+
+def test_missing_requested_strategy_input_cannot_create_a_decision_or_order():
+    async def scenario():
+        db = InMemoryDatabase("acct", Environment.DEMO)
+        gate = make_gate(db)
+        with pytest.raises(ValueError, match="strategy risk input"):
+            await gate.admit(request(), market(), {S2: figures()})
+        assert await stored(db) == ((), (), ())
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("with_figures", [False, True])
+def test_zero_allocation_disables_entries_even_without_strategy_figures(with_figures):
+    async def scenario():
+        db = InMemoryDatabase("acct", Environment.DEMO)
+        gate = make_gate(db, lim=limits(strategy_allocations={S1: D(0), S2: D(1)}))
+        result = await gate.admit(request(), market(), {S1: figures()} if with_figures else {})
+        assert result.decision.kind is DecisionKind.REJECTED
+        assert result.decision.rejections[0].code is RejectionCode.PAUSED
+        assert gate.pauses.blocking(S1, BTC)[0].reason == "L4"
+        _, orders, episodes = await stored(db)
+        assert not orders and not episodes
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("direction,limit", [(Direction.LONG, "110"), (Direction.SHORT, "90")])
+def test_limit_price_sets_sizing_and_order_reference(direction, limit):
+    from dataclasses import replace
+
+    async def scenario():
+        db = InMemoryDatabase("acct", Environment.DEMO)
+        gate = make_gate(db)
+        req = replace(request(direction=direction), limit_price=Price(D(limit)))
+        result = await gate.admit(req, market(), {S1: figures(), S2: figures()})
+        assert result.decision.kind is DecisionKind.ADMITTED
+        assert result.order.reference_price == req.limit_price
+        assert result.order.qty.value.copy_abs() == D(4)
+        basis = dict(result.decision.basis)
+        actual_loss = (
+            result.order.qty.value.copy_abs() * (D(limit) - D(basis["aligned_stop"])).copy_abs()
+        )
+        assert actual_loss <= D(basis["allowed_loss"]) == D(80)
+        assert D(basis["entry_price"]) == D(limit)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("direction,limit", [(Direction.LONG, "80"), (Direction.SHORT, "120")])
+def test_limit_price_stop_wrong_side_is_rejected(direction, limit):
+    from dataclasses import replace
+
+    async def scenario():
+        db = InMemoryDatabase("acct", Environment.DEMO)
+        result = await make_gate(db).admit(
+            replace(request(direction=direction), limit_price=Price(D(limit))),
+            market(),
+            {S1: figures(), S2: figures()},
+        )
+        assert result.decision.rejections[0].code is RejectionCode.INVALID_STOP
+        assert result.order is None
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("change", ["account", "strategy"])
+def test_uow_wait_rechecks_risk_inputs_before_admission(change):
+    async def scenario():
+        db = InMemoryDatabase("acct", Environment.DEMO)
+        tracker = EquityTracker.open(AccountSnapshot(NOW, D(1000), D(0)))
+        gate = make_gate(db, tracker=tracker)
+        current = {S1: figures(), S2: figures()}
+        async with db.unit_of_work():
+            task = asyncio.create_task(gate.admit(request(), market(), current))
+            await asyncio.sleep(0)
+            assert not task.done()
+            if change == "account":
+                tracker.observe(AccountSnapshot(NOW, D(940), D(0)))
+            else:
+                current[S1] = figures(pnl="-30")
+        result = await task
+        assert result.decision.kind is DecisionKind.REJECTED
+        assert any(
+            p.reason == ("L5" if change == "account" else "L4") for p in gate.pauses.active()
+        )
+        _, orders, episodes = await stored(db)
+        assert not orders and not episodes
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("wallet", ["70", "90"])
+def test_resume_equity_change_requires_new_confirmation(wallet):
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    old = svc.request_resume("owner", at)
+    later = at + timedelta(seconds=30)
+    t.observe(AccountSnapshot(later, D(wallet), D(0)))
+    result = svc.confirm_resume(old.prompt_id, "owner", later)
+    assert isinstance(result, ResumeRejected) and "state changed" in result.reason
+    assert state.has(PauseKind.HALTED) and t.risk_peak == D(100)
+    fresh = svc.request_resume("owner", later)
+    assert fresh.new_risk_peak == D(wallet)
+    result = svc.confirm_resume(fresh.prompt_id, "owner", later)
+    assert isinstance(result, ResumeRecord)
+    assert t.risk_peak == D(wallet) and not state.has(PauseKind.HALTED)
+
+
+@pytest.mark.parametrize("kind", [PauseKind.ENTRY_PAUSED_MANUAL, PauseKind.HALTED])
+def test_old_parallel_resume_prompt_cannot_clear_a_new_stop(kind):
+    at = NOW + timedelta(minutes=2)
+    _, state, svc = resume_setup(Pause(kind, "original", NOW))
+    first = svc.request_resume("owner", at)
+    second = svc.request_resume("owner", at)
+    assert isinstance(svc.confirm_resume(first.prompt_id, "owner", at), ResumeRecord)
+    state.add(Pause(kind, "new incident", at + timedelta(seconds=1)))
+    assert isinstance(
+        svc.confirm_resume(second.prompt_id, "owner", at + timedelta(seconds=2)), ResumeRejected
+    )
+    assert state.has(kind)
+
+
+@pytest.mark.parametrize("kind", [PauseKind.ENTRY_PAUSED_MANUAL, PauseKind.HALTED])
+def test_resume_detects_same_pause_key_removed_and_readded(kind):
+    at = NOW + timedelta(minutes=2)
+    _, state, svc = resume_setup(Pause(kind, "same reason", NOW))
+    prompt = svc.request_resume("owner", at)
+    state.clear(kind)
+    state.add(Pause(kind, "same reason", NOW))
+    result = svc.confirm_resume(prompt.prompt_id, "owner", at)
+    assert isinstance(result, ResumeRejected) and "state changed" in result.reason
+    assert state.has(kind)
+
+
+def test_nonpositive_equity_cannot_clear_halted():
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    t.observe(AccountSnapshot(at, D(0), D(0)))
+    result = svc.request_resume("owner", at)
+    assert isinstance(result, ResumeRejected) and state.has(PauseKind.HALTED)
+
+
+@pytest.mark.parametrize("amount", ["50", "-20"])
+@pytest.mark.parametrize("loss", ["0", "10"])
+def test_start_day_cash_flow_adjusts_peaks_without_double_counting(amount, loss):
+    t = EquityTracker.open(AccountSnapshot(MIDNIGHT, D(100), D(0)))
+    before = MIDNIGHT + timedelta(hours=23)
+    t.observe(AccountSnapshot(before, D(100) - D(loss), D(0)))
+    boundary = MIDNIGHT + timedelta(days=1)
+    flow = CashFlow("boundary-flow", boundary, D(amount))
+    snapshot = AccountSnapshot(boundary, D(100) - D(loss) + D(amount), D(0))
+    t.start_day(snapshot, [flow, flow])
+    assert t.risk_peak == D(100) + D(amount)
+    assert t.record_peak == D(100) + D(amount)
+    assert t.daily_loss == 0 and t.state.net_deposit == 0
+    assert t.drawdown_ratio == D(loss) / (D(100) + D(amount))
+    saved = t.state
+    t.observe(snapshot, [flow])
+    assert t.state == saved
+    later = boundary + timedelta(hours=1)
+    t.observe(AccountSnapshot(later, snapshot.wallet_balance - D(5), D(0)), [flow])
+    assert t.daily_loss == D(5)
+
+
+def test_start_day_cash_flow_validation_is_atomic():
+    t = tracker_at_midnight()
+    before = t.state
+    boundary = MIDNIGHT + timedelta(days=1)
+    with pytest.raises(ValueError, match="later than"):
+        t.start_day(
+            AccountSnapshot(boundary, D(150), D(0)),
+            [
+                CashFlow("ok", boundary, D(50)),
+                CashFlow("future", boundary + timedelta(seconds=1), D(1)),
+            ],
+        )
+    assert t.state == before

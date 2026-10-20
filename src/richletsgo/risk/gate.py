@@ -116,15 +116,19 @@ class RiskGate:
             raise ValueError("instrument does not match the requested symbol")
         finite_decimal(market.leverage, "leverage")
         async with self._lock:
-            # Pause refresh is idempotent and derived from inputs, so it is safe even
-            # if the transaction below fails; nothing inside the lock awaits I/O.
-            self.refresh_pauses(strategies)
             async with self._uow() as uow:
+                # UoW acquisition may wait. Read current risk inputs only after that wait.
+                self.refresh_pauses(strategies)
                 existing = uow.decisions.get(request.signal_id)
                 if existing is not None:
                     order = uow.orders.get(existing.order_key) if existing.order_key else None
                     episode = uow.episodes.active_for(request.strategy, request.symbol)
                     return Admission(existing, order, episode, True)
+                if (
+                    self.limits.strategy_daily_limit(request.strategy) > 0
+                    and request.strategy not in strategies
+                ):
+                    raise ValueError("requested strategy risk input is required")
                 admission = self._decide(uow, request, market)
                 await uow.commit()
                 return admission
@@ -164,11 +168,12 @@ class RiskGate:
                 record(DecisionKind.REJECTED, rejections=(rejection,)), None, episode, False
             )
 
+        entry_price = request.limit_price or request.entry_price
         sizing = size_entry(
             SizingInput(
                 self.tracker.equity,
                 request.direction,
-                request.entry_price,
+                entry_price,
                 request.stop_price,
                 request.ai_factor,
                 market.fee_rate,
@@ -219,7 +224,7 @@ class RiskGate:
             request.symbol,
             sizing.qty,
             request.limit_price,
-            request.entry_price,
+            entry_price,
             OrderState.CREATED,
             Qty(Decimal(0)),
             Decimal(0),

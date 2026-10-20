@@ -63,16 +63,24 @@ class PauseState:
 
     def __init__(self, pauses: tuple[Pause, ...] = ()) -> None:
         self._pauses: dict[PauseKey, Pause] = {}
+        self._revision = 0
         for pause in pauses:
             self.add(pause)
+
+    @property
+    def revision(self) -> int:
+        """Changes whenever the active pause set changes, including remove/re-add."""
+        return self._revision
 
     def add(self, pause: Pause) -> bool:
         """Return True when newly added; an existing timed pause only extends its until."""
         current = self._pauses.get(pause.key)
         if current is None:
             self._pauses[pause.key] = pause
+            self._revision += 1
             return True
         if pause.until is not None and current.until is not None and pause.until > current.until:
+            self._revision += 1
             self._pauses[pause.key] = Pause(
                 current.kind,
                 current.reason,
@@ -101,6 +109,8 @@ class PauseState:
         )
         for pause in removed:
             del self._pauses[pause.key]
+        if removed:
+            self._revision += 1
         return removed
 
     def expire(self, now: datetime) -> tuple[Pause, ...]:
@@ -109,6 +119,8 @@ class PauseState:
         removed = tuple(p for p in self._pauses.values() if p.until is not None and p.until <= now)
         for pause in removed:
             del self._pauses[pause.key]
+        if removed:
+            self._revision += 1
         return removed
 
     def blocking(self, strategy: StrategyId, symbol: Symbol) -> tuple[Pause, ...]:

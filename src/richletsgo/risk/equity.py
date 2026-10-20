@@ -89,19 +89,29 @@ class EquityTracker:
     def state(self) -> TrackerState:
         return self._s
 
-    def start_day(self, snapshot: AccountSnapshot) -> None:
+    def start_day(self, snapshot: AccountSnapshot, cash_flows: Sequence[CashFlow] = ()) -> None:
         """New trading day: baseline = wallet balance excluding unrealized PnL (D72)."""
         day = trading_day_start(snapshot.at)
         if day <= self._s.day_start:
             raise ValueError("start_day requires a later trading day")
+        seen = set(self._s.seen_flows)
+        adjustment = Decimal(0)
+        for flow in cash_flows:
+            if flow.flow_id in seen:
+                continue
+            if flow.at > snapshot.at:
+                raise ValueError("cash flow is later than the boundary snapshot")
+            seen.add(flow.flow_id)
+            adjustment += flow.amount
+        # These flows are already in the new baseline, not new-day net deposits.
         self._s = TrackerState(
             day,
             snapshot.wallet_balance,
             Decimal(0),
             snapshot,
-            max(self._s.record_peak, snapshot.equity),
-            max(self._s.risk_peak, snapshot.equity),
-            self._s.seen_flows,
+            max(self._s.record_peak + adjustment, snapshot.equity),
+            max(self._s.risk_peak + adjustment, snapshot.equity),
+            frozenset(seen),
         )
 
     def observe(self, snapshot: AccountSnapshot, cash_flows: Sequence[CashFlow] = ()) -> None:
@@ -173,7 +183,9 @@ class EquityTracker:
         if finite_decimal(value, "value") <= 0:
             raise ValueError("risk peak must be positive")
         previous = self._s.risk_peak
-        new = max(value, self.equity)
+        if value != self.equity:
+            raise ValueError("confirmed risk peak no longer matches current equity")
+        new = self.equity
         self._s = TrackerState(
             self._s.day_start,
             self._s.baseline,
