@@ -28,3 +28,24 @@ telegram_bot = "richletsgo/telegram-bot"
 oracle_demo = "richletsgo/oracle-demo"
 oracle_live = "richletsgo/oracle-live"
 oracle_read = "richletsgo/oracle-read"
+
+# Future loader (M3): paths are relative to THIS config file, never cwd.
+# Example values; keep environments separate.
+
+[paths.backtest]
+journal_dir = "data/backtest/journal"
+log_dir = "logs/backtest"
+backup_dir = "backups/backtest"
+backtest_results_dir = "backtest_results/backtest"
+
+[paths.demo]
+journal_dir = "data/demo/journal"
+log_dir = "logs/demo"
+backup_dir = "backups/demo"
+backtest_results_dir = "backtest_results/demo"
+
+[paths.live]
+journal_dir = "data/live/journal"
+log_dir = "logs/live"
+backup_dir = "backups/live"
+backtest_results_dir = "backtest_results/live"

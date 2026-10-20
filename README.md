@@ -78,3 +78,7 @@ py -3.14 -m venv .venv
 - 이벤트의 미확인 orderLinkId·부모 ID는 `None`입니다. 어댑터는 거래소의 빈 ID를 `None`으로 변환합니다. `OrderEvent.raw`는 원본을 복사한 읽기 전용 매핑이며, 중첩 배열은 tuple로 보관합니다. 원문 데이터는 거래 계산의 입력 검증과 구분합니다.
 - `make_order_link_id(..., unique_factory=...)`에는 재시작을 포함해 고유한 ASCII 문자열 생성기를 주입합니다(접미사 1~29자, 전체 최대 36자). `new_operation_id(uuid_factory=...)`에는 UUID 생성기를 주입합니다. 도메인 모듈이 실제 시계나 난수를 직접 호출하지 않습니다.
 - `FixedClock`과 `ManualClock`에는 UTC aware 시각을 전달합니다. `OrderState.rank`는 순서만 나타내며, 종결 상태 예외를 포함한 실제 상태 전이는 M1-02의 책임입니다.
+
+## 파일 경로 설정 원칙
+
+운영 폴더는 코드에 고정하지 않고 config.local.toml의 paths.<environment>에서 지정합니다. 상대 경로는 **설정 파일이 있는 폴더** 기준이며, 외부 위치를 절대 경로로 설정할 수도 있습니다. config.example.toml에 환경별 예시가 있습니다. 현재는 설정 계약을 정의한 단계이고, 설정 로더는 M3에서 구현합니다. M1-06 저널은 호출자가 전달한 폴더를 사용합니다.

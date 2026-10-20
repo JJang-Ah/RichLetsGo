@@ -25,7 +25,7 @@ M1-02~05를 묶어 시작·재연결 동기화와 DB 장애 중 보호 작업 �
    - **주문 전송기**: 주문을 보내기 직전 `SUBMITTED` 커밋 → 커밋 성공 후에만 `place_order` 호출. 이 순서를 한 함수에 모은다.
 
 2. **로컬 저널** `ProtectiveJournal` (`oms/` 또는 `storage/`, D45·D55)
-   - 디렉터리를 주입받는다. 추가 전용 JSON Lines, 한 줄마다 flush + `os.fsync`.
+   - 디렉터리를 pathlib.Path로 주입받는다(03 3.1절). 고정 data/journal 또는 cwd·소스 위치로 경로를 만들지 않는다. 추가 전용 JSON Lines, 한 줄마다 flush + `os.fsync`.
    - 레코드 필드: `operation_id`, `phase`(requested/result), `seq`, `op_type`(create/amend/cancel/close), `target`(orderLinkId, orderId), `request`, `result`, `ts` (03 5.4절 표).
    - **보호·축소 작업만** 저널을 쓴다. 노출 증가 주문(진입)은 저장소 커밋이 실패하면 보내지 않는다.
    - 저장소 장애 모드: `UnitOfWork` 커밋이 실패하면 `ENTRY_PAUSED_SYSTEM(db)` + 보호 작업은 저널 기록 후 전송(정상 전송).
@@ -53,6 +53,8 @@ M1-02~05를 묶어 시작·재연결 동기화와 DB 장애 중 보호 작업 �
 - 그림자 장부 운영 연결 (M4)
 
 ## 완료 조건
+
+- [ ] 임시 저널 디렉터리를 주입하고 cwd를 바꾸어도 지정한 곳에만 기록·복구됨. 공백·한글 경로에서도 성공 (03 3.1절)
 
 - [ ] V0 표의 모든 행이 대응표에 있고, M1 담당 행(정책 부분 포함)은 모두 테스트가 있음
 - [ ] 재시작 경계 테스트: decision·CREATED 커밋 직후 종료 → 재시작 시 `ABORTED`, 같은 신호로 새 주문 없음 / `SUBMITTED` 커밋 후 전송 전 종료 → `UNKNOWN` 유지 / 전송 후 응답 전 종료 → `UNKNOWN` → 조회로 확정. 모든 경우 같은 신호로 주문 최대 1건
