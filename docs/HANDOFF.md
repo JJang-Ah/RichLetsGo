@@ -174,3 +174,11 @@
 - reset_risk_peak(at, actor)는 이전 화면 값을 받지 않고 현재 평가액으로 설정한다. ResumeRecord.peak_reset.new_risk_peak에 실제 적용값을 남긴다. 기록용 최고점은 보존한다.
 - 포지션 미실현 손익 소폭 상승·하락과 경계, 큰 하락·경계 초과, 이전 정지 버전, 기록용 최고점 변경 및 필수 설정 검증 등 14개 회귀 사례 추가.
 - Python 3.12.14·3.14.3 각각 326 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 설계 02·명세·README·설정 예시를 갱신했다. 다음 담당자: Claude Code 재검토. PR은 병합하지 않는다.
+
+## 2026-10-20 — Claude Code (M2-01 구현, D86 예외)
+
+- Codex 사용 한도 동안 D86 예외로 Claude가 구현. 해석 목록(I1~I14)을 먼저 올려 사용자 확인 후 구현. 검토는 Codex.
+- `marketdata/`: models(Bar, FundingRate, InstrumentSnapshot, RiskLimitTier), validate(진행 중 봉 제거, OHLC·정렬 검사, 빈 구간·D87 펀딩 간격), store(SQLite, Decimal TEXT, 같은 키 다른 값이면 배치 전체 롤백), bybit_public(urllib, 재시도·백오프, kline 1000개 페이지, 펀딩 endTime 역방향 페이지, risk-limit cursor), ingest(빈 구간만 요청, 실행 기록). 설정 예시에 `bybit_public.base_url`, `paths.backtest.market_data_dir` 추가.
+- 구현 중 실제 응답으로 정정한 것: I7 증거금률은 퍼센트가 아니라 **비율**(1단계 MMR 0.0033), 최고 단계 IMR은 정확히 1(100%, 1배)이라 범위를 (0, 1]로.
+- 검증: Python 3.14.3에서 ruff·format·mypy(44 소스)·pytest 349 passed(신규 23, 실제 응답 fixture 4개, 네트워크 접근 차단). 실제 3년 수집 1회: 두 계약 각각 일봉 1,094 / 1시간봉 26,279 / 펀딩 3,285, 빈 구간·거절·충돌 0, 41초. 재실행 2초, 봉·펀딩 요청 0.
+- 다음: Codex 검토. M2-02는 M1-04 이후.
