@@ -17,12 +17,15 @@ from richletsgo.domain import (
     OrderEvent,
     OrderPurpose,
     OrderState,
+    OrderType,
     PositionSnapshot,
     Price,
     Qty,
     Side,
+    StopKind,
     StrategyId,
     Symbol,
+    TimeInForce,
     make_order_link_id,
     new_operation_id,
     parse_order_link_id,
@@ -57,7 +60,23 @@ def execution():
 
 @pytest.fixture
 def order():
-    return OrderEvent(None, "exchange-1", "d-S1-E-parent", OrderState.OPEN, D(0), NOW, {})
+    return OrderEvent(
+        None,
+        "exchange-1",
+        "d-S1-E-parent",
+        OrderState.OPEN,
+        D(0),
+        NOW,
+        {},
+        Symbol.BTCUSDT,
+        Qty(D(-1)),
+        OrderType.MARKET,
+        TimeInForce.IOC,
+        None,
+        Price(D(90)),
+        True,
+        StopKind.PARTIAL_STOP_LOSS,
+    )
 
 
 @pytest.mark.parametrize("factory", [Qty, Price])

@@ -7,7 +7,7 @@ from decimal import Decimal
 from types import MappingProxyType
 
 from .clock import require_utc
-from .enums import OrderState, Symbol
+from .enums import OrderState, OrderType, StopKind, Symbol, TimeInForce
 from .values import Price, Qty, finite_decimal
 
 type RawValue = str | int | float | bool | None | Mapping[str, RawValue] | tuple[RawValue, ...]
@@ -78,6 +78,14 @@ class OrderEvent:
     exchange_cum_exec_qty: Decimal
     event_time: datetime
     raw: Mapping[str, object]
+    symbol: Symbol
+    order_qty: Qty
+    order_type: OrderType
+    time_in_force: TimeInForce
+    limit_price: Price | None
+    trigger_price: Price | None
+    reduce_only: bool
+    stop_kind: StopKind | None
 
     def __post_init__(self) -> None:
         _identifier(self.exchange_order_id, "exchange_order_id")
@@ -91,6 +99,35 @@ class OrderEvent:
         if not isinstance(self.raw, Mapping):
             raise TypeError("raw must be a mapping")
         object.__setattr__(self, "raw", _freeze(self.raw))
+        if not isinstance(self.symbol, Symbol) or not isinstance(self.order_qty, Qty):
+            raise TypeError("order requires Symbol and Qty")
+        if self.order_qty.value == 0:
+            raise ValueError("order quantity must be nonzero")
+        if not isinstance(self.order_type, OrderType) or not isinstance(
+            self.time_in_force, TimeInForce
+        ):
+            raise TypeError("order type and time in force must be domain enums")
+        for value in (self.limit_price, self.trigger_price):
+            if value is not None and not isinstance(value, Price):
+                raise TypeError("prices must be Price or None")
+        if not isinstance(self.reduce_only, bool):
+            raise TypeError("reduce_only must be bool")
+        if self.stop_kind is not None and not isinstance(self.stop_kind, StopKind):
+            raise TypeError("stop_kind must be StopKind or None")
+        if (self.order_type is OrderType.LIMIT) != (self.limit_price is not None):
+            raise ValueError("only limit orders require a limit price")
+        if self.stop_kind is not None and self.trigger_price is None:
+            raise ValueError("conditional orders require a trigger price")
+        if (
+            self.stop_kind in (StopKind.PARTIAL_STOP_LOSS, StopKind.STOP_LOSS)
+            and not self.reduce_only
+        ):
+            raise ValueError("stop loss orders must be reduce-only")
+        if (
+            self.parent_order_link_id is not None
+            and self.stop_kind is not StopKind.PARTIAL_STOP_LOSS
+        ):
+            raise ValueError("attached stops require PARTIAL_STOP_LOSS")
 
 
 @dataclass(frozen=True, slots=True)
