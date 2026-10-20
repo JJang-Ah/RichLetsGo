@@ -64,3 +64,22 @@
 - git check-ignore 확인: keystore 소스·config.example.toml·하위 marketdata/data 소스는 추적 가능, config.local.toml·.env·루트 data/x.csv·.venv 산출물은 제외됨. TOML 예시 파싱 및 위험 값 미설정 확인.
 - main 보호: GitHub 화면에 비공개 저장소의 규칙 강제 요금제 제한이 표시됨. 저장에는 계정 본인 확인(sudo mode)도 요구됨. 실제 강제가 확인되기 전에는 보호 완료로 간주하지 않는다.
 - 다음 담당자: Claude Code가 M0-01 PR을 검토. CI 두 버전 통과를 확인한 뒤 사용자가 병합한다. M0 구현 PR은 Codex가 병합하지 않는다.
+## 2026-10-20 — Claude Code (M0 검토, M1 명세)
+
+- PR #3(M0-01) 검토: 명세와 일치, 병합 차단 문제 없음. 이 PC Python 3.14.3에서 ruff·format·mypy·pytest(28) 통과. 제안: 패키지 탐색 `include = ["richletsgo*"]`(M1-01에 반영), `[ai] mode` 예시는 M3.
+- GitHub Actions 장애(2026-10-19 githubstatus "Degraded availability")로 PR #3 CI가 30분 넘게 대기. **사용자 지시로 CI를 기다리지 않고 병합**(76cdefc, D38 예외). 근거: Codex가 3.12·3.14에서, Claude가 3.14에서 ruff·format·mypy·pytest(28) 통과. 병합 후 main에서도 3.14로 다시 확인. 장애가 풀리면 main의 CI 결과를 확인해야 함.
+- M1 작업 명세 작성: `docs/tasks/M1-00-overview.md`와 M1-01~06. 03 모듈 목록에 `domain/` 추가.
+- 다음 담당자: 사용자 명세 확인 → Codex가 M1-01부터 구현(M1-05는 M1-01 이후 병행 가능).
+
+## 2026-10-20 — Claude Code (PR #4 Codex 검토 반영)
+
+- Codex 검토 8건(P1 4, P2 4) 반영. 새 결정 D57~D63 (00_DECISIONS.md).
+- 설계: 진입 주문만 노출 증가(D57), 청산 후 남은 전략 보호 먼저 복구(D58), 진입 에피소드(D59), decision·주문 원자성과 전송 규칙(D60), 체결 귀속 보류(D61), 강제청산 근사식·여유 부등식(D62), 저널 손상 처리(D63).
+- 명세: M1-02~06 보완, M1-00에 V0 담당 표(37행, M1 정책 vs 이후 외부 연동) 추가.
+- 검증: 문서 변경만. 다음 담당자: Codex 재검토.
+
+## 2026-10-20 — Claude Code (PR #4 재검토 반영)
+
+- Codex 재검토 2건(P1) 반영: 에피소드 종료 조건과 `EXITING`(D64), 저널 정상/긴급 전송 구분과 거래소 대조 복구(D65, D63 개정). V0 표 37·38행 추가(총 39행).
+- 작업 규칙 추가: PR 코멘트 첫 줄에 작성자 표시 (`**[Claude Code]**` / `**[Codex]**`). 사용자 요청.
+- 검증: 문서 변경만. 다음 담당자: Codex 재검토.
