@@ -69,3 +69,7 @@ py -3.14 -m venv .venv
 - Bybit V5 API: https://bybit-exchange.github.io/docs/v5/intro
 - Bybit 데모: https://bybit-exchange.github.io/docs/v5/demo
 - 한국투자증권: https://github.com/koreainvestment/open-trading-api
+
+## 파일 경로 설정 원칙
+
+운영 폴더는 코드에 고정하지 않고 config.local.toml의 paths.<environment>에서 지정합니다. 상대 경로는 **설정 파일이 있는 폴더** 기준이며, 외부 위치를 절대 경로로 설정할 수도 있습니다. config.example.toml에 환경별 예시가 있습니다. 현재는 설정 계약을 정의한 단계이고, 설정 로더는 M3에서 구현합니다. M1-06 저널은 호출자가 전달한 폴더를 사용합니다.
