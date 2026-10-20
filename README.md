@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-**M0 프로젝트 기반을 구현했으며 Claude Code 검토 대기 중**입니다. 매매 기능 코드는 아직 없습니다. `trading_lab/`은 초기 오프라인 주문 검증 초안이며, 설계에 따라 새 패키지로 대체한 뒤 삭제합니다(D39). 실거래 준비가 완료된 프로그램이 아닙니다.
+**M0와 M1 설계가 병합됐고, M1-01 도메인 모델을 구현하여 Claude Code 검토를 기다리고 있습니다.** 주문 실행 로직은 아직 없습니다. `trading_lab/`은 초기 오프라인 주문 검증 초안이며, 설계에 따라 새 패키지로 대체한 뒤 삭제합니다(D39). 실거래 준비가 완료된 프로그램이 아닙니다.
 
 ## 설계 문서
 
@@ -35,8 +35,8 @@
 
 ## 다음 순서
 
-1. Claude: M0 구현 PR을 명세와 대조해 검토 → 사용자 병합
-2. Claude: M1 작업 명세 작성 → 사용자 확인 → Codex 구현
+1. Claude: M1-01 구현 PR 검토 → 사용자 병합
+2. M1-02 주문 상태·체결 반영부터 작업 명세 순서대로 구현
 3. M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
 
 ## 개발 환경 (M0-01)
@@ -55,7 +55,7 @@ py -3.14 -m venv .venv
 다른 개발 환경에서도 Python 3.12 이상으로 `.venv`를 만든 뒤 같은 설치·검사 명령을 사용합니다. 가상환경 활성화 없이 해당 Python을 직접 실행하므로 PowerShell 실행 정책을 바꿀 필요가 없습니다.
 
 - CI는 모든 PR과 `main` push에서 Windows / Python 3.12·3.14 검사를 각각 실행합니다.
-- `src/richletsgo`, `src/richletsgo_watchdog`, `src/richletsgo_dashboard`는 역할을 적은 빈 패키지입니다. M0에는 실행 서비스나 매매 로직이 없습니다.
+- `src/richletsgo/domain`에 공통 타입과 검증 함수가 있습니다. 나머지 패키지는 후속 작업의 기반이며 실행 서비스는 아직 없습니다.
 - `trading_lab/`과 기존 테스트 9개는 M1 이전까지 유지합니다. 기존 테스트의 import를 위해 pytest의 `pythonpath = ["."]`를 임시 사용하며, 기존 패키지는 린트·타입 검사에서 제외합니다.
 - `config.example.toml`은 비밀 값 없는 설정 예시입니다. 로컬 설정은 `config.local.toml`에 두며 Git에서 제외합니다. 위험 수치는 아직 미정이므로 예시에 실행 가능한 기본값을 넣지 않았습니다.
 - 개발 도구는 테스트(`pytest`), 린트·포맷(`ruff`), 타입 검사(`mypy`)에만 사용합니다. 런타임 의존성은 없습니다.
@@ -69,3 +69,12 @@ py -3.14 -m venv .venv
 - Bybit V5 API: https://bybit-exchange.github.io/docs/v5/intro
 - Bybit 데모: https://bybit-exchange.github.io/docs/v5/demo
 - 한국투자증권: https://github.com/koreainvestment/open-trading-api
+
+## 도메인 모델 (M1-01)
+
+- `richletsgo.domain`에서 `Qty`, `Price`, `InstrumentSpec`, 이벤트, 열거형, 시계와 ID 함수를 가져옵니다. 수량·가격 래퍼의 Decimal은 `.value`로 읽으며, int·float·문자열의 암묵적 변환은 허용하지 않습니다.
+- `Qty(Decimal("0"))`는 빈 포지션을 나타냅니다. 주문 방향 변환과 체결은 0 수량을 거절합니다. `PositionSnapshot.avg_price`는 빈 포지션에서 `None`일 수 있습니다.
+- `InstrumentSpec`은 전달받은 step/tick의 배수로 내림·올림합니다. 가격 내림 결과가 0이면 유효한 `Price`가 아니므로 호출자가 진입을 거절해야 합니다. 손절 방향 선택과 위험 검사는 M1-03에서 구현합니다.
+- 이벤트의 미확인 orderLinkId·부모 ID는 `None`입니다. 어댑터는 거래소의 빈 ID를 `None`으로 변환합니다. `OrderEvent.raw`는 원본을 복사한 읽기 전용 매핑이며, 중첩 배열은 tuple로 보관합니다. 원문 데이터는 거래 계산의 입력 검증과 구분합니다.
+- `make_order_link_id(..., unique_factory=...)`에는 재시작을 포함해 고유한 ASCII 문자열 생성기를 주입합니다(접미사 1~29자, 전체 최대 36자). `new_operation_id(uuid_factory=...)`에는 UUID 생성기를 주입합니다. 도메인 모듈이 실제 시계나 난수를 직접 호출하지 않습니다.
+- `FixedClock`과 `ManualClock`에는 UTC aware 시각을 전달합니다. `OrderState.rank`는 순서만 나타내며, 종결 상태 예외를 포함한 실제 상태 전이는 M1-02의 책임입니다.
