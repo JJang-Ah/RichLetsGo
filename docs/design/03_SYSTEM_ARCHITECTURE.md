@@ -9,7 +9,7 @@
 | 언어 | Python + asyncio, 운영 3.14 / 최소 3.12 (D28, D40) | 금액·수량은 Decimal. |
 | 주 저장소 | Oracle Database Free, 이 PC에 설치 (D29) | SQL Developer로 관리. 접속은 `python-oracledb` thin 모드(별도 클라이언트 설치 불필요). |
 | 백테스트 저장소 | SQLite 파일 | 실거래 DB와 분리. 결과 비교용. |
-| 화면 | 로컬 웹 대시보드, 읽기 전용 (D30) | `127.0.0.1`에서만 접속. 주문 기능 없음. |
+| 화면 | 로컬 웹 대시보드, 읽기 전용 (D30), FastAPI + 간단한 HTML (D73) | `127.0.0.1`에서만 접속. 주문 기능 없음. |
 | 실행 | Windows 서비스 (D31) | 부팅 시 자동 시작, 비정상 종료 시 재시작. |
 | 비밀 정보 | Windows 자격 증명 관리자 | API 키, 봇 토큰, DB 비밀번호. 설정 파일·DB·로그에 넣지 않는다. |
 | 시간 | 내부는 모두 UTC, 화면·알림만 한국 시간 | |
@@ -45,6 +45,7 @@ trading/
   oms/           주문 관리자: 주문 상태 전이, 손절 주문 관리, 거래소와 맞추기
   storage/       저장소 계층: Oracle 구현, SQLite 구현(백테스트)
   notify/        텔레그램 알림·명령
+  backtest/      백테스트 실행기, 구간 이동 검증, 보고서 (M2-03·M2-04에서 추가)
   health/        상태 확인 주소
   app.py         조립과 실행 순서
 watchdog/
@@ -325,7 +326,7 @@ CREATED ──전송──→ SUBMITTED ──접수──→ OPEN ──일부 
 
 ### 6.3 백업
 
-- Oracle Data Pump로 매일 내보내기, 일정 기간 보관 (보관 기간 Q18).
+- Oracle Data Pump로 매일 내보내기, **같은 PC 로컬에 14일 보관** (D74). Data Pump는 Oracle `DIRECTORY` 객체에 쓰므로, M3에서 `paths.<env>.backup_dir`를 DIRECTORY 객체로 등록한다. 디스크 고장·분실 시에는 백업도 함께 잃는다는 한계를 받아들인 결정이다.
 
 ## 7. 대시보드 (읽기 전용)
 
@@ -336,7 +337,7 @@ CREATED ──전송──→ SUBMITTED ──접수──→ OPEN ──일부 
 
 | # | 질문 |
 |---|---|
-| Q16 | 대시보드 웹 프레임워크 (예: FastAPI + 간단한 HTML, Streamlit 등) |
-| Q17 | 이 PC 사양 확인: Oracle Free + Trader + Dashboard를 함께 돌릴 메모리 여유 |
-| Q18 | 백업 보관 기간과 위치 (같은 디스크 / 외장 / 클라우드) |
+| ~~Q16~~ | 대시보드 → D73 (FastAPI + 간단한 HTML) |
+| ~~Q17~~ | PC 사양 확인 완료(2026-10-20): RAM 32GB, C: 여유 417GB, Ryzen 5 7500F 6코어, 유선 1Gbps, 절전·최대 절전 꺼짐 |
+| ~~Q18~~ | 백업 → D74 (로컬 14일) |
 | ~~Q19~~ | Python 기준 버전 → D40 (운영 3.14, 최소 3.12)로 확정 |
