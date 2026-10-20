@@ -581,6 +581,8 @@ def test_unknown_empty_and_error_lookups_never_release_reservation(cancel):
             unknown_since=NOW,
             alert_after=timedelta(minutes=2),
             alerted=minute > 2,
+            last_cancel_at=NOW,
+            cancel_retry_after=timedelta(hours=1),
         )
         assert result.record.state is OrderState.UNKNOWN
         assert result.record.reserved_qty == D(1)
@@ -600,6 +602,8 @@ def test_only_entry_unknown_requests_cancel(purpose):
         unknown_since=NOW,
         alert_after=timedelta(minutes=2),
         alerted=False,
+        last_cancel_at=None,
+        cancel_retry_after=timedelta(minutes=1),
     )
     assert result.action is (
         RecoveryAction.SEND_CANCEL if purpose is OrderPurpose.ENTRY else RecoveryAction.KEEP_UNKNOWN
@@ -617,6 +621,8 @@ def test_unknown_moves_only_on_actual_exchange_status():
         unknown_since=NOW,
         alert_after=timedelta(minutes=2),
         alerted=False,
+        last_cancel_at=NOW,
+        cancel_retry_after=timedelta(minutes=1),
     )
     assert result.action is RecoveryAction.MOVE_TO
     assert result.record.reserved_qty == D("-0.6")
@@ -630,6 +636,8 @@ def test_unknown_moves_only_on_actual_exchange_status():
         unknown_since=NOW,
         alert_after=timedelta(minutes=2),
         alerted=False,
+        last_cancel_at=NOW,
+        cancel_retry_after=timedelta(minutes=1),
     )
     assert result.record.reserved_qty == 0
     assert result.record.unbooked_qty == D("-0.4")
@@ -682,3 +690,148 @@ def test_account_isolation_and_fill_repository_uniqueness():
             saved_uow.orders.all()
 
     asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("direction", ["2", "-2"])
+def test_pending_exposure_released_atomically_after_attribution(direction):
+    async def scenario():
+        db = InMemoryDatabase("pending", Environment.DEMO)
+        record = order(qty=direction)
+        fill = execution(record, qty=direction)
+        assert (
+            await apply_execution(db.unit_of_work(), fill, book) is FillResult.PENDING_ATTRIBUTION
+        )
+        assert await apply_execution(db.unit_of_work(), fill, book) is FillResult.DUPLICATE
+        async with db.unit_of_work() as uow:
+            view = exposure(uow, marks={}, slippage_buffer=D(0))
+            assert view.total_notional == D(200)
+            assert view.symbols[0].pending_qty == D(direction)
+            assert view.symbols[0].pending_notional == D(200)
+            assert (
+                exposure(uow, marks={}, slippage_buffer=D(0), symbol=Symbol.ETHUSDT).total_notional
+                == 0
+            )
+            assert exposure(
+                uow, marks={}, slippage_buffer=D(0), strategy=StrategyId.S2
+            ).total_notional == D(200)
+
+        def failing_hook(uow, event, attribution):
+            book(uow, event, attribution)
+            raise RuntimeError("rollback attribution")
+
+        confirmed = event(record, state=OrderState.FILLED, cumulative="2")
+        with pytest.raises(RuntimeError):
+            await ingest_order_event(
+                db.unit_of_work(), confirmed, failing_hook, reference_price=Price(D(100))
+            )
+        async with db.unit_of_work() as uow:
+            assert exposure(uow, marks={}, slippage_buffer=D(0)).total_notional == D(200)
+        await ingest_order_event(db.unit_of_work(), confirmed, book, reference_price=Price(D(100)))
+        async with db.unit_of_work() as uow:
+            view = exposure(uow, marks={BTC: Price(D(100))}, slippage_buffer=D(0))
+            assert view.total_notional == D(200)
+            assert view.symbols[0].pending_notional == 0
+            assert view.symbols[0].held_qty == D(direction)
+
+    asyncio.run(scenario())
+
+
+def test_opposite_pending_fills_add_notional_instead_of_netting():
+    async def scenario():
+        db = InMemoryDatabase("pending", Environment.DEMO)
+        await apply_execution(db.unit_of_work(), execution(order(), qty="2"), book)
+        await apply_execution(
+            db.unit_of_work(), execution(order(suffix="other"), qty="-2", exec_id="other"), book
+        )
+        async with db.unit_of_work() as uow:
+            view = exposure(uow, marks={}, slippage_buffer=D(0))
+            assert view.symbols[0].pending_qty == 0
+            assert view.total_notional == D(400)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "cancel", [CancelResult.NOT_FOUND, CancelResult.TOO_LATE, CancelResult.ERROR]
+)
+@pytest.mark.parametrize("purpose", list(OrderPurpose))
+def test_unknown_cancel_retry_deadline_and_repeated_attempts(cancel, purpose):
+    record = order(state=OrderState.UNKNOWN, purpose=purpose)
+
+    def decide(at, last, result=cancel, results=()):
+        return resolve_unknown(
+            record,
+            results,
+            result,
+            now=at,
+            unknown_since=NOW,
+            alert_after=timedelta(hours=1),
+            alerted=False,
+            last_cancel_at=last,
+            cancel_retry_after=timedelta(seconds=30),
+        )
+
+    assert decide(NOW + timedelta(seconds=29), NOW).action is RecoveryAction.KEEP_UNKNOWN
+    due = decide(NOW + timedelta(seconds=30), NOW)
+    assert due.action is (
+        RecoveryAction.SEND_CANCEL if purpose is OrderPurpose.ENTRY else RecoveryAction.KEEP_UNKNOWN
+    )
+    assert due.record.state is OrderState.UNKNOWN
+    assert (
+        decide(NOW + timedelta(seconds=59), NOW + timedelta(seconds=30)).action
+        is RecoveryAction.KEEP_UNKNOWN
+    )
+    assert decide(NOW + timedelta(seconds=60), NOW + timedelta(seconds=30)).action is due.action
+    assert (
+        decide(NOW + timedelta(seconds=60), NOW, CancelResult.ACCEPTED).action
+        is RecoveryAction.KEEP_UNKNOWN
+    )
+    resolved = decide(
+        NOW + timedelta(seconds=60),
+        NOW,
+        CancelResult.ACCEPTED,
+        (LookupResult(True, event(record, state=OrderState.CANCELLED)),),
+    )
+    assert resolved.action is RecoveryAction.MOVE_TO
+    assert resolved.record.state is OrderState.CANCELLED
+
+
+def test_unknown_alert_once_then_retry_does_not_release_reservation():
+    record = order(state=OrderState.UNKNOWN)
+    kwargs = dict(
+        now=NOW + timedelta(minutes=10),
+        unknown_since=NOW,
+        alert_after=timedelta(minutes=10),
+        last_cancel_at=NOW,
+        cancel_retry_after=timedelta(seconds=30),
+    )
+    first = resolve_unknown(record, (), CancelResult.ERROR, alerted=False, **kwargs)
+    assert first.action is RecoveryAction.ALERT_MANUAL_CHECK
+    second = resolve_unknown(record, (), CancelResult.ERROR, alerted=first.alerted, **kwargs)
+    assert second.action is RecoveryAction.SEND_CANCEL
+    assert second.record.reserved_qty == D(1)
+
+
+@pytest.mark.parametrize(
+    "last,interval",
+    [
+        (None, timedelta(seconds=30)),
+        (NOW + timedelta(seconds=1), timedelta(seconds=30)),
+        (NOW.replace(tzinfo=None), timedelta(seconds=30)),
+        (NOW, timedelta(0)),
+        (NOW, timedelta(seconds=-1)),
+    ],
+)
+def test_cancel_retry_rejects_invalid_timing(last, interval):
+    with pytest.raises(ValueError):
+        resolve_unknown(
+            order(state=OrderState.UNKNOWN),
+            (),
+            CancelResult.ERROR,
+            now=NOW,
+            unknown_since=NOW,
+            alert_after=timedelta(minutes=10),
+            alerted=False,
+            last_cancel_at=last,
+            cancel_retry_after=interval,
+        )

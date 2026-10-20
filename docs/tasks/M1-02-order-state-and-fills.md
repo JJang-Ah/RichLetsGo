@@ -57,12 +57,14 @@
      - 보류가 정해진 시간 안에 해소되지 않으면 "거래소 주문 ID로 주문 조회" 요청을 낸다(조회는 호출자/M1-06이 수행하고 결과를 다시 넣는다).
      - **외부 감소 확정**은 조회가 성공했고 그 주문의 orderLinkId와 부모 orderLinkId가 모두 우리 형식이 아닐 때만(`parse_order_link_id`가 `None`). 그때 `EXTERNAL`로 M1-04의 외부 감소 처리로 넘긴다. 조회 실패 → 보류 유지, 기한 후 알림.
      - 보류 중인 체결이 있는 계약은 신규 진입 정지 사유가 된다(M1-03의 계약 단위 `ENTRY_PAUSED_SYSTEM`).
+     - 보류 체결은 방향과 관계없이 |수량| × 체결가만큼 `exposure()`의 계좌 합계에 더한다(03 5.2절). 다른 계약의 L3 검사에서 빠지지 않게 하기 위해서다.
 
 4. **UNKNOWN 해소 판단** (D54) — 순수 함수
    - 입력: 주문 레코드, 조회 결과 목록(각 조회의 성공/오류, 찾은 상태), 취소 시도 결과.
    - 출력: 다음 행동(`KEEP_UNKNOWN`, `MOVE_TO(state)`, `SEND_CANCEL`(진입 주문만), `ALERT_MANUAL_CHECK`).
    - 조회가 비어 있어도 **절대 `NOT_FOUND`로 가지 않는다.** `NOT_FOUND`는 수동 확정 함수 `confirm_not_found(record, actor, at)`로만 간다(텔레그램 명령은 M3).
    - 기한(설정값, 예: 10분) 경과 → `ALERT_MANUAL_CHECK`를 한 번 낸다. 예약·정지는 유지.
+   - 진입 주문의 취소는 **주기적으로** 다시 보낸다(D54): 마지막 취소 시각과 재시도 간격을 입력으로 받아, 결과가 `NOT_FOUND`·`TOO_LATE`·`ERROR`였고 간격이 지났으면 다시 `SEND_CANCEL`. `ACCEPTED`였으면 상태 이벤트를 기다린다.
    - 취소 결과 "주문 없음/취소하기 늦음" → `KEEP_UNKNOWN`.
 
 5. **저장소 인터페이스** (`src/richletsgo/storage/`)

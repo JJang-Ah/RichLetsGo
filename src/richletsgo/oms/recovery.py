@@ -53,8 +53,10 @@ def resolve_unknown(
     unknown_since: datetime,
     alert_after: timedelta,
     alerted: bool,
+    last_cancel_at: datetime | None,
+    cancel_retry_after: timedelta,
 ) -> RecoveryDecision:
-    """Caller persists alerted; cancel acknowledgement alone is not a terminal status."""
+    """Caller persists alerted and actual cancel-attempt time; acknowledgement is not terminal."""
     require_utc(now)
     require_utc(unknown_since)
     if now < unknown_since or alert_after <= timedelta(0):
@@ -63,6 +65,14 @@ def resolve_unknown(
         raise ValueError("recovery requires UNKNOWN")
     if not isinstance(cancel_result, CancelResult):
         raise TypeError("cancel_result must be CancelResult")
+    if cancel_retry_after <= timedelta(0):
+        raise ValueError("cancel_retry_after must be positive")
+    if last_cancel_at is not None:
+        require_utc(last_cancel_at)
+        if last_cancel_at > now:
+            raise ValueError("last_cancel_at is in the future")
+    if cancel_result is not CancelResult.NOT_ATTEMPTED and last_cancel_at is None:
+        raise ValueError("a previous cancel result requires last_cancel_at")
     current = record
     found = sorted(
         (r.event for r in results if r.success and r.event is not None),
@@ -82,6 +92,13 @@ def resolve_unknown(
         return RecoveryDecision(RecoveryAction.MOVE_TO, current, alerted)
     if now - unknown_since >= alert_after and not alerted:
         return RecoveryDecision(RecoveryAction.ALERT_MANUAL_CHECK, current, True)
-    if record.purpose is OrderPurpose.ENTRY and cancel_result is CancelResult.NOT_ATTEMPTED:
+    retryable = cancel_result in (
+        CancelResult.NOT_ATTEMPTED,
+        CancelResult.NOT_FOUND,
+        CancelResult.TOO_LATE,
+        CancelResult.ERROR,
+    )
+    due = last_cancel_at is None or now - last_cancel_at >= cancel_retry_after
+    if record.purpose is OrderPurpose.ENTRY and retryable and due:
         return RecoveryDecision(RecoveryAction.SEND_CANCEL, current, alerted)
     return RecoveryDecision(RecoveryAction.KEEP_UNKNOWN, current, alerted)

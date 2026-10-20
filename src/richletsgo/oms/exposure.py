@@ -8,7 +8,7 @@ from decimal import Decimal
 from richletsgo.domain import Price, StrategyId, Symbol
 from richletsgo.domain.clock import require_utc
 from richletsgo.domain.values import finite_decimal
-from richletsgo.storage.contracts import UnitOfWork
+from richletsgo.storage.contracts import FillStatus, UnitOfWork
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,13 +17,20 @@ class SymbolExposure:
     held_qty: Decimal
     unbooked_qty: Decimal
     reserved_qty: Decimal
+    pending_qty: Decimal
+    pending_notional: Decimal
     held_notional: Decimal
     unbooked_notional: Decimal
     reserved_notional: Decimal
 
     @property
     def total_notional(self) -> Decimal:
-        return self.held_notional + self.unbooked_notional + self.reserved_notional
+        return (
+            self.held_notional
+            + self.unbooked_notional
+            + self.reserved_notional
+            + self.pending_notional
+        )
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,7 +55,14 @@ def exposure(
         raise ValueError("slippage_buffer must be nonnegative")
     orders = [o for o in uow.orders.all() if strategy is None or o.strategy is strategy]
     positions = [p for p in uow.positions.all() if strategy is None or p[0] is strategy]
-    selected = {symbol} if symbol else {o.symbol for o in orders} | {p[1] for p in positions}
+    # Attribution is unknown: include pending fills even in a strategy-filtered view.
+    # Opposite fills must not cancel each other's conservative notional.
+    pending = [f.event for f in uow.fills.all() if f.status is FillStatus.PENDING_ATTRIBUTION]
+    selected = (
+        {symbol}
+        if symbol
+        else {o.symbol for o in orders} | {p[1] for p in positions} | {f.symbol for f in pending}
+    )
     rows = []
     for contract in sorted(selected, key=lambda item: item.value):
         held = sum((q.value for _, sym, q in positions if sym is contract), Decimal(0))
@@ -66,6 +80,15 @@ def exposure(
                 held,
                 unbooked,
                 reserved,
+                sum((f.qty.value for f in pending if f.symbol is contract), Decimal(0)),
+                sum(
+                    (
+                        f.qty.value.copy_abs() * f.price.value
+                        for f in pending
+                        if f.symbol is contract
+                    ),
+                    Decimal(0),
+                ),
                 held_notional,
                 sum(
                     (

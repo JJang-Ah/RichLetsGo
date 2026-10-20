@@ -15,7 +15,7 @@
 
 1. **`ExchangeGateway` 프로토콜** (비동기)
    - 주문: `place_order(request)`, `cancel_order(order_link_id)`, `amend_stop(order_link_id, trigger_price)`
-   - 조회: `get_open_orders(symbol)`, `get_order_history(symbol, since)`, `get_executions(symbol, since)`, `get_positions()`, `get_wallet_equity()`, `get_instrument(symbol)`
+   - 조회: `get_open_orders(symbol)`, `get_order_history(symbol, since)`, `get_executions(symbol, since)`, `get_positions()`, `get_account()`(지갑 잔고와 미실현 손익을 따로 돌려주는 `AccountSnapshot`, D72), `get_instrument(symbol)`
    - 이벤트 스트림: `private_events()` → `OrderEvent | ExecutionEvent | PositionSnapshot` 비동기 반복자, `connected` 상태와 끊김 알림
    - 결과·오류는 구조화된 타입으로 돌려준다(예: `OrderNotFound`, `TooLateToCancel`, `Timeout`, `Rejected(code, msg)`). Bybit 오류 코드 매핑은 M3.
    - 수량은 내부 부호 수량으로 받고, `Side` 변환은 어댑터 안에서만 한다(D53).
@@ -29,7 +29,7 @@
      - 손절(시장가 조건부): 저가(롱)/고가(숏)가 trigger에 닿으면 trigger ± 슬리피지. 갭이면 시가 ± 슬리피지.
      - 진입 봉 안에서 손절가에 닿았으면 손절된 것으로 봄.
      - 한 봉에 손절과 다른 유리한 사건이 함께 가능하면 손절 먼저.
-     - 펀딩비: UTC 00·08·16시에 보유 중이면 정산.
+     - 펀딩비: UTC 00·08·16시에 보유 중이면 정산. 그 시각에 끝나는 봉의 체결·손절을 먼저 처리한 뒤, 그 시점 보유 포지션에 정산한다. 다음 봉 시가 체결은 펀딩 정산 뒤에 일어난다(04 3.1절 경계 순서).
      - 수량은 `round_qty_down`, 최소 수량 미만 주문은 거절.
    - **Partial 부착 손절 (D41)**: 진입 주문에 손절 파라미터가 있으면, 체결될 때마다 **그 체결 수량만큼** 조건부 손절 주문을 즉시 만들고 `parent_order_link_id`를 채운다. 손절 파라미터가 잘못되면 진입 자체를 거절.
    - **reduce-only**: 포지션을 넘겨 줄이지 않는다. 시장가 reduce-only는 IOC로 처리하고, 장애 주입으로 일부만 체결되게 할 수 있다.
