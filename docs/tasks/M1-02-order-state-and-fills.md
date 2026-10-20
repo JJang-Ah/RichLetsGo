@@ -3,7 +3,7 @@
 - 상태: 명세 작성 완료, 사용자 확인 대기
 - 구현: Codex / 검토: Claude Code
 - 브랜치: `task/M1-02-order-state-and-fills`
-- 근거: 03 5.1~5.3절 (D44, D54, D61), 02 2.1절 (D52, D57), 03 6.2절 테이블 초안
+- 근거: 03 5.1~5.3절 (D44, D54, D61), 02 2.1절 (D52, D57), 03 6.2절 테이블 초안, 01 1.4절 (D41, D58), 03 5.4절 (D65), PR #5 검토(M1-01 명세 누락 보완)
 
 ## 목표
 
@@ -12,6 +12,25 @@
 ## 범위
 
 ### 만들 것
+
+0. **`OrderEvent` 확장** (`src/richletsgo/domain/`, M1-01 명세 누락 보완)
+
+   M1-01의 `OrderEvent`에는 상태와 누적 체결만 있어서, 이 작업의 귀속 보류(D61)와 계약별 정지, M1-04·M1-06의 보호 대조(전략별 손절 수량 = 보유, D58)와 거래소 주문 받아들이기(D65)에 필요한 정보가 없다. 주문 이벤트와 미체결 주문 조회 결과가 모두 이 타입으로 들어오므로 아래 필드를 추가한다.
+
+   | 필드 | 타입 | 내용 |
+   |---|---|---|
+   | `symbol` | `Symbol` | 계약 |
+   | `order_qty` | `Qty` | 주문 전체 수량(부호 있음, 0 불가). 체결 누적과 별개 |
+   | `order_type` | `OrderType` (신규 열거형: `MARKET`, `LIMIT`) | 주문 종류 |
+   | `time_in_force` | `TimeInForce` (신규 열거형: `GTC`, `IOC`, `FOK`, `POST_ONLY`) | 유효 조건. 시장가 청산이 IOC인지 확인용 |
+   | `limit_price` | `Price \| None` | `LIMIT`이면 필수, `MARKET`이면 `None` |
+   | `trigger_price` | `Price \| None` | 조건부 주문이면 필수 |
+   | `reduce_only` | `bool` | 포지션 축소 전용 여부 |
+   | `stop_kind` | `StopKind \| None` (신규 열거형: `PARTIAL_STOP_LOSS`, `STOP_LOSS`, `CONDITIONAL`) | 손절·조건부 종류. 일반 주문은 `None`. Bybit `stopOrderType` 값과의 대응은 M3 어댑터 몫 |
+
+   - 생성 시 검증: `LIMIT` ↔ `limit_price` 있음, `stop_kind`가 있으면 `trigger_price` 있음, `stop_kind`가 `PARTIAL_STOP_LOSS`·`STOP_LOSS`면 `reduce_only=True`, 부착 손절(`parent_order_link_id` 있음)은 `stop_kind`가 `PARTIAL_STOP_LOSS`.
+   - 기존 필드와 M1-01의 검증(UTC, 빈 ID 거절, raw 읽기 전용 복사)은 그대로 둔다.
+   - M1-01 테스트의 `OrderEvent` 생성 부분은 새 필드에 맞게 고친다. M1-05 가상 거래소도 이 필드를 채워서 이벤트를 낸다.
 
 1. **주문 레코드** `OrderRecord` (`src/richletsgo/oms/`)
    - 필드: `order_link_id`, `exchange_order_id`, `parent_order_link_id`, `strategy`, `purpose`, `symbol`, `qty`(부호 있는 주문 수량), `limit_price`(없으면 시장가), `reference_price`, `state`, `booked_qty`(장부 반영 체결 합계, 부호 있음), `exchange_cum_exec_qty`(거래소 누적, 절댓값의 최댓값), `created_at`, `updated_at`.
@@ -60,6 +79,8 @@
 - 거래소 호출 (M1-05·M3), 저널 (M1-06)
 
 ## 완료 조건 (04 2장 V0 중 이 작업 범위)
+
+- [ ] `OrderEvent` 확장 필드 검증: `LIMIT`인데 `limit_price` 없음, 손절 종류인데 `trigger_price` 없음, 손절인데 `reduce_only=False`, 부착 손절인데 `stop_kind`가 `PARTIAL_STOP_LOSS`가 아님, `order_qty` 0 → 모두 거절
 
 - [ ] 롱 +1 보유에 미체결 `ATTACHED_SL` −1, 미체결 `CLOSE` −1이 있어도 계약 노출은 +1 그대로. 숏도 같은 방식 (D57)
 - [ ] `CLOSE` 주문의 미반영 체결이 있어도 장부 반영 전까지 노출은 줄지 않음
