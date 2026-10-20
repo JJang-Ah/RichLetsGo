@@ -147,3 +147,30 @@
 - resolve_unknown에 last_cancel_at/cancel_retry_after 필수 입력을 추가했다. NOT_FOUND/TOO_LATE/ERROR는 간격 경과 후 재시도, ACCEPTED와 보호 주문은 재시도하지 않는다. 최초 취소와 알림 1회 동작, 예약 유지, 실제 상태에 의한 해소는 유지한다. 호출자는 실제 시도 시각을 보존해야 한다.
 - 회귀 테스트 21개 추가: 롱·숏 보류 노출, 반대 체결 합산, 중복/귀속 확정/롤백, 계약·전략 필터, 실패 종류별 재시도 경계·다음 시도, 보호 주문/ACCEPTED 제외, 알림과 재시도, 입력 시각 검증.
 - 검증: Python 3.14.3·3.12.14에서 ruff check/format, mypy(30 소스), pytest 232개 및 28 subtests 통과. 다음 담당자: Claude Code가 PR #9 수정 검토 후 사용자 병합.
+
+## 2026-10-20 — Claude Code (M1-03 구현, 역할 교대)
+
+- 사용자 요청: Codex가 사용 한도로 멈춰 Claude가 M1-03을 대신 구현. 구현자≠검토자 원칙(D37)을 지키기 위해 이 PR은 **Codex가 검토**.
+- `risk/`: records(결정·에피소드), limits, sizing(D62 근사), equity(D72·D81), pause(직렬화), checks(L2~L7, 축소 면제), guards, resume(D48), gate(D46·D59·D60). `storage`에 DecisionRepository·EpisodeRepository와 메모리 구현 추가(UnitOfWork 프로토콜 확장).
+- 검증: Python 3.14.3에서 ruff check/format, mypy strict(39 소스), pytest 291 passed(신규 59). 3.12는 이 PC에 없어 CI로 확인.
+- 설계 해석(검토 요청): ① 한도는 "닿으면" 정지(≥). ② 배분 0인 전략은 L4로 항상 정지. ③ 입출금은 그것이 반영된 스냅샷과 함께 넘긴다(따로 넘기면 일시적 가짜 손실). ④ HALTED 재개 시 위험 기준 최고점은 확인 메시지에 보여 준 값(현재 평가액이 더 높으면 그 값). ⑤ 정지 갱신은 게이트 잠금 안, 트랜잭션 밖(입력에서 다시 계산되는 값이라 커밋 실패와 무관).
+- 남은 일: M1-04(포트폴리오·보호 주문)는 이 게이트 위에서 진행. M1-05는 병행 가능.
+
+
+## 2026-10-20 — Codex (PR #10 지적 6건 수정)
+
+- 사용자 요청으로 Codex가 리뷰 지적을 구현했다. 초기 구현은 Claude, 수정분 검토는 Claude가 맡는다. PR #10을 유지하며 병합하지 않는다.
+- 요청 전략의 위험 입력 누락 시 오류로 중단하고 배분 0은 독립적으로 정지한다. 지정가를 크기·손절·강제청산·예약의 기준으로 통일했다. UoW 대기 뒤 위험 상태를 재검사한다.
+- 재개는 평가액·두 최고점·정지 변경 버전이 확인 요청과 같아야 한다. 변경 시 새 확인이 필요하며 성공하면 기존 프롬프트를 모두 무효화한다. 위험 기준은 확인 당시 현재 평가액이고, 적용 검증 후에 정지를 해제한다.
+- start_day에 경계 스냅샷에 포함된 입출금을 추가해 최고점을 보정한다. seen_flows로 중복 제거하고 새날 기준에 포함된 금액은 net_deposit에 다시 넣지 않는다.
+- 설계 02, M1-03 명세, README에 연결 계약을 보완했다. 기존 작성자의 HANDOFF 기록은 보존했다.
+- 회귀 테스트 21개 추가. Python 3.12.14·3.14.3에서 각각 pytest 312 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 다음 담당자: Claude Code가 수정분 재검토.
+
+
+## 2026-10-20 — Codex (PR #10 Claude 재개 확인 P2 수정)
+
+- 사용자 요청에 따라 평가액의 완전 일치 조건을 필수 설정 `RiskLimits.resume_equity_tolerance_ratio`로 대체했다. 기본값 없이 Decimal 0 이상 1 미만을 받으며 요청 평가액 대비 절대 변동률의 경계까지 허용한다. 설정 로더는 기존 계획대로 M3이고, 지금은 RiskLimits로 주입한다.
+- pause_revision·record_peak 일치 검사를 유지한다. 허용 폭 초과 시 새 확인을 요구하며 정지를 유지한다. 허용 폭은 ResumePrompt에도 포함한다.
+- reset_risk_peak(at, actor)는 이전 화면 값을 받지 않고 현재 평가액으로 설정한다. ResumeRecord.peak_reset.new_risk_peak에 실제 적용값을 남긴다. 기록용 최고점은 보존한다.
+- 포지션 미실현 손익 소폭 상승·하락과 경계, 큰 하락·경계 초과, 이전 정지 버전, 기록용 최고점 변경 및 필수 설정 검증 등 14개 회귀 사례 추가.
+- Python 3.12.14·3.14.3 각각 326 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 설계 02·명세·README·설정 예시를 갱신했다. 다음 담당자: Claude Code 재검토. PR은 병합하지 않는다.
