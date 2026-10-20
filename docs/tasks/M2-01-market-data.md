@@ -17,11 +17,13 @@ Bybit 공개 API에서 백테스트에 필요한 과거 데이터를 받아 검�
    - `Bar`: `symbol`, `interval`(`D`, `60`, `1`), `start`(UTC aware), `open`, `high`, `low`, `close`(Decimal), `volume`, `turnover`(Decimal). `high ≥ max(open, close)`, `low ≤ min(open, close)`, 모두 유한값.
    - `FundingRate`: `symbol`, `funding_time`(UTC), `rate`(Decimal).
    - `InstrumentSnapshot`: `symbol`, `qty_step`, `min_qty`, `tick_size`, `max_leverage`, `captured_at`. M1-01 `InstrumentSpec`으로 바꿀 수 있어야 한다.
+   - `RiskLimitTier` (D79): `symbol`, 단계 번호, 단계 상한 명목 금액(USDT), 유지증거금률(MMR), 초기증거금률, `captured_at`. M1-03 강제청산 근사(D62)의 MMR 출처다.
 
 2. **Bybit 공개 API 클라이언트** (읽기 전용, 키 없음)
    - 봉: `GET /v5/market/kline` (`category=linear`, `symbol`, `interval`, `start`, `end`, `limit`). 한 번에 받을 수 있는 개수 제한이 있으므로 기간을 나눠 반복한다.
    - 펀딩비: `GET /v5/market/funding/history`.
    - 상품 규칙: `GET /v5/market/instruments-info`.
+   - 위험 한도 단계: `GET /v5/market/risk-limit` (`category=linear`, `symbol`). 수집 시점의 값만 얻을 수 있으므로 `captured_at`과 함께 저장한다(과거 시점 값이 아님을 보고서에 표시).
    - HTTP 클라이언트는 표준 라이브러리(`urllib`)로 하거나, 외부 패키지를 쓰려면 PR 설명에 이유를 적는다(런타임 의존성 추가).
    - 요청 간 간격과 재시도(지수 백오프, 최대 횟수)를 둔다. 응답의 `retCode`가 0이 아니면 오류로 처리한다.
    - 엔드포인트 기본 주소는 설정에서 받는다(메인넷 공개 API).
@@ -34,7 +36,7 @@ Bybit 공개 API에서 백테스트에 필요한 과거 데이터를 받아 검�
 
 4. **SQLite 저장소** (`storage/` 아래 SQLite 구현 또는 `marketdata/` 전용)
    - 파일 위치: 설정 `paths.backtest.market_data_dir`(이 작업에서 설정 예시에 키 추가) 아래 파일 하나. 경로는 주입받는다.
-   - 테이블: `bars(symbol, interval, start, open, high, low, close, volume, turnover, PRIMARY KEY(symbol, interval, start))`, `funding(symbol, funding_time, rate, PRIMARY KEY(...))`, `instruments(...)`, `ingest_runs(실행 시각, 범위, 받은 개수, gaps, 코드 커밋)`.
+   - 테이블: `bars(symbol, interval, start, open, high, low, close, volume, turnover, PRIMARY KEY(symbol, interval, start))`, `funding(symbol, funding_time, rate, PRIMARY KEY(...))`, `instruments(...)`, `risk_limit_tiers(...)`, `ingest_runs(실행 시각, 범위, 받은 개수, gaps, 코드 커밋)`.
    - Decimal은 **TEXT**로 저장하고 읽을 때 Decimal로 복원한다(부동소수 손실 방지).
    - 같은 키가 다시 오면 값이 같으면 무시, 다르면 오류로 기록한다(조용히 덮어쓰지 않음).
 
