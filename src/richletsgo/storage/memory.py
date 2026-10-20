@@ -8,8 +8,11 @@ from typing import Self
 
 from richletsgo.domain import Environment, Qty, StrategyId, Symbol
 from richletsgo.oms.models import OrderRecord
+from richletsgo.risk.records import DecisionRecord, EpisodeRecord, EpisodeState
 
 from .contracts import (
+    DecisionRepository,
+    EpisodeRepository,
     FillRecord,
     FillRepository,
     LoggedOrderEvent,
@@ -26,11 +29,18 @@ class _State:
     fills: dict[str, FillRecord] = field(default_factory=dict)
     events: list[LoggedOrderEvent] = field(default_factory=list)
     positions: dict[tuple[StrategyId, Symbol], Qty] = field(default_factory=dict)
+    decisions: dict[str, DecisionRecord] = field(default_factory=dict)
+    episodes: dict[str, EpisodeRecord] = field(default_factory=dict)
 
     def clone(self) -> "_State":
         # Values are immutable, including nested raw event payloads.
         return _State(
-            self.orders.copy(), self.fills.copy(), self.events.copy(), self.positions.copy()
+            self.orders.copy(),
+            self.fills.copy(),
+            self.events.copy(),
+            self.positions.copy(),
+            self.decisions.copy(),
+            self.episodes.copy(),
         )
 
 
@@ -143,6 +153,52 @@ class _Positions:
         )
 
 
+class _Decisions:
+    def __init__(self, owner: "InMemoryUnitOfWork") -> None:
+        self.owner = owner
+
+    def get(self, signal_id: str) -> DecisionRecord | None:
+        return self.owner.state.decisions.get(signal_id)
+
+    def add(self, decision: DecisionRecord) -> None:
+        if decision.account_id != self.owner.database.account_id:
+            raise ValueError("decision belongs to another account")
+        if decision.signal_id in self.owner.state.decisions:
+            raise ValueError("duplicate signal_id decision")
+        self.owner.state.decisions[decision.signal_id] = decision
+
+    def all(self) -> tuple[DecisionRecord, ...]:
+        return tuple(self.owner.state.decisions.values())
+
+
+class _Episodes:
+    def __init__(self, owner: "InMemoryUnitOfWork") -> None:
+        self.owner = owner
+
+    def get(self, episode_id: str) -> EpisodeRecord | None:
+        return self.owner.state.episodes.get(episode_id)
+
+    def active_for(self, strategy: StrategyId, symbol: Symbol) -> EpisodeRecord | None:
+        active = [
+            e
+            for e in self.owner.state.episodes.values()
+            if e.strategy is strategy and e.symbol is symbol and e.state is not EpisodeState.CLOSED
+        ]
+        if len(active) > 1:
+            raise ValueError("multiple active episodes")
+        return active[0] if active else None
+
+    def put(self, episode: EpisodeRecord) -> None:
+        if episode.state is not EpisodeState.CLOSED:
+            current = self.active_for(episode.strategy, episode.symbol)
+            if current is not None and current.episode_id != episode.episode_id:
+                raise ValueError("another episode is already active for this strategy and symbol")
+        self.owner.state.episodes[episode.episode_id] = episode
+
+    def all(self) -> tuple[EpisodeRecord, ...]:
+        return tuple(self.owner.state.episodes.values())
+
+
 class InMemoryUnitOfWork:
     """Explicit commit. Exit without commit, exceptions and cancellation discard all staged state."""
 
@@ -154,6 +210,8 @@ class InMemoryUnitOfWork:
         self.fills: FillRepository = _Fills(self)
         self.order_events: OrderEventLog = _Events(self)
         self.positions: PositionRepository = _Positions(self)
+        self.decisions: DecisionRepository = _Decisions(self)
+        self.episodes: EpisodeRepository = _Episodes(self)
         self._entered = False
 
     @property

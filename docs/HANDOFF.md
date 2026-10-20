@@ -147,3 +147,11 @@
 - resolve_unknown에 last_cancel_at/cancel_retry_after 필수 입력을 추가했다. NOT_FOUND/TOO_LATE/ERROR는 간격 경과 후 재시도, ACCEPTED와 보호 주문은 재시도하지 않는다. 최초 취소와 알림 1회 동작, 예약 유지, 실제 상태에 의한 해소는 유지한다. 호출자는 실제 시도 시각을 보존해야 한다.
 - 회귀 테스트 21개 추가: 롱·숏 보류 노출, 반대 체결 합산, 중복/귀속 확정/롤백, 계약·전략 필터, 실패 종류별 재시도 경계·다음 시도, 보호 주문/ACCEPTED 제외, 알림과 재시도, 입력 시각 검증.
 - 검증: Python 3.14.3·3.12.14에서 ruff check/format, mypy(30 소스), pytest 232개 및 28 subtests 통과. 다음 담당자: Claude Code가 PR #9 수정 검토 후 사용자 병합.
+
+## 2026-10-20 — Claude Code (M1-03 구현, 역할 교대)
+
+- 사용자 요청: Codex가 사용 한도로 멈춰 Claude가 M1-03을 대신 구현. 구현자≠검토자 원칙(D37)을 지키기 위해 이 PR은 **Codex가 검토**.
+- `risk/`: records(결정·에피소드), limits, sizing(D62 근사), equity(D72·D81), pause(직렬화), checks(L2~L7, 축소 면제), guards, resume(D48), gate(D46·D59·D60). `storage`에 DecisionRepository·EpisodeRepository와 메모리 구현 추가(UnitOfWork 프로토콜 확장).
+- 검증: Python 3.14.3에서 ruff check/format, mypy strict(39 소스), pytest 291 passed(신규 59). 3.12는 이 PC에 없어 CI로 확인.
+- 설계 해석(검토 요청): ① 한도는 "닿으면" 정지(≥). ② 배분 0인 전략은 L4로 항상 정지. ③ 입출금은 그것이 반영된 스냅샷과 함께 넘긴다(따로 넘기면 일시적 가짜 손실). ④ HALTED 재개 시 위험 기준 최고점은 확인 메시지에 보여 준 값(현재 평가액이 더 높으면 그 값). ⑤ 정지 갱신은 게이트 잠금 안, 트랜잭션 밖(입력에서 다시 계산되는 값이라 커밋 실패와 무관).
+- 남은 일: M1-04(포트폴리오·보호 주문)는 이 게이트 위에서 진행. M1-05는 병행 가능.

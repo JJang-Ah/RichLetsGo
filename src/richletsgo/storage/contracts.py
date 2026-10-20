@@ -7,6 +7,7 @@ from typing import Protocol, Self
 
 from richletsgo.domain import Environment, ExecutionEvent, OrderEvent, Qty, StrategyId, Symbol
 from richletsgo.oms.models import OrderRecord, Transition
+from richletsgo.risk.records import DecisionRecord, EpisodeRecord
 
 
 class FillStatus(StrEnum):
@@ -58,12 +59,31 @@ class PositionRepository(Protocol):
     def all(self) -> tuple[tuple[StrategyId, Symbol, Qty], ...]: ...
 
 
+class DecisionRepository(Protocol):
+    """One decision per signal_id within an account database (D60)."""
+
+    def get(self, signal_id: str) -> DecisionRecord | None: ...
+    def add(self, decision: DecisionRecord) -> None: ...
+    def all(self) -> tuple[DecisionRecord, ...]: ...
+
+
+class EpisodeRepository(Protocol):
+    """At most one non-closed episode per (strategy, symbol) (D59)."""
+
+    def get(self, episode_id: str) -> EpisodeRecord | None: ...
+    def active_for(self, strategy: StrategyId, symbol: Symbol) -> EpisodeRecord | None: ...
+    def put(self, episode: EpisodeRecord) -> None: ...
+    def all(self) -> tuple[EpisodeRecord, ...]: ...
+
+
 class UnitOfWork(Protocol):
     environment: Environment
     orders: OrderRepository
     fills: FillRepository
     order_events: OrderEventLog
     positions: PositionRepository
+    decisions: DecisionRepository
+    episodes: EpisodeRepository
 
     async def __aenter__(self) -> Self: ...
     async def __aexit__(
