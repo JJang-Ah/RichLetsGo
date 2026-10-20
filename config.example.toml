@@ -33,6 +33,32 @@ oracle_read = "richletsgo/oracle-read"
 # Future loader (M3): paths are relative to THIS config file, never cwd.
 # Example values; keep environments separate.
 
+[backtest.research_risk]
+# D88 research profile for V1 backtests only - NOT live trading values (Q13 stays open).
+start_equity_usdt = "10000"
+risk_per_trade = "0.01"
+daily_loss_limit_usdt = "300"
+max_drawdown_ratio = "0.15"
+strategy_allocations = { S1 = "0.6", S2 = "0.4" }
+consecutive_loss_limit = 4
+cooldown_hours = 12
+max_leverage = "3"
+max_symbol_notional_usdt = "20000"
+max_account_notional_usdt = "30000"
+liquidation_buffer_ratio = "0.5"
+slippage_buffer = "0.001"
+resume_equity_tolerance_ratio = "0.01"
+taker_fee_rate = "0.00055"  # verify against Bybit's fee schedule when implementing M2-03
+maker_fee_rate = "0.0002"
+slippage_rate = "0.0002"
+
+[backtest.selection]
+# D80/D88
+drawdown_floor_usdt = "100"
+min_training_trades = { S1 = 6, S2 = 50 }
+max_invalid_window_ratio = "0.25"
+max_grid_points = 200
+
 [paths.backtest]
 journal_dir = "data/backtest/journal"
 log_dir = "logs/backtest"
