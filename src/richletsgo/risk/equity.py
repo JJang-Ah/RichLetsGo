@@ -177,14 +177,12 @@ class EquityTracker:
             return Decimal(1)
         return max(Decimal(0), (self._s.risk_peak - self.equity) / self._s.risk_peak)
 
-    def reset_risk_peak(self, value: Decimal, at: datetime, actor: str) -> PeakReset:
-        """Only for a confirmed HALTED resume. The record peak is never lowered."""
+    def reset_risk_peak(self, at: datetime, actor: str) -> PeakReset:
+        """Set the risk peak to current equity after confirmation; preserve the record peak."""
         require_utc(at)
-        if finite_decimal(value, "value") <= 0:
+        if self.equity <= 0:
             raise ValueError("risk peak must be positive")
         previous = self._s.risk_peak
-        if value != self.equity:
-            raise ValueError("confirmed risk peak no longer matches current equity")
         new = self.equity
         self._s = TrackerState(
             self._s.day_start,

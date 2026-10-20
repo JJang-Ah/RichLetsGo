@@ -12,6 +12,7 @@ symbols = ["BTCUSDT", "ETHUSDT"]
 # risk_per_trade = <user decision>
 # daily_loss_limit_usdt = <user decision>
 # max_drawdown_ratio = <user decision>
+# resume_equity_tolerance_ratio = <user decision> # required, 0 <= ratio < 1; no default
 # strategy_allocations = <user decision>
 # consecutive_loss_limit = <user decision>
 # cooldown_hours = <user decision>

@@ -38,6 +38,7 @@ class RiskLimits:
     max_account_notional_usdt: Decimal
     liquidation_buffer_ratio: Decimal
     slippage_buffer: Decimal
+    resume_equity_tolerance_ratio: Decimal
 
     def __post_init__(self) -> None:
         _ratio(self.risk_per_trade, "risk_per_trade", allow_zero=False, allow_one=False)
@@ -69,6 +70,12 @@ class RiskLimits:
             allow_one=False,
         )
         _ratio(self.slippage_buffer, "slippage_buffer", allow_zero=True, allow_one=False)
+        _ratio(
+            self.resume_equity_tolerance_ratio,
+            "resume_equity_tolerance_ratio",
+            allow_zero=True,
+            allow_one=False,
+        )
 
     def strategy_daily_limit(self, strategy: StrategyId) -> Decimal:
         """L4 limit. An allocation of zero disables new entries for that strategy."""

@@ -32,6 +32,7 @@ class ResumePrompt:
     new_risk_peak: Decimal | None
     next_halt_equity: Decimal | None
     pause_revision: int
+    equity_tolerance_ratio: Decimal
 
 
 @dataclass(frozen=True, slots=True)
@@ -96,6 +97,7 @@ class ResumeService:
             new_peak,
             new_peak * (1 - self._limits.max_drawdown_ratio) if new_peak is not None else None,
             self._pauses.revision,
+            self._limits.resume_equity_tolerance_ratio,
         )
         self._prompts[prompt.prompt_id] = prompt
         return prompt
@@ -118,16 +120,17 @@ class ResumeService:
             return ResumeRejected("prompt expired", auth)
         if (
             self._pauses.revision != prompt.pause_revision
-            or self._tracker.equity != prompt.equity
-            or self._tracker.risk_peak != prompt.risk_peak
+            or abs(self._tracker.equity - prompt.equity)
+            > abs(prompt.equity) * prompt.equity_tolerance_ratio
             or self._tracker.record_peak != prompt.record_peak
         ):
             return ResumeRejected("state changed; request a new confirmation", auth)
         cleared: list[PauseKind] = []
         reset: PeakReset | None = None
         if prompt.clears_halted and self._pauses.has(PauseKind.HALTED):
-            assert prompt.new_risk_peak is not None
-            reset = self._tracker.reset_risk_peak(prompt.new_risk_peak, at, actor_id)
+            if self._tracker.equity <= 0:
+                return ResumeRejected("nonpositive equity", auth)
+            reset = self._tracker.reset_risk_peak(at, actor_id)
             self._pauses.clear(PauseKind.HALTED)
             cleared.append(PauseKind.HALTED)
         if prompt.clears_manual and self._pauses.clear(PauseKind.ENTRY_PAUSED_MANUAL):

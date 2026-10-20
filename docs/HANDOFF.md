@@ -165,3 +165,12 @@
 - start_day에 경계 스냅샷에 포함된 입출금을 추가해 최고점을 보정한다. seen_flows로 중복 제거하고 새날 기준에 포함된 금액은 net_deposit에 다시 넣지 않는다.
 - 설계 02, M1-03 명세, README에 연결 계약을 보완했다. 기존 작성자의 HANDOFF 기록은 보존했다.
 - 회귀 테스트 21개 추가. Python 3.12.14·3.14.3에서 각각 pytest 312 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 다음 담당자: Claude Code가 수정분 재검토.
+
+
+## 2026-10-20 — Codex (PR #10 Claude 재개 확인 P2 수정)
+
+- 사용자 요청에 따라 평가액의 완전 일치 조건을 필수 설정 `RiskLimits.resume_equity_tolerance_ratio`로 대체했다. 기본값 없이 Decimal 0 이상 1 미만을 받으며 요청 평가액 대비 절대 변동률의 경계까지 허용한다. 설정 로더는 기존 계획대로 M3이고, 지금은 RiskLimits로 주입한다.
+- pause_revision·record_peak 일치 검사를 유지한다. 허용 폭 초과 시 새 확인을 요구하며 정지를 유지한다. 허용 폭은 ResumePrompt에도 포함한다.
+- reset_risk_peak(at, actor)는 이전 화면 값을 받지 않고 현재 평가액으로 설정한다. ResumeRecord.peak_reset.new_risk_peak에 실제 적용값을 남긴다. 기록용 최고점은 보존한다.
+- 포지션 미실현 손익 소폭 상승·하락과 경계, 큰 하락·경계 초과, 이전 정지 버전, 기록용 최고점 변경 및 필수 설정 검증 등 14개 회귀 사례 추가.
+- Python 3.12.14·3.14.3 각각 326 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 설계 02·명세·README·설정 예시를 갱신했다. 다음 담당자: Claude Code 재검토. PR은 병합하지 않는다.

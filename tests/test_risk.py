@@ -62,6 +62,7 @@ def limits(**changes):
         max_account_notional_usdt=D("1000"),
         liquidation_buffer_ratio=D("0.5"),
         slippage_buffer=D("0"),
+        resume_equity_tolerance_ratio=D("0.01"),
     )
     base.update(changes)
     return RiskLimits(**base)
@@ -99,6 +100,10 @@ def test_risk_limits_have_no_defaults():
 @pytest.mark.parametrize(
     "changes",
     [
+        {"resume_equity_tolerance_ratio": D("-0.01")},
+        {"resume_equity_tolerance_ratio": D("1")},
+        {"resume_equity_tolerance_ratio": D("NaN")},
+        {"resume_equity_tolerance_ratio": D("Infinity")},
         {"risk_per_trade": D("0")},
         {"risk_per_trade": D("-0.01")},
         {"risk_per_trade": D("NaN")},
@@ -850,3 +855,69 @@ def test_start_day_cash_flow_validation_is_atomic():
             ],
         )
     assert t.state == before
+
+
+@pytest.mark.parametrize("pnl", ["-20.01", "-19.99", "-20.8", "-19.2"])
+def test_open_position_small_change_resumes_at_current_equity(pnl):
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    t.observe(AccountSnapshot(at, D(100), D(-20)))
+    prompt = svc.request_resume("owner", at)
+    assert prompt.equity_tolerance_ratio == D("0.01")
+    later = at + timedelta(seconds=30)
+    t.observe(AccountSnapshot(later, D(100), D(pnl)))
+    record = svc.confirm_resume(prompt.prompt_id, "owner", later)
+    assert isinstance(record, ResumeRecord)
+    assert record.peak_reset.new_risk_peak == t.equity == D(100) + D(pnl)
+    assert t.risk_peak == t.equity and t.record_peak == D(100)
+    assert not state.has(PauseKind.HALTED) and t.drawdown_ratio == 0
+
+
+@pytest.mark.parametrize("pnl", ["-30", "-20.8001", "-19.1999"])
+def test_open_position_outside_tolerance_requires_new_confirmation(pnl):
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    t.observe(AccountSnapshot(at, D(100), D(-20)))
+    prompt = svc.request_resume("owner", at)
+    later = at + timedelta(seconds=30)
+    t.observe(AccountSnapshot(later, D(100), D(pnl)))
+    result = svc.confirm_resume(prompt.prompt_id, "owner", later)
+    assert isinstance(result, ResumeRejected) and "new confirmation" in result.reason
+    assert state.has(PauseKind.HALTED) and t.risk_peak == D(100)
+    fresh = svc.request_resume("owner", later)
+    record = svc.confirm_resume(fresh.prompt_id, "owner", later)
+    assert isinstance(record, ResumeRecord)
+    assert record.peak_reset.new_risk_peak == t.equity
+
+
+def test_small_equity_change_does_not_accept_previous_pause_revision():
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    prompt = svc.request_resume("owner", at)
+    state.clear(PauseKind.HALTED)
+    state.add(Pause(PauseKind.HALTED, "L6", NOW))
+    t.observe(AccountSnapshot(at, D(100), D("-20.01")))
+    result = svc.confirm_resume(prompt.prompt_id, "owner", at)
+    assert isinstance(result, ResumeRejected) and "new confirmation" in result.reason
+    assert state.has(PauseKind.HALTED) and t.risk_peak == D(100)
+
+
+def test_resume_record_peak_change_still_requires_confirmation():
+    at = NOW + timedelta(minutes=2)
+    t, state, svc = resume_setup(Pause(PauseKind.HALTED, "L6", NOW))
+    prompt = svc.request_resume("owner", at)
+    flow = CashFlow("deposit", at, D("0.01"))
+    t.observe(AccountSnapshot(at, D("80.01"), D(0)), [flow])
+    result = svc.confirm_resume(prompt.prompt_id, "owner", at)
+    assert isinstance(result, ResumeRejected) and "new confirmation" in result.reason
+    assert state.has(PauseKind.HALTED)
+
+
+def test_resume_tolerance_is_required_and_zero_is_valid():
+    from dataclasses import fields
+
+    configured = limits(resume_equity_tolerance_ratio=D(0))
+    values = {f.name: getattr(configured, f.name) for f in fields(configured)}
+    del values["resume_equity_tolerance_ratio"]
+    with pytest.raises(TypeError, match="resume_equity_tolerance_ratio"):
+        RiskLimits(**values)
