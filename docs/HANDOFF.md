@@ -101,6 +101,14 @@
 - 검증: TOML 파싱, 세 환경의 네 경로 설정 및 분리 확인, git diff --check. 문서·설정 예시 변경이라 런타임 테스트는 추가하지 않았다.
 - 다음 담당자: Claude Code가 경로 설정 계약을 검토하고 M1-06/M3 구현 시 적용.
 
+## 2026-10-20 — Claude Code (PR #5·#6 검토·병합, M1-02 명세 보완)
+
+- PR #5(M1-01) 검토 후 사용자 지시로 병합(a312d72). PR #6(경로 설정)은 main과 충돌(README·HANDOFF) 해결 후 병합.
+- M1-01 명세 누락 보완: M1-02 명세에 `OrderEvent` 확장(symbol, order_qty, order_type, time_in_force, limit_price, trigger_price, reduce_only, stop_kind)을 첫 항목으로 추가.
+- PR #6 검토 제안 반영: "저널 불확실" 표시 파일 위치를 저널 디렉터리 안 `JOURNAL_UNCERTAIN`으로 정함. 재시작 동기화는 표시와 관계없이 항상 D65 받아들이기 대조 실행(03 5.4절, M1-06).
+- 남은 PR #6 제안(demo·live의 backtest_results_dir, Oracle DIRECTORY 객체 메모, 목록 빈 줄)은 M3 설정 로더 작업 때 정리.
+- 검증: 문서 변경만. 다음 담당자: Codex 명세 검토 후 M1-02 구현.
+
 ## 2026-10-20 — Claude Code (미정 질문 정리, M2 명세)
 
 - Codex가 한도로 멈춘 동안 사용자와 미정 질문을 정리: D66~D74 (전략 후보 4개 조합, S2 1시간봉, 손절 방식, AI 외부 정보는 경제 일정만, 과거 데이터 Bybit 3년, 입출금 자동 반영, 거래일 기준값은 지갑 잔고, 대시보드 FastAPI+HTML, 백업 로컬 14일). Q17 PC 사양 확인 완료.
