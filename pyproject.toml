@@ -19,7 +19,7 @@ dev = [
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["richletsgo", "richletsgo.*", "richletsgo_watchdog", "richletsgo_dashboard"]
+include = ["richletsgo*"]
 namespaces = false
 
 [tool.ruff]
