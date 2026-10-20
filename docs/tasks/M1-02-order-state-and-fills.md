@@ -1,6 +1,6 @@
 # M1-02 주문 상태와 체결 반영
 
-- 상태: 명세 작성 완료, 사용자 확인 대기
+- 상태: 구현 및 로컬 검증 완료, Claude Code 검토 대기
 - 구현: Codex / 검토: Claude Code
 - 브랜치: `task/M1-02-order-state-and-fills`
 - 근거: 03 5.1~5.3절 (D44, D54, D61), 02 2.1절 (D52, D57), 03 6.2절 테이블 초안, 01 1.4절 (D41, D58), 03 5.4절 (D65), PR #5 검토(M1-01 명세 누락 보완)
@@ -82,26 +82,26 @@
 
 ## 완료 조건 (04 2장 V0 중 이 작업 범위)
 
-- [ ] `OrderEvent` 확장 필드 검증: `LIMIT`인데 `limit_price` 없음, 손절 종류인데 `trigger_price` 없음, 손절인데 `reduce_only=False`, 부착 손절인데 `stop_kind`가 `PARTIAL_STOP_LOSS`가 아님, `order_qty` 0 → 모두 거절
+- [x] `OrderEvent` 확장 필드 검증: `LIMIT`인데 `limit_price` 없음, 손절 종류인데 `trigger_price` 없음, 손절인데 `reduce_only=False`, 부착 손절인데 `stop_kind`가 `PARTIAL_STOP_LOSS`가 아님, `order_qty` 0 → 모두 거절
 
-- [ ] 롱 +1 보유에 미체결 `ATTACHED_SL` −1, 미체결 `CLOSE` −1이 있어도 계약 노출은 +1 그대로. 숏도 같은 방식 (D57)
-- [ ] `CLOSE` 주문의 미반영 체결이 있어도 장부 반영 전까지 노출은 줄지 않음
-- [ ] 두 전략 보유 중 S1 부착 손절의 execution이 부모 연결 `OrderEvent`보다 먼저 도착 → 보류 → 주문 이벤트 도착 후 S1 장부에서만 감소 (S2 불변). 같은 execution이 REST로 다시 와도 한 번만 반영 (D61)
-- [ ] 보류 체결 → 주문 조회 성공, 우리 형식 아님 → `EXTERNAL` / 조회 실패 → 보류 유지, 기한 후 알림
-- [ ] 보류 해제(장부 반영) 중 예외 → 보류 상태로 롤백
+- [x] 롱 +1 보유에 미체결 `ATTACHED_SL` −1, 미체결 `CLOSE` −1이 있어도 계약 노출은 +1 그대로. 숏도 같은 방식 (D57)
+- [x] `CLOSE` 주문의 미반영 체결이 있어도 장부 반영 전까지 노출은 줄지 않음
+- [x] 두 전략 보유 중 S1 부착 손절의 execution이 부모 연결 `OrderEvent`보다 먼저 도착 → 보류 → 주문 이벤트 도착 후 S1 장부에서만 감소 (S2 불변). 같은 execution이 REST로 다시 와도 한 번만 반영 (D61)
+- [x] 보류 체결 → 주문 조회 성공, 우리 형식 아님 → `EXTERNAL` / 조회 실패 → 보류 유지, 기한 후 알림
+- [x] 보류 해제(장부 반영) 중 예외 → 보류 상태로 롤백
 
-- [ ] `SUBMITTED`에서 `FILLED` 직접 이동 (WS 선도착)
-- [ ] `Filled` 두 번 → 두 번째 `DUPLICATE`, 상태 유지
-- [ ] `CANCELLED` 확정 뒤 체결 도착 → 체결 반영, 상태 `CANCELLED` 유지, `booked_qty` 증가
-- [ ] 같은 `exec_id`가 두 번(WS·REST) → 장부 한 번만 반영
-- [ ] 체결 반영 중 훅에서 예외 → 체결·주문·장부 모두 롤백
-- [ ] 주문 1 중 0.4 체결, `CANCELLED` 통지 선도착(execution 없음) → `unbooked` 0.4, `reserved` 0 → execution 도착 후 `booked` 0.4, `unbooked` 0. `FILLED` 선도착도 같은 방식 (D52)
-- [ ] `UNKNOWN` + 조회 3종 성공·빈 결과 여러 번 → 계속 `KEEP_UNKNOWN`, 기한 후 `ALERT_MANUAL_CHECK` 한 번, 예약 유지
-- [ ] `UNKNOWN` → 조회 결과 `PARTIALLY_FILLED` → 그 상태로 이동, 예약은 남은 수량
-- [ ] `UNKNOWN` 진입 주문 → `SEND_CANCEL` → 취소 성공 → 이어지는 `CANCELLED`로 종결 / "주문 없음" → `KEEP_UNKNOWN`
-- [ ] 보호 주문(`PROTECT`, `ATTACHED_SL`)은 `SEND_CANCEL` 대상이 아님
-- [ ] 수동 `NOT_FOUND` 뒤 이벤트 도착 → 실제 상태로 정정, `CORRECTED_FROM_NOT_FOUND`
-- [ ] 숏 주문(음수 수량)에서도 위 노출 계산의 부호가 맞음
+- [x] `SUBMITTED`에서 `FILLED` 직접 이동 (WS 선도착)
+- [x] `Filled` 두 번 → 두 번째 `DUPLICATE`, 상태 유지
+- [x] `CANCELLED` 확정 뒤 체결 도착 → 체결 반영, 상태 `CANCELLED` 유지, `booked_qty` 증가
+- [x] 같은 `exec_id`가 두 번(WS·REST) → 장부 한 번만 반영
+- [x] 체결 반영 중 훅에서 예외 → 체결·주문·장부 모두 롤백
+- [x] 주문 1 중 0.4 체결, `CANCELLED` 통지 선도착(execution 없음) → `unbooked` 0.4, `reserved` 0 → execution 도착 후 `booked` 0.4, `unbooked` 0. `FILLED` 선도착도 같은 방식 (D52)
+- [x] `UNKNOWN` + 조회 3종 성공·빈 결과 여러 번 → 계속 `KEEP_UNKNOWN`, 기한 후 `ALERT_MANUAL_CHECK` 한 번, 예약 유지
+- [x] `UNKNOWN` → 조회 결과 `PARTIALLY_FILLED` → 그 상태로 이동, 예약은 남은 수량
+- [x] `UNKNOWN` 진입 주문 → `SEND_CANCEL` → 취소 성공 → 이어지는 `CANCELLED`로 종결 / "주문 없음" → `KEEP_UNKNOWN`
+- [x] 보호 주문(`PROTECT`, `ATTACHED_SL`)은 `SEND_CANCEL` 대상이 아님
+- [x] 수동 `NOT_FOUND` 뒤 이벤트 도착 → 실제 상태로 정정, `CORRECTED_FROM_NOT_FOUND`
+- [x] 숏 주문(음수 수량)에서도 위 노출 계산의 부호가 맞음
 
 ## 검토 포인트
 

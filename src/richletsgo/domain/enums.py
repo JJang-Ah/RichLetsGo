@@ -58,3 +58,21 @@ class OrderState(StrEnum):
     @property
     def is_terminal(self) -> bool:
         return self.rank == 5
+
+
+class OrderType(StrEnum):
+    MARKET = "MARKET"
+    LIMIT = "LIMIT"
+
+
+class TimeInForce(StrEnum):
+    GTC = "GTC"
+    IOC = "IOC"
+    FOK = "FOK"
+    POST_ONLY = "POST_ONLY"
+
+
+class StopKind(StrEnum):
+    PARTIAL_STOP_LOSS = "PARTIAL_STOP_LOSS"
+    STOP_LOSS = "STOP_LOSS"
+    CONDITIONAL = "CONDITIONAL"
