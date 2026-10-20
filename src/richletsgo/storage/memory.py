@@ -8,6 +8,7 @@ from typing import Self
 
 from richletsgo.domain import Environment, Qty, StrategyId, Symbol
 from richletsgo.oms.models import OrderRecord
+from richletsgo.portfolio.models import Action, CloseIntent, StrategyBook
 from richletsgo.risk.records import DecisionRecord, EpisodeRecord, EpisodeState
 
 from .contracts import (
@@ -18,6 +19,7 @@ from .contracts import (
     LoggedOrderEvent,
     OrderEventLog,
     OrderRepository,
+    PortfolioRepository,
     PositionRepository,
     UnitOfWork,
 )
@@ -32,6 +34,14 @@ class _State:
     decisions: dict[str, DecisionRecord] = field(default_factory=dict)
     episodes: dict[str, EpisodeRecord] = field(default_factory=dict)
 
+    books: dict[tuple[StrategyId, Symbol], StrategyBook] = field(default_factory=dict)
+    intents: dict[str, CloseIntent] = field(default_factory=dict)
+    actions: dict[str, Action] = field(default_factory=dict)
+    emitted: set[str] = field(default_factory=set)
+    paused: set[Symbol] = field(default_factory=set)
+    funding_ids: set[str] = field(default_factory=set)
+    stop_revisions: dict[Symbol, int] = field(default_factory=dict)
+
     def clone(self) -> "_State":
         # Values are immutable, including nested raw event payloads.
         return _State(
@@ -41,6 +51,13 @@ class _State:
             self.positions.copy(),
             self.decisions.copy(),
             self.episodes.copy(),
+            self.books.copy(),
+            self.intents.copy(),
+            self.actions.copy(),
+            self.emitted.copy(),
+            self.paused.copy(),
+            self.funding_ids.copy(),
+            self.stop_revisions.copy(),
         )
 
 
@@ -199,6 +216,62 @@ class _Episodes:
         return tuple(self.owner.state.episodes.values())
 
 
+class _Portfolio:
+    def __init__(self, owner: "InMemoryUnitOfWork") -> None:
+        self.owner = owner
+
+    def book(self, strategy: StrategyId, symbol: Symbol) -> StrategyBook:
+        return self.owner.state.books.get((strategy, symbol), StrategyBook(strategy, symbol))
+
+    def put_book(self, book: StrategyBook) -> None:
+        self.owner.state.books[book.strategy, book.symbol] = book
+        self.owner.positions.set(book.strategy, book.symbol, Qty(book.qty))
+
+    def books(self) -> tuple[StrategyBook, ...]:
+        return tuple(self.owner.state.books.values())
+
+    def intent(self, episode_id: str) -> CloseIntent | None:
+        return self.owner.state.intents.get(episode_id)
+
+    def put_intent(self, intent: CloseIntent) -> None:
+        self.owner.state.intents[intent.episode_id] = intent
+
+    def intents(self) -> tuple[CloseIntent, ...]:
+        return tuple(self.owner.state.intents.values())
+
+    def has_action(self, key: str) -> bool:
+        return key in self.owner.state.emitted
+
+    def emit(self, action: Action) -> None:
+        if action.key not in self.owner.state.emitted:
+            self.owner.state.actions[action.key] = action
+            self.owner.state.emitted.add(action.key)
+
+    def actions(self) -> tuple[Action, ...]:
+        return tuple(self.owner.state.actions.values())
+
+    def acknowledge(self, key: str) -> None:
+        self.owner.state.actions.pop(key, None)
+
+    def paused(self, symbol: Symbol) -> bool:
+        return symbol in self.owner.state.paused
+
+    def pause(self, symbol: Symbol) -> None:
+        self.owner.state.paused.add(symbol)
+
+    def funding_seen(self, funding_id: str) -> bool:
+        return funding_id in self.owner.state.funding_ids
+
+    def mark_funding(self, funding_id: str) -> None:
+        self.owner.state.funding_ids.add(funding_id)
+
+    def stop_revision(self, symbol: Symbol) -> int:
+        return self.owner.state.stop_revisions.get(symbol, 0)
+
+    def next_stop_revision(self, symbol: Symbol) -> None:
+        self.owner.state.stop_revisions[symbol] = self.stop_revision(symbol) + 1
+
+
 class InMemoryUnitOfWork:
     """Explicit commit. Exit without commit, exceptions and cancellation discard all staged state."""
 
@@ -206,6 +279,7 @@ class InMemoryUnitOfWork:
         self.database = database
         self.environment = database.environment
         self._working: _State | None = None
+        self.portfolio: PortfolioRepository = _Portfolio(self)
         self.orders: OrderRepository = _Orders(self)
         self.fills: FillRepository = _Fills(self)
         self.order_events: OrderEventLog = _Events(self)

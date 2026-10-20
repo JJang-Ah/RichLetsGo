@@ -8,6 +8,7 @@ from enum import StrEnum
 from richletsgo.domain import OrderEvent, OrderPurpose, OrderState, Price, Qty, StrategyId, Symbol
 from richletsgo.domain.clock import require_utc
 from richletsgo.domain.values import finite_decimal
+from richletsgo.portfolio.models import StopParameters
 
 ZERO = Decimal(0)
 
@@ -36,6 +37,9 @@ class OrderRecord:
     exchange_cum_exec_qty: Decimal
     created_at: datetime
     updated_at: datetime
+    attached_stop: StopParameters | None = None
+    trigger_price: Price | None = None
+    trigger_by: str | None = None
 
     def __post_init__(self) -> None:
         if self.order_link_id is None and self.exchange_order_id is None:
@@ -71,6 +75,35 @@ class OrderRecord:
             if self.order_link_id
             else f"exchange:{self.exchange_order_id}"
         )
+
+    def request_payload(self) -> dict[str, str | bool]:
+        """Adapter boundary: an entry without attached protection cannot be sent."""
+        payload: dict[str, str | bool] = {
+            "symbol": self.symbol.value,
+            "side": "Buy" if self.qty.value > 0 else "Sell",
+            "qty": str(abs(self.qty.value)),
+            "orderType": "Limit" if self.limit_price else "Market",
+            "timeInForce": "GTC" if self.limit_price else "IOC",
+            "reduceOnly": self.purpose is not OrderPurpose.ENTRY,
+        }
+        if self.order_link_id:
+            payload["orderLinkId"] = self.order_link_id
+        if self.limit_price:
+            payload["price"] = str(self.limit_price.value)
+        if self.purpose is OrderPurpose.ENTRY:
+            if self.attached_stop is None:
+                raise ValueError("entry requires attached stop parameters")
+            payload.update(self.attached_stop.payload())
+        elif self.purpose in (OrderPurpose.PROTECT, OrderPurpose.ATTACHED_SL):
+            if self.trigger_price is None:
+                raise ValueError("protective order requires trigger price")
+            if self.trigger_by is None:
+                raise ValueError("protective request requires configured trigger source")
+            StopParameters(self.trigger_price, self.trigger_by)
+            payload["triggerPrice"] = str(self.trigger_price.value)
+            payload["triggerBy"] = self.trigger_by
+            payload["triggerDirection"] = "2" if self.qty.value < 0 else "1"
+        return payload
 
     def _signed(self, value: Decimal) -> Decimal:
         return value if self.qty.value > 0 else value.copy_negate()
@@ -135,6 +168,7 @@ def apply_order_event(record: OrderRecord, event: OrderEvent) -> tuple[OrderReco
         parent_order_link_id=event.parent_order_link_id or record.parent_order_link_id,
         exchange_cum_exec_qty=max(record.exchange_cum_exec_qty, event.exchange_cum_exec_qty),
         updated_at=max(record.updated_at, event.event_time),
+        trigger_price=event.trigger_price if fresh else record.trigger_price,
     ), transition
 
 

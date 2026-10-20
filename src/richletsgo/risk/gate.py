@@ -2,7 +2,7 @@
 
 import asyncio
 from collections.abc import Callable, Mapping
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from decimal import Decimal
 
 from richletsgo.domain import (
@@ -20,7 +20,8 @@ from richletsgo.domain import (
 from richletsgo.domain.values import finite_decimal
 from richletsgo.oms.exposure import exposure
 from richletsgo.oms.models import OrderRecord
-from richletsgo.storage.contracts import UnitOfWork
+from richletsgo.portfolio.models import CloseState, StopParameters, entry_delta
+from richletsgo.storage.contracts import FillStatus, UnitOfWork
 
 from .checks import StrategyRiskInput, check_limits, evaluate_pauses
 from .equity import EquityTracker
@@ -50,6 +51,15 @@ class EntryRequest:
     stop_price: Price
     ai_factor: Decimal
     limit_price: Price | None = None
+    stop_trigger_by: str = "LastPrice"
+    ai_mode: str = "disabled"
+    ai_score: Decimal | None = None
+    ai_status: str = "DISABLED"
+    entry_rejection: Rejection | None = None
+    is_exit: bool = False
+
+    def __post_init__(self) -> None:
+        StopParameters(self.stop_price, self.stop_trigger_by)
 
 
 @dataclass(frozen=True, slots=True)
@@ -111,6 +121,9 @@ class RiskGate:
         request: EntryRequest,
         market: MarketInputs,
         strategies: Mapping[StrategyId, StrategyRiskInput],
+        *,
+        prepare: Callable[[UnitOfWork], None] | None = None,
+        after_decision: Callable[[UnitOfWork, Admission], None] | None = None,
     ) -> Admission:
         if market.instrument.symbol is not request.symbol:
             raise ValueError("instrument does not match the requested symbol")
@@ -124,17 +137,26 @@ class RiskGate:
                     order = uow.orders.get(existing.order_key) if existing.order_key else None
                     episode = uow.episodes.active_for(request.strategy, request.symbol)
                     return Admission(existing, order, episode, True)
+                if prepare:
+                    prepare(uow)
                 if (
-                    self.limits.strategy_daily_limit(request.strategy) > 0
+                    uow.episodes.active_for(request.strategy, request.symbol) is None
+                    and not request.is_exit
+                    and request.entry_rejection is None
+                    and self.limits.strategy_daily_limit(request.strategy) > 0
                     and request.strategy not in strategies
                 ):
                     raise ValueError("requested strategy risk input is required")
                 admission = self._decide(uow, request, market)
+                if after_decision:
+                    after_decision(uow, admission)
                 await uow.commit()
                 return admission
 
     def _decide(self, uow: UnitOfWork, request: EntryRequest, market: MarketInputs) -> Admission:
         now = self._clock.now()
+        original_qty: Qty | None = None
+        rejection: Rejection | None
 
         def record(
             kind: DecisionKind,
@@ -155,22 +177,18 @@ class RiskGate:
                 order.qty if order else None,
                 rejections,
                 basis,
+                original_qty,
+                request.ai_mode,
+                request.ai_score,
+                request.ai_status,
             )
             uow.decisions.add(decision)
             return decision
 
-        episode = uow.episodes.active_for(request.strategy, request.symbol)
-        if episode is not None:
-            if episode.direction is request.direction and episode.state is EpisodeState.OPEN:
-                return Admission(record(DecisionKind.MAINTAINED), None, episode, False)
-            rejection = Rejection(RejectionCode.EPISODE_OPEN_OPPOSITE, episode.episode_id)
-            return Admission(
-                record(DecisionKind.REJECTED, rejections=(rejection,)), None, episode, False
-            )
-
         entry_price = request.limit_price or request.entry_price
-        sizing = size_entry(
-            SizingInput(
+        sizing_input: SizingInput | None = None
+        if self.tracker.equity > 0:
+            sizing_input = SizingInput(
                 self.tracker.equity,
                 request.direction,
                 entry_price,
@@ -181,9 +199,66 @@ class RiskGate:
                 market.instrument,
                 market.leverage,
                 market.mmr,
-            ),
-            self.limits,
-        )
+            )
+            original = size_entry(replace(sizing_input, ai_factor=Decimal(1)), self.limits)
+            original_qty = original.qty
+
+        episode = uow.episodes.active_for(request.strategy, request.symbol)
+        if episode is not None:
+            if (
+                not request.is_exit
+                and episode.direction is request.direction
+                and episode.state is EpisodeState.OPEN
+            ):
+                return Admission(record(DecisionKind.MAINTAINED), None, episode, False)
+            rejection = Rejection(RejectionCode.EPISODE_OPEN_OPPOSITE, episode.episode_id)
+            return Admission(
+                record(DecisionKind.REJECTED, rejections=(rejection,)), None, episode, False
+            )
+
+        rejection = request.entry_rejection
+        if request.is_exit:
+            rejection = Rejection(RejectionCode.EXIT_ONLY, "no active episode")
+        elif self.tracker.equity <= 0:
+            rejection = Rejection(RejectionCode.PAUSED, "nonpositive equity")
+        elif uow.portfolio.paused(request.symbol) or any(
+            i.symbol is request.symbol and i.state is not CloseState.DONE
+            for i in uow.portfolio.intents()
+        ):
+            rejection = Rejection(
+                RejectionCode.PAUSED, "portfolio reconciliation/close in progress"
+            )
+        elif any(
+            f.status is FillStatus.PENDING_ATTRIBUTION and f.event.symbol is request.symbol
+            for f in uow.fills.all()
+        ):
+            rejection = Rejection(RejectionCode.PAUSED, "unattributed execution")
+        elif any(
+            q.value * request.direction.sign < 0
+            for _, sym, q in uow.positions.all()
+            if sym is request.symbol
+        ) or any(
+            o.symbol is request.symbol
+            and (o.reserved_qty + o.unbooked_qty) * request.direction.sign < 0
+            for o in uow.orders.all()
+        ):
+            rejection = Rejection(RejectionCode.POSITION_NOT_FLAT, "opposing strategy exposure")
+        elif uow.positions.get(request.strategy, request.symbol).value or any(
+            o.strategy is request.strategy
+            and o.symbol is request.symbol
+            and (o.reserved_qty or o.unbooked_qty)
+            for o in uow.orders.all()
+        ):
+            rejection = Rejection(
+                RejectionCode.POSITION_NOT_FLAT, "episode cannot start on existing exposure"
+            )
+        if rejection:
+            return Admission(
+                record(DecisionKind.REJECTED, rejections=(rejection,)), None, None, False
+            )
+
+        assert sizing_input is not None
+        sizing = size_entry(sizing_input, self.limits)
         if not sizing.ok or sizing.qty is None:
             assert sizing.reason is not None
             rejection = Rejection(sizing.reason, "sizing")
@@ -230,6 +305,17 @@ class RiskGate:
             Decimal(0),
             now,
             now,
+        )
+        assert sizing.aligned_stop is not None
+        order = replace(
+            order,
+            attached_stop=StopParameters(Price(sizing.aligned_stop), request.stop_trigger_by),
+            qty=entry_delta(
+                sizing.qty,
+                uow.positions.get(request.strategy, request.symbol),
+                Qty(Decimal(0)),
+                Qty(Decimal(0)),
+            ),
         )
         uow.orders.put(order)
         episode = EpisodeRecord(
