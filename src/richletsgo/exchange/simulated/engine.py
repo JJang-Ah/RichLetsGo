@@ -173,6 +173,19 @@ class SimulatedExchange:
                 return
             yield event
 
+    def release_held(self) -> None:
+        """Release all pending attached-stop notifications in creation order.
+
+        Test control for delayed delivery before the stop triggers. Preserve the
+        original event and timestamp, without modifying orders or accounting.
+        Each event is consumed once; disconnected delivery is dropped just like
+        other private events. Unreleased events still follow the D61 fill path.
+        """
+        events = tuple(self._held.values())
+        self._held.clear()
+        for event in events:
+            self._emit(event)
+
     def drain_events(self) -> tuple[PrivateEvent, ...]:
         events: list[PrivateEvent] = []
         while not self._queue.empty():

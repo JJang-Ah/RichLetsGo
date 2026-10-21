@@ -486,3 +486,73 @@ def test_short_funding_credit_and_realized_profit():
 def test_invalid_fault_plan_rejected(fault):
     with pytest.raises(ValueError):
         fault()
+
+
+def test_release_held_delivers_untriggered_stop_after_parent_execution():
+    ex, clock = setup(Fault("place", 1, F.HOLD_ATTACHED))
+    run(ex.place_order(entry()))
+    step(ex, clock)
+    before = ex.drain_events()
+    assert any(isinstance(e, ExecutionEvent) for e in before)
+    assert not any(isinstance(e, OrderEvent) and e.parent_order_link_id for e in before)
+    stop = next(o for o in orders(ex) if o.parent_order_link_id)
+    assert stop.state is OrderState.OPEN
+    account_before = run(ex.get_account())
+    executions_before = fills(ex)
+    for n in (1, 2):
+        step(ex, clock, n)
+    ex.release_held()
+    assert ex.drain_events() == (stop,)
+    assert position(ex) == 1 and fills(ex) == executions_before
+    assert run(ex.get_account()).wallet_balance == account_before.wallet_balance
+    ex.release_held()
+    assert ex.drain_events() == ()
+    step(ex, clock, 3, low="89")
+    events = ex.drain_events()
+    assert not any(
+        isinstance(e, OrderEvent) and e.parent_order_link_id and e.state is OrderState.OPEN
+        for e in events
+    )
+    assert position(ex) == 0
+
+
+def test_release_held_after_automatic_release_does_not_duplicate():
+    ex, clock = setup(Fault("place", 1, F.HOLD_ATTACHED))
+    run(ex.place_order(entry()))
+    step(ex, clock, low="89")
+    events = ex.drain_events()
+    assert (
+        sum(
+            isinstance(e, OrderEvent)
+            and e.parent_order_link_id is not None
+            and e.state is OrderState.OPEN
+            for e in events
+        )
+        == 1
+    )
+    ex.release_held()
+    assert ex.drain_events() == ()
+
+
+def test_release_held_while_disconnected_drops_events_but_preserves_rest():
+    ex, clock = setup(Fault("place", 1, F.HOLD_ATTACHED))
+    run(ex.place_order(entry()))
+    step(ex, clock)
+    ex.drain_events()
+    rest_before = orders(ex)
+    ex.disconnect()
+    ex.release_held()
+    ex.reconnect()
+    ex.release_held()
+    assert ex.drain_events() == ()
+    assert orders(ex) == rest_before and position(ex) == 1
+
+
+def test_release_held_multiple_stops_preserves_creation_order():
+    ex, clock = setup(Fault("place", 1, F.HOLD_ATTACHED), Fault("place", 2, F.HOLD_ATTACHED))
+    run(ex.place_order(entry("a")))
+    run(ex.place_order(entry("b")))
+    step(ex, clock)
+    ex.drain_events()
+    ex.release_held()
+    assert [e.parent_order_link_id for e in ex.drain_events()] == ["a", "b"]

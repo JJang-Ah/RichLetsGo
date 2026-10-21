@@ -83,8 +83,15 @@
 - 손절 합계 축소 기본값은 NEWEST(최근 생성부터), OLDEST, PREFERRED_PARENT(`preferred_parent` 필수)를 지원한다. **가상 거래소 가정이며 실제 Bybit의 우선순위를 보장하지 않는다. M3에서 대조한다.** 부착 손절은 client ID 없이 exchange ID와 parent ID를 가지므로 취소·수정은 exchange ID도 받는다. `sim-order-` 접두사는 내부 ID용으로 예약한다.
 - 평균가·실현 손익·수수료·펀딩은 지갑에, 최신 종가 평가손익은 `AccountSnapshot.unrealized_pnl`에 반영한다. 체결 가격용 OHLC를 손절 판정과 평가에도 쓰는 V0/V1 모델이며 별도 mark/index 가격·격리 증거금·강제청산 모델은 없다.
 - `Fault(operation, occurrence, kind, order_link_id=None, value=...)`: operation 전체 호출 또는 지정 ID 호출의 N번째에 한 번 발생한다. `PARTIAL_FILL.value`는 잔량 대비 비율, `HIDE_ORDER.value`는 open/history를 합친 숨김 조회 횟수다. 계획은 불변이고 카운터는 거래소 인스턴스별이다. 실행 중 fault 계획을 바꾸지 않는다.
-- `HOLD_ATTACHED`는 부모 진입의 place에 걸며, 자식 손절 execution 뒤에 보류한 연결 이벤트를 내보낸다. 그 전에도 REST에서는 조회된다. `ORDER_FIRST`/`DUPLICATE`는 이벤트 전송만 바꾸고 장부·REST 체결은 한 번 반영한다. `CANCEL_RACE`는 현재 마지막 종가에 취소와 체결의 경합을 강제하는 테스트 전용 가정이며 정상 봉 체결 모델이 아니다.
+- `HOLD_ATTACHED`는 부모 진입의 place에 걸며, 자식 손절 execution 뒤에 보류한 연결 이벤트를 내보낸다. 그 전에도 REST에서는 조회된다. `release_held()`를 호출하면 손절 미발동 상태에서도 현재 보류된 연결 이벤트 전부를 생성 순서대로 한 번 방출한다. 부모 체결을 소비한 뒤 호출해 늦은 연결 도착을 재현할 수 있다. 원래 이벤트 내용·시각을 유지하며 주문·체결·잔고는 바꾸지 않는다. 이미 자동 방출한 이벤트는 다시 내보내지 않고, 연결이 끊긴 동안 방출하면 일반 개인 이벤트처럼 버린다. `ORDER_FIRST`/`DUPLICATE`는 이벤트 전송만 바꾸고 장부·REST 체결은 한 번 반영한다. `CANCEL_RACE`는 현재 마지막 종가에 취소와 체결의 경합을 강제하는 테스트 전용 가정이며 정상 봉 체결 모델이 아니다.
 - 개인 스트림은 단일 소비자다. `disconnect()` 또는 장애 주입은 `connected=False`와 iterator 종료로 알리며 끊긴 동안 이벤트를 재생하지 않는다. REST로 복구 후 `reconnect()`하고 새 iterator를 구독한다. `drain_events()`는 테스트용 대체 소비 API로 스트림과 함께 소비하지 않는다.
 - 실제 네트워크 전송과 OMS/포트폴리오/저널 조립은 M1-06/M3 범위다. `as_gateway`는 strict mypy가 검사하는 프로토콜 적합성 경계다.
 
 검증: 가상 거래소 52개 테스트, 전체 Python 3.12·3.14 각각 475 passed + 28 subtests. ruff check/format, mypy strict(51 소스).
+
+
+### PR #17 검토 후 보완
+
+- 손절 미발동 상태의 부모 execution → 늦은 부착 손절 연결 통지를 `release_held()`로 재현한다. 회귀 테스트는 수동 방출 후 실제 손절 체결, 자동 방출 후 재호출, 끊김 중 유실/REST 보존, 여러 손절의 생성 순서를 포함한다.
+- P3 인수인계: PROTECT/수정 trigger 방향의 실제 거절 동작은 M3 데모 C3 확인 뒤 기본 모델에 반영할지 결정한다. 현재 모델은 다음 봉의 trigger 판정으로 처리한다.
+- M2 보고서 한계: 매수 지정가 95에 다음 시가가 89여도 체결가는 95·메이커로 가정한다(04 3.1). 실제 시장의 유리한 가격 개선은 모델링하지 않는다.
