@@ -56,14 +56,21 @@ M1의 저장소 함수(`get/find/all/put/add`)는 **동기**이고 위험 게이
 5. `uow_commits`는 N일 지나면 정리한다.
 
 - Oracle Transaction Guard는 thin 모드·Free 에디션 지원 조건을 확인한 뒤 별도로 결정한다. 위 표지 행 방식은 Transaction Guard 없이도 동작한다.
-- 주문 전송기(M1-06)는 결과 불명인 SUBMITTED 커밋에 대해 위 3번 결과가 나오기 전에는 전송하지 않는다.
+- 주문 전송기(M1-06)는 결과 불명인 **진입** SUBMITTED 커밋에 대해 위 3번 결과가 나오기 전에는 전송하지 않는다.
+
+**보호 작업 예외** (PR #18 재검토 3번): 보호·축소 작업(`CLOSE`·`REDUCE_UNPROTECTED`·`PROTECT`·취소·수량 변경)은 판정을 기다리지 않는다. 판정은 DB가 살아나야 끝나는데, 그동안 보호가 막히면 안 되기 때문이다(P1).
+
+1. 결과 불명이 나면 그 보호 작업은 저장소 장애와 같은 경로로 보낸다: 로컬 저널 `requested`(outbox `action_key` 포함) → 전송 → `result`(M1-06, D45·D65).
+2. 판정(위 3번)이 끝나면 **정상 전송기를 재개하기 전에** 먼저 저널을 DB에 합친다: 저널 레코드를 `protective_operations`에 반영하고, 저널로 이미 보낸 작업의 outbox 키를 acknowledge하고, 그 주문 상태를 저널 결과(또는 UNKNOWN)로 맞춘다.
+3. 그다음 정상 전송기를 재개한다. 이미 acknowledge된 작업은 다시 실행하지 않는다. 판정이 "커밋됨"이라 DB에 같은 주문이 `SUBMITTED`로 있어도, 2번에서 저널 결과가 먼저 들어가므로 다시 보내지 않는다.
+4. 작업 종류별 멱등성: create는 같은 orderLinkId라 거래소가 중복을 거절한다. cancel은 다시 보내도 "없음/늦음"으로 끝난다. amend는 다시 보내면 과거 목표를 덮어쓸 수 있으므로 **2번의 acknowledge 없이는 절대 재실행하지 않는다**(D90 재생 규칙).
 
 ## 범위
 
 ### 만들 것
 
 1. **마이그레이션** (`db/migrations/V001__init.sql` …)
-   - 03 6.2절 테이블과 M1에서 생긴 저장소 전부: `orders`, `order_events`, `fills`(exec_id 유일), `books`(전략 장부), `decisions`((계좌, signal_id) 유일), `episodes`(전략·계약당 비종결 1개 — 함수 기반 유일 인덱스), `close_intents`, `protection_recoveries`, `portfolio_actions`(outbox, 작업 키 유일), `portfolio_symbol_state`(계약 정지·손절 조회 회차·조회 시각·마지막 체결 시각·정지 회차), `funding_applied`(펀딩 ID 유일), `protective_operations`((operation_id, phase) 유일), `risk_states`(정지 상태 JSON, 최고점 2개, 재설정 이력), `equity_snapshots`, `cash_flows`(flow_id 유일), `alerts`, `commands`, `config_versions`, `account_locks`, `uow_commits`, `schema_version`, 그리고 M3-04 경계 처리용 `boundary_inputs`·`boundary_outputs`·`boundary_checkpoints`·`position_snapshots`·`unallocated_funding`.
+   - 03 6.2절 테이블과 M1에서 생긴 저장소 전부: `orders`, `order_events`, `fills`(exec_id 유일), `books`(전략 장부), `decisions`((계좌, signal_id) 유일), `episodes`(전략·계약당 비종결 1개 — 함수 기반 유일 인덱스), `close_intents`, `protection_recoveries`, `portfolio_actions`(outbox, 작업 키 유일), `portfolio_symbol_state`(계약 정지·손절 조회 회차·조회 시각·마지막 체결 시각·정지 회차), `funding_applied`(펀딩 ID 유일), `protective_operations`((operation_id, phase) 유일, `group_id`·`step`·`attempt`·`action_key` 열 — M1-06 D90), `risk_states`(정지 상태 JSON, 최고점 2개, 재설정 이력), `equity_snapshots`, `cash_flows`(flow_id 유일), `alerts`, `commands`, `config_versions`, `account_locks`, `uow_commits`, `schema_version`, 그리고 M3-04 경계 처리용 `boundary_inputs`·`boundary_outputs`·`boundary_checkpoints`·`position_snapshots`·`unallocated_funding`.
    - M1-04 연결 계약(outbox 인수·acknowledge, `ProtectionRecovery`, `recover_system_pause`의 조건)을 그대로 저장할 수 있어야 한다.
    - 금액·수량은 `NUMBER`(정밀도 지정 없음), 시각은 `TIMESTAMP WITH TIME ZONE`(UTC로 저장).
    - 마이그레이션 실행 명령: 버전 순서대로 한 번씩만 적용, 적용 기록. 시작 시 버전이 맞지 않으면 Trader가 시작을 거부(03 4.3절 2단계).
@@ -86,6 +93,7 @@ M1의 저장소 함수(`get/find/all/put/add`)는 **동기**이고 위험 게이
 - [ ] 작업 집합: N일보다 오래된 종결 주문이 `all()`에 없고, 종결되지 않은 에피소드가 참조하는 오래된 주문은 있음. N일보다 오래된 봉의 신호는 게이트가 거절. 작업 집합 밖 exec_id 중복은 커밋 시 도메인 예외.
 - [ ] 동시성: 두 작업이 같은 계좌로 동시에 위험 게이트를 통과하려 할 때 하나만 통과(M1-03 동시 진입 테스트를 Oracle로). 잠금 획득 전에 읽은 상태를 쓰지 않음.
 - [ ] **장애 지점 두 개를 따로 테스트**: (a) COMMIT 전 연결 끊김 → 아무것도 남지 않음, 같은 입력 재시도 가능. (b) COMMIT 후 응답 유실(DB에는 커밋됨) → `CommitOutcomeUnknown`, 진입 정지, 새 ID 발급·전송 없음, 재연결 후 `txn_id`로 "커밋됨" 판정 → 같은 주문으로 이어서 진행. (b′) 같은 상황에서 실제로는 롤백된 경우 → "롤백됨" 판정 → 재시도. (c) 재연결 실패 지속 → 정지 유지·알림.
+- [ ] 보호 작업의 결과 불명: create·amend·cancel 각각에 대해 결과 불명 → 저널 경유 전송 → 늦은 판정(커밋됨 / 롤백됨) → 저널을 먼저 합친 뒤 전송기 재개 → 다시 보내지 않음, 최종 상태 = 거래소
 - [ ] Decimal 왕복(`0.10000000`, 아주 작은 수량)과 UTC 시각 왕복.
 - [ ] 마이그레이션 재실행이 아무것도 바꾸지 않음, 버전 불일치 시 시작 거부.
 - [ ] (수동) 이 PC Oracle Free에서 `RLG_DEMO`로 전체 테스트 1회 실행 결과를 PR에 첨부.
