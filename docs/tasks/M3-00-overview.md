@@ -1,7 +1,7 @@
 # M3 데모 연결 — 작업 개요
 
 - 근거: [05_DEVELOPMENT_PROCESS.md](../design/05_DEVELOPMENT_PROCESS.md) 3장 M3, [03_SYSTEM_ARCHITECTURE.md](../design/03_SYSTEM_ARCHITECTURE.md), [02_RISK_MANAGEMENT.md](../design/02_RISK_MANAGEMENT.md) 6장, [04_VALIDATION_AND_OPERATIONS.md](../design/04_VALIDATION_AND_OPERATIONS.md) 5·7장
-- 선행 조건: M1 전체(M1-04~06 포함), M2-02(전략 신호) 병합
+- 선행 조건: 인프라 작업(M3-01~03·05·06)은 해당 M1 작업 뒤 바로 시작 가능. Trader 조립(M3-04)은 M1 전체·M2-02 뒤. **데모 1주 운영(M3-07)은 M2-04 보고서를 보고 사용자가 전략 값을 정한 뒤**(05의 M2 → M3 순서)
 - 구현: Codex / 검토: Claude Code (D37, D86)
 
 ## 목표
@@ -24,19 +24,19 @@ M1·M2의 순수 로직에 실제 외부 연결(Bybit 데모, Oracle, 텔레그�
 | 작업 | 내용 | 의존 |
 |---|---|---|
 | [M3-01](M3-01-config-and-keystore.md) | 설정 로더(환경별·경로·검증), 자격 증명 관리자 접근, 구조화 로그 | M1 |
-| [M3-02](M3-02-oracle-storage.md) | Oracle 스키마·마이그레이션, `UnitOfWork` Oracle 구현, 백업(Data Pump) | M1-02·03·06 |
+| [M3-02](M3-02-oracle-storage.md) | Oracle 스키마·마이그레이션, `UnitOfWork` Oracle 구현(적재→동기 조작→커밋 반영), 커밋 결과 불명 처리, 백업(Data Pump) | M1-02·03·04·06 |
 | [M3-03](M3-03-bybit-adapter.md) | Bybit 데모 REST·개인 WS·공개 시세 WS 어댑터(`ExchangeGateway` 구현) | M1-05, M3-01 |
-| [M3-04](M3-04-trader-assembly.md) | Trader 조립: 시세→전략→위험→주문→동기화 실행 루프, 상태 확인 주소 | M1 전체, M2-02, M3-01~03 |
+| [M3-04](M3-04-trader-assembly.md) | Trader 조립: 경계별 입력 장벽·체크포인트, 전략 설정, 실행 루프, 상태 확인 주소 | M1 전체, M2-02, M3-01~03 |
 | [M3-05](M3-05-telegram.md) | 텔레그램 알림·명령(`/status` `/pause` `/resume` `/cancel` `/resolve`), 키 만료 알림 | M3-04 |
 | [M3-06](M3-06-watchdog-and-services.md) | Watchdog, Windows 서비스 등록·자동 재시작, 운영 체크 | M3-04, M3-05 |
-| [M3-07](M3-07-demo-run.md) | 데모 1주 운영, Bybit 실제 동작 확인 기록, M3 완료 판정 | M3-01~06 |
+| [M3-07](M3-07-demo-run.md) | 데모 1주 운영, Bybit 실제 동작 확인 기록, M3 완료 판정 | M3-01~06, M2-04 + 사용자 전략 선택 |
 
 ## M3 공통 규칙
 
 - 데모와 실거래를 섞지 않는다: 주소·API 키·Oracle 스키마(`RLG_DEMO`/`RLG_LIVE`)·경로가 `environment` 하나로 함께 바뀐다. `live`는 M3에서 **시작 자체를 거부**한다(실거래 전환은 04 4.2절 조건 충족 후 별도 작업).
 - 비밀 정보(API 키·시크릿, 봇 토큰, DB 비밀번호)는 자격 증명 관리자에서만 읽는다. 로그·DB·예외 메시지·텔레그램에 남기지 않는다(마스킹 테스트).
 - 외부 연동 코드는 M1의 인터페이스(`ExchangeGateway`, `UnitOfWork`, `Clock`)를 구현한다. 순수 로직을 고치지 않는다. 고쳐야 하면 설계·명세 질문부터.
-- 런타임 의존성을 추가할 때는 PR 설명에 이유를 적는다. 이 명세가 제안하는 의존성: `aiohttp`(REST·WS·텔레그램), `oracledb`(thin 모드), `keyring`(Windows 자격 증명 관리자). 다른 선택이 낫다면 구현 전에 질문.
+- 런타임 의존성을 추가할 때는 PR 설명에 이유를 적는다. 이 명세가 제안하는 의존성: `aiohttp`(REST·WS·텔레그램), `oracledb`(thin 모드), `keyring`(Windows 자격 증명 관리자). 다른 선택이 낫다면 구현 전에 질문. Codex 검토(PR #15)에서 세 가지 모두 적절하다고 확인했다.
 - 실제 외부 연결 테스트는 CI에서 돌리지 않는다. 수동 통합 테스트 절차를 각 명세에 적고, 결과를 PR에 첨부한다.
 
 ## M3 완료 조건 (05 3장 M3 그대로 + 보완)

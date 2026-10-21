@@ -1,6 +1,6 @@
 # M3-03 Bybit 어댑터
 
-- 상태: 명세 작성 완료, 검토 대기
+- 상태: Codex 검토 반영(2026-10-21), 재검토 대기
 - 구현: Codex / 검토: Claude Code
 - 브랜치: `task/M3-03-bybit-adapter`
 - 근거: 03 3장(ExchangeGateway)·4.2~4.3절·5장, 01 1.4절(D41·D42), D53, D61, D71, D72, D79, D87, M1-05 인터페이스, M3-00의 데모 환경 사실
@@ -23,6 +23,7 @@ M1-05의 `ExchangeGateway`를 Bybit V5로 구현한다. 가상 거래소와 같�
    - 진입: `stopLoss`, `tpslMode=Partial`, `slOrderType=Market`, `slTriggerBy`(설정, 기본 LastPrice) 필수. `reduceOnly`는 진입에 쓰지 않는다(Bybit는 reduceOnly 주문에 TP/SL을 붙일 수 없음).
    - 청산·보호: `reduceOnly=true`, 손절 재등록은 조건부 주문(`triggerPrice`, `triggerDirection`)으로.
    - `positionIdx=0`(단방향, D9). 시작 시 계약별 포지션 모드·격리 마진(D10)·레버리지(D11) 설정을 **읽어서 확인**하고, 다르면 진입 정지·알림(자동으로 바꾸지 않음).
+   - 확인 출처: 통합 계좌(UTA)의 격리 여부는 포지션의 `tradeMode`(지원 중단)가 아니라 `/v5/account/info`의 `marginMode`로 본다. 레버리지는 `/v5/position/list`의 `leverage`. 매핑 표를 코드 옆 문서에 남긴다.
 3. **조회** (03 4.3절 동기화용)
    - 미체결: 일반 주문과 조건부 주문(`orderFilter`) 모두. 주문 이력, 체결 내역(`/v5/execution/list`, 시작 시각 기준 페이지), 포지션, 지갑(`/v5/account/wallet-balance` → `AccountSnapshot(wallet_balance, unrealized_pnl)`, D72), 입출금·이체 기록(`/v5/account/transaction-log` → `CashFlow`, D71).
    - **데모는 주문 기록을 7일만 보관**: 동기화 재조회 범위가 7일을 넘으면 자동 복구하지 않고 정지 유지·알림(03 4.3절 마지막 규칙의 구체 값).
