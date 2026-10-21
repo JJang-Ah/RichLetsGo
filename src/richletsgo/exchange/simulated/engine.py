@@ -294,7 +294,9 @@ class SimulatedExchange:
             return ExchangeError(ErrorCode.TIMEOUT, "cancelled; response lost")
         return Accepted(order.event().order_link_id, order.exchange_id)
 
-    async def amend_stop(self, order_link_id: str, trigger_price: Price) -> CommandResult:
+    async def amend_stop(
+        self, order_link_id: str, trigger_price: Price | None = None, qty: Qty | None = None
+    ) -> CommandResult:
         faults = self._fault("amend", order_link_id)
         order = self._lookup(order_link_id)
         if order is None:
@@ -303,8 +305,27 @@ class SimulatedExchange:
             return ExchangeError(ErrorCode.TOO_LATE, "terminal stop")
         if order.request.trigger_price is None:
             return ExchangeError(ErrorCode.REJECTED, "not a stop")
-        order.request = replace(order.request, trigger_price=trigger_price)
+        if trigger_price is None and qty is None:
+            return ExchangeError(ErrorCode.REJECTED, "amend requires a field")
+        if FaultKind.AMEND_UNSUPPORTED in faults:
+            return ExchangeError(ErrorCode.UNSUPPORTED, "quantity amendment unsupported")
+        if qty is not None:
+            spec = self._specs[order.request.symbol]
+            if (
+                qty.value * order.request.qty.value <= 0
+                or abs(qty.value) <= order.cumulative
+                or spec.round_qty_down(abs(qty.value)) != abs(qty.value)
+            ):
+                return ExchangeError(
+                    ErrorCode.REJECTED, "invalid total quantity; use cancel for zero remaining"
+                )
+        order.request = replace(
+            order.request,
+            trigger_price=trigger_price or order.request.trigger_price,
+            qty=qty or order.request.qty,
+        )
         self._change(order, order.state, self.clock.now())
+        self._shrink_stops(order.request.symbol, self.clock.now())
         if FaultKind.RESPONSE_LOST in faults:
             return ExchangeError(ErrorCode.TIMEOUT, "amended; response lost")
         return Accepted(order.event().order_link_id, order.exchange_id)
