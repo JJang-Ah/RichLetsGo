@@ -2,6 +2,7 @@
 
 from dataclasses import dataclass
 from datetime import datetime
+from decimal import Decimal
 from enum import StrEnum
 
 from richletsgo.domain import Qty, StrategyId, Symbol
@@ -25,6 +26,9 @@ class DecisionKind(StrEnum):
 
 class RejectionCode(StrEnum):
     PAUSED = "PAUSED"
+    AI_BLOCKED = "AI_BLOCKED"
+    EXIT_ONLY = "EXIT_ONLY"
+    POSITION_NOT_FLAT = "POSITION_NOT_FLAT"
     INVALID_STOP = "INVALID_STOP"
     BELOW_MIN_QTY = "BELOW_MIN_QTY"
     LEVERAGE_OUT_OF_RANGE = "LEVERAGE_OUT_OF_RANGE"
@@ -65,6 +69,10 @@ class DecisionRecord:
     approved_qty: Qty | None
     rejections: tuple[Rejection, ...]
     basis: Basis
+    original_qty: Qty | None = None
+    ai_mode: str = "disabled"
+    ai_score: Decimal | None = None
+    ai_status: str = "DISABLED"
 
     def __post_init__(self) -> None:
         if not self.account_id or not self.signal_id:
