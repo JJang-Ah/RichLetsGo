@@ -66,10 +66,10 @@ def _book(uow: UnitOfWork, fill: FillRecord, order: OrderRecord, hook: BookHook)
             updated_at=max(order.updated_at, event.exec_time),
         )
     )
-    hook(uow, event, Attribution(order.strategy, order.purpose, False))
     uow.fills.replace(
         replace(fill, status=FillStatus.BOOKED, order_key=order.key, strategy=order.strategy)
     )
+    hook(uow, event, Attribution(order.strategy, order.purpose, False))
     return FillResult.CORRECTED_FROM_NOT_FOUND if corrected else FillResult.BOOKED
 
 
@@ -123,6 +123,7 @@ def _adopt(uow: UnitOfWork, event: OrderEvent, reference_price: Price) -> OrderR
         event.exchange_cum_exec_qty,
         event.event_time,
         event.event_time,
+        trigger_price=event.trigger_price,
     )
 
 
@@ -168,8 +169,8 @@ async def ingest_order_event(
                 record = uow.orders.get(record.key)
                 assert record is not None
             elif lookup_confirmed and foreign:
-                hook(uow, fill.event, Attribution(None, None, True))
                 uow.fills.replace(replace(fill, status=FillStatus.EXTERNAL))
+                hook(uow, fill.event, Attribution(None, None, True))
                 results.append(FillResult.EXTERNAL)
         await uow.commit()
         return transition, tuple(results)
