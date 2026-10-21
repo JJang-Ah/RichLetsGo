@@ -63,7 +63,7 @@ M1의 저장소 함수(`get/find/all/put/add`)는 **동기**이고 위험 게이
 ### 만들 것
 
 1. **마이그레이션** (`db/migrations/V001__init.sql` …)
-   - 03 6.2절 테이블과 M1에서 생긴 저장소 전부: `orders`, `order_events`, `fills`(exec_id 유일), `books`(전략 장부), `decisions`((계좌, signal_id) 유일), `episodes`(전략·계약당 비종결 1개 — 함수 기반 유일 인덱스), `close_intents`, `protection_recoveries`, `portfolio_actions`(outbox, 작업 키 유일), `portfolio_symbol_state`(계약 정지·손절 조회 회차·조회 시각·마지막 체결 시각·정지 회차), `funding_applied`(펀딩 ID 유일), `protective_operations`((operation_id, phase) 유일), `risk_states`(정지 상태 JSON, 최고점 2개, 재설정 이력), `equity_snapshots`, `cash_flows`(flow_id 유일), `alerts`, `commands`, `config_versions`, `account_locks`, `uow_commits`, `schema_version`.
+   - 03 6.2절 테이블과 M1에서 생긴 저장소 전부: `orders`, `order_events`, `fills`(exec_id 유일), `books`(전략 장부), `decisions`((계좌, signal_id) 유일), `episodes`(전략·계약당 비종결 1개 — 함수 기반 유일 인덱스), `close_intents`, `protection_recoveries`, `portfolio_actions`(outbox, 작업 키 유일), `portfolio_symbol_state`(계약 정지·손절 조회 회차·조회 시각·마지막 체결 시각·정지 회차), `funding_applied`(펀딩 ID 유일), `protective_operations`((operation_id, phase) 유일), `risk_states`(정지 상태 JSON, 최고점 2개, 재설정 이력), `equity_snapshots`, `cash_flows`(flow_id 유일), `alerts`, `commands`, `config_versions`, `account_locks`, `uow_commits`, `schema_version`, 그리고 M3-04 경계 처리용 `boundary_inputs`·`boundary_outputs`·`boundary_checkpoints`·`position_snapshots`·`unallocated_funding`.
    - M1-04 연결 계약(outbox 인수·acknowledge, `ProtectionRecovery`, `recover_system_pause`의 조건)을 그대로 저장할 수 있어야 한다.
    - 금액·수량은 `NUMBER`(정밀도 지정 없음), 시각은 `TIMESTAMP WITH TIME ZONE`(UTC로 저장).
    - 마이그레이션 실행 명령: 버전 순서대로 한 번씩만 적용, 적용 기록. 시작 시 버전이 맞지 않으면 Trader가 시작을 거부(03 4.3절 2단계).
