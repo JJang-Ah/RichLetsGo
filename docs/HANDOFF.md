@@ -175,6 +175,14 @@
 - 포지션 미실현 손익 소폭 상승·하락과 경계, 큰 하락·경계 초과, 이전 정지 버전, 기록용 최고점 변경 및 필수 설정 검증 등 14개 회귀 사례 추가.
 - Python 3.12.14·3.14.3 각각 326 passed 및 28 subtests passed, ruff check/format, mypy strict(39 소스) 통과. 설계 02·명세·README·설정 예시를 갱신했다. 다음 담당자: Claude Code 재검토. PR은 병합하지 않는다.
 
+## 2026-10-20 — Claude Code (M2-01 구현, D86 예외)
+
+- Codex 사용 한도 동안 D86 예외로 Claude가 구현. 해석 목록(I1~I14)을 먼저 올려 사용자 확인 후 구현. 검토는 Codex.
+- `marketdata/`: models(Bar, FundingRate, InstrumentSnapshot, RiskLimitTier), validate(진행 중 봉 제거, OHLC·정렬 검사, 빈 구간·D87 펀딩 간격), store(SQLite, Decimal TEXT, 같은 키 다른 값이면 배치 전체 롤백), bybit_public(urllib, 재시도·백오프, kline 1000개 페이지, 펀딩 endTime 역방향 페이지, risk-limit cursor), ingest(빈 구간만 요청, 실행 기록). 설정 예시에 `bybit_public.base_url`, `paths.backtest.market_data_dir` 추가.
+- 구현 중 실제 응답으로 정정한 것: I7 증거금률은 퍼센트가 아니라 **비율**(1단계 MMR 0.0033), 최고 단계 IMR은 정확히 1(100%, 1배)이라 범위를 (0, 1]로.
+- 검증: Python 3.14.3에서 ruff·format·mypy(44 소스)·pytest 349 passed(신규 23, 실제 응답 fixture 4개, 네트워크 접근 차단). 실제 3년 수집 1회: 두 계약 각각 일봉 1,094 / 1시간봉 26,279 / 펀딩 3,285, 빈 구간·거절·충돌 0, 41초. 재실행 2초, 봉·펀딩 요청 0.
+- 다음: Codex 검토. M2-02는 M1-04 이후.
+
 ## 2026-10-20 — Claude Code (PR #10 병합, 설계 정리)
 
 - PR #10(M1-03 위험 엔진) 병합(1855a78). 구현 Claude → Codex 검토·수정(c099a6e, 7a7d996) → Claude 재검토.
@@ -239,3 +247,12 @@
 - 단계 복원(M3-04): 단계마다 상태·출력·체크포인트를 같은 UoW로 커밋. 입력 봉·스냅샷·`start_day`·신호·시장 입력을 저장해 재시작 때 다시 계산하지 않음. 전송 단계는 M1-06 복구 규칙. 장애 지점(커밋 전/후) 테스트 추가. 테이블은 M3-02 스키마에 추가.
 - PR #12는 Codex 재검토 통과(fa56555), 사용자 병합 대기.
 - 검증: 문서 변경만. 다음: Codex 재검토.
+
+## 2026-10-21 — Claude Code (PR #12 Codex 검토 P2 3건 수정)
+
+- main 병합(README·설정 예시·HANDOFF 충돌은 양쪽 내용 유지).
+- 저장 원자성(I10): 봉·펀딩 모두 한 계열의 응답을 전부 받아 검사한 뒤 한 번에 저장. 응답 충돌·요청 실패 시 그 계열은 저장 0건.
+- 펀딩 재수집(I11, D87): 저장 범위 양끝은 한 주기 이하여도 항상 다시 조회하고, 내부 빈 구간(기록 간격 > 수집 시점 주기)도 요청 범위에 넣음.
+- 회귀 테스트 5개 추가(수정 전 코드에서 5개 모두 실패 확인), 충돌 테스트 기대값 변경. Python 3.14: 421 passed + 28 subtests, ruff check/format, mypy strict(48 소스) 통과. 3.12는 CI로 확인.
+- 남은 것: I13 보완 권장(거절 원문·사유 저장)은 이번에 하지 않음. 다음: Codex 재검토.
+- 추가: Codex 권장 I13 반영. `ingest_runs.summary_json`을 `{"request": 원래 요청, "series": 계열별 결과}`로 바꾸고, 계열마다 거절 행의 원문·사유·요청 범위를 최대 200행 남김(개수는 전부). 테스트 2개 추가 + CLI 테스트 확인 보강, 423 passed.

@@ -33,6 +33,10 @@ oracle_read = "richletsgo/oracle-read"
 # Future loader (M3): paths are relative to THIS config file, never cwd.
 # Example values; keep environments separate.
 
+[bybit_public]
+# Public market data for backtests (M2-01). No API key. Mainnet REST base URL.
+base_url = "https://api.bybit.com"
+
 [backtest.research_risk]
 # D88 research profile for V1 backtests only - NOT live trading values (Q13 stays open).
 start_equity_usdt = "10000"
@@ -60,6 +64,7 @@ max_invalid_window_ratio = "0.25"
 max_grid_points = 200
 
 [paths.backtest]
+market_data_dir = "data/backtest/market_data"
 journal_dir = "data/backtest/journal"
 log_dir = "logs/backtest"
 backup_dir = "backups/backtest"
