@@ -276,9 +276,59 @@ def test_conflicting_duplicate_from_exchange_fails_the_series(tmp_path):
     with MarketDataStore(tmp_path) as store:
         report = ingest_bars(client, store, BTC, Interval.HOUR, T0, now)
         assert not report.ok and report.conflicts == ["response 2026-01-01T03:00:00Z"]
-        starts = store.bar_starts(BTC, Interval.HOUR, T0, now)
-        assert T0 + 3 * HOUR not in starts and len(starts) == 5
-        assert report.gaps == [("2026-01-01T03:00:00Z", "2026-01-01T03:00:00Z")]
+        assert report.stored == 0 and store.bar_starts(BTC, Interval.HOUR, T0, now) == []
+        assert report.gaps == [("2026-01-01T00:00:00Z", "2026-01-01T05:00:00Z")]
+
+
+def test_series_is_atomic_across_missing_ranges(tmp_path):
+    """I10: a conflict in a later range leaves the store exactly as it was."""
+    now = T0 + timedelta(hours=12)
+    exchange = FakeBybit(now, missing={T0 + 2 * HOUR, T0 + 8 * HOUR})
+    client, _ = client_for(exchange)
+    with MarketDataStore(tmp_path) as store:
+        assert ingest_bars(client, store, BTC, Interval.HOUR, T0, now).stored == 10
+        before = store.bar_starts(BTC, Interval.HOUR, T0, now)
+
+        class LaterClash(FakeBybit):
+            def get(self, url, timeout):
+                status, body = super().get(url, timeout)
+                q = dict(urllib.parse.parse_qsl(urllib.parse.urlparse(url).query))
+                if "/kline" in url and from_ms(int(q["start"])) == T0 + 8 * HOUR:
+                    payload = json.loads(body)
+                    rows = payload["result"]["list"]
+                    clash = list(rows[0])
+                    clash[4] = str(D(clash[4]) + 1)
+                    rows.append(clash)
+                    body = json.dumps(payload).encode()
+                return status, body
+
+        clashing, _ = client_for(LaterClash(now))
+        report = ingest_bars(clashing, store, BTC, Interval.HOUR, T0, now)
+        assert len(report.requested_ranges) == 2 and not report.ok
+        assert report.stored == 0 and store.bar_starts(BTC, Interval.HOUR, T0, now) == before
+
+
+def test_request_failure_stores_nothing_for_the_series(tmp_path):
+    now = T0 + timedelta(hours=12)
+    exchange = FakeBybit(now, missing={T0 + 2 * HOUR, T0 + 8 * HOUR})
+    client, _ = client_for(exchange)
+    with MarketDataStore(tmp_path) as store:
+        ingest_bars(client, store, BTC, Interval.HOUR, T0, now)
+        before = store.bar_starts(BTC, Interval.HOUR, T0, now)
+        exchange.missing.clear()
+
+        class SecondFails:
+            calls: list[str] = []
+
+            def get(self, url, timeout):
+                self.calls.append(url)
+                return exchange.get(url, timeout) if len(self.calls) == 1 else (400, b"{}")
+
+        transport = SecondFails()
+        failing, _ = client_for(transport, attempts=1)
+        report = ingest_bars(failing, store, BTC, Interval.HOUR, T0, now)
+        assert report.error and len(transport.calls) == 2
+        assert store.bar_starts(BTC, Interval.HOUR, T0, now) == before
 
 
 def test_funding_pages_backwards_and_reports_gaps(tmp_path):
@@ -291,6 +341,53 @@ def test_funding_pages_backwards_and_reports_gaps(tmp_path):
         assert report.stored == 300  # 301 slots minus one hole
         assert len([u for u in exchange.urls if "funding" in u]) == 2  # 200 + 101
         assert report.gaps == [("2026-01-17T08:00:00Z", "2026-01-18T00:00:00Z")]
+
+
+def test_inner_funding_gap_is_requeried_and_filled(tmp_path):
+    now = T0 + timedelta(hours=32)
+    hole = T0 + timedelta(hours=16)
+    exchange = FakeBybit(now, funding_missing={hole})
+    client, _ = client_for(exchange)
+    with MarketDataStore(tmp_path) as store:
+        first = ingest_funding(client, store, BTC, T0, now, timedelta(hours=8))
+        assert first.gaps == [("2026-01-01T08:00:00Z", "2026-01-02T00:00:00Z")]
+        exchange.funding_missing.clear()  # the exchange now serves the record
+        exchange.urls.clear()
+        again = ingest_funding(client, store, BTC, T0, now, timedelta(hours=8))
+        assert ("2026-01-01T08:00:00Z", "2026-01-02T00:00:00Z") in again.requested_ranges
+        assert again.stored == 1 and again.gaps == [] and hole in store.funding_times(BTC)
+
+
+def test_funding_exactly_one_interval_later_is_collected(tmp_path):
+    exchange = FakeBybit(T0 + timedelta(minutes=5))
+    client, _ = client_for(exchange)
+    with MarketDataStore(tmp_path) as store:
+        ingest_funding(client, store, BTC, T0, exchange.now, timedelta(hours=8))
+        assert store.funding_times(BTC) == [T0]
+        later = T0 + timedelta(hours=8)
+        exchange.now = later
+        report = ingest_funding(client, store, BTC, T0, later, timedelta(hours=8))
+        assert report.requested_ranges == [("2026-01-01T00:00:00Z", "2026-01-01T08:00:00Z")]
+        assert report.stored == 1 and store.funding_times(BTC) == [T0, later]
+
+
+def test_funding_conflict_across_pages_stores_nothing(tmp_path):
+    now = T0 + timedelta(hours=8 * 3)
+
+    class Conflicting(FakeBybit):
+        def get(self, url, timeout):
+            status, body = super().get(url, timeout)
+            if "funding" in url:
+                payload = json.loads(body)
+                rows = payload["result"]["list"]
+                rows.append(dict(rows[0], fundingRate="0.0002"))
+                body = json.dumps(payload).encode()
+            return status, body
+
+    client, _ = client_for(Conflicting(now))
+    with MarketDataStore(tmp_path) as store:
+        report = ingest_funding(client, store, BTC, T0, now, timedelta(hours=8))
+        assert report.error and report.stored == 0 and store.funding_times(BTC) == []
 
 
 def test_snapshots_and_full_run(tmp_path):

@@ -20,7 +20,7 @@ from .bybit_public import (
     Transport,
     UrllibTransport,
 )
-from .models import Interval
+from .models import Bar, FundingRate, Interval
 from .store import MarketDataStore
 from .validate import funding_gaps, missing_bar_ranges, parse_funding, parse_klines
 
@@ -56,7 +56,11 @@ def ingest_bars(
     first: datetime,
     now: datetime,
 ) -> SeriesReport:
-    """Fetch only missing closed bars in [first, last closed bar] and report remaining gaps."""
+    """Fetch only missing closed bars in [first, last closed bar] and report remaining gaps.
+
+    One series is one transaction (I10): every response is fetched and checked first,
+    and nothing is stored if any response conflicts or any request fails.
+    """
     report = SeriesReport(f"bars {symbol.value} {interval.value}")
     last = interval.floor(now) - interval.duration  # last bar that is fully closed
     if last < first:
@@ -65,6 +69,7 @@ def ingest_bars(
         missing = missing_bar_ranges(
             interval, store.bar_starts(symbol, interval, first, last), first, last
         )
+        fetched: list[Bar] = []
         for lo, hi in missing:
             report.requested_ranges.append((_iso(lo), _iso(hi)))
             rows = client.klines(symbol, interval, lo, hi)
@@ -73,17 +78,35 @@ def ingest_bars(
             report.rejected += len(batch.rejected)
             report.in_progress_dropped += batch.in_progress_dropped
             report.conflicts += [f"response {_iso(t)}" for t in batch.conflicts]
-            in_range = [b for b in batch.bars if lo <= b.start <= hi]
-            result = store.put_bars(in_range)
+            fetched += [b for b in batch.bars if lo <= b.start <= hi]
+        if not report.conflicts:
+            result = store.put_bars(fetched)
             report.stored += result.inserted
             report.conflicts += list(result.conflicts)
-        remaining = missing_bar_ranges(
-            interval, store.bar_starts(symbol, interval, first, last), first, last
-        )
-        report.gaps = [(_iso(a), _iso(b)) for a, b in remaining]
     except BybitApiError as exc:
         report.error = str(exc)
+    remaining = missing_bar_ranges(
+        interval, store.bar_starts(symbol, interval, first, last), first, last
+    )
+    report.gaps = [(_iso(a), _iso(b)) for a, b in remaining]
     return report
+
+
+def funding_request_spans(
+    times: Sequence[datetime], interval: timedelta, first: datetime, now: datetime
+) -> list[tuple[datetime, datetime]]:
+    """Ranges to (re)query: both edges always (a record may sit exactly one interval
+    away, and D87 trusts recorded times, not the current interval), plus every inner
+    stretch longer than the captured interval so a later run can fill it."""
+    if not times:
+        return [(first, now)]
+    spans: list[tuple[datetime, datetime]] = []
+    if times[0] > first:
+        spans.append((first, times[0]))
+    spans += [(a, b) for a, b in zip(times, times[1:], strict=False) if b - a > interval]
+    if now > times[-1]:
+        spans.append((times[-1], now))
+    return spans
 
 
 def ingest_funding(
@@ -94,27 +117,32 @@ def ingest_funding(
     now: datetime,
     funding_interval: timedelta,
 ) -> SeriesReport:
-    """Fetch only outside the stored span; gaps follow D87 (recorded times, captured interval)."""
+    """Fetch edges and inner gaps of the stored span; gaps follow D87 (recorded times,
+    captured interval). Like bars, the whole series is stored in one transaction."""
     report = SeriesReport(f"funding {symbol.value}")
     try:
-        times = [t for t in store.funding_times(symbol) if t >= first]
-        spans = [(first, now)] if not times else [(first, times[0]), (times[-1], now)]
-        for lo, hi in spans:
-            if hi - lo <= funding_interval and times:
-                continue
+        times = sorted(t for t in store.funding_times(symbol) if first <= t <= now)
+        fetched: dict[datetime, FundingRate] = {}
+        for lo, hi in funding_request_spans(times, funding_interval, first, now):
             report.requested_ranges.append((_iso(lo), _iso(hi)))
             rows = client.funding_history(symbol, lo, hi)
-            rates = parse_funding(rows, symbol)
             report.received += len(rows)
-            result = store.put_funding(rates)
-            report.stored += result.inserted
-            report.conflicts += list(result.conflicts)
-        stored_times = [t for t in store.funding_times(symbol) if first <= t <= now]
-        report.gaps = [
-            (_iso(a), _iso(b)) for a, b in funding_gaps(stored_times, funding_interval, first, now)
-        ]
+            for rate in parse_funding(rows, symbol):
+                previous = fetched.get(rate.funding_time)
+                if previous is not None and previous.rate != rate.rate:
+                    raise ValueError(
+                        f"conflicting funding rates at {rate.funding_time.isoformat()}"
+                    )
+                fetched[rate.funding_time] = rate
+        result = store.put_funding([fetched[k] for k in sorted(fetched)])
+        report.stored += result.inserted
+        report.conflicts += list(result.conflicts)
     except (BybitApiError, ValueError) as exc:
         report.error = str(exc)
+    stored_times = [t for t in store.funding_times(symbol) if first <= t <= now]
+    report.gaps = [
+        (_iso(a), _iso(b)) for a, b in funding_gaps(stored_times, funding_interval, first, now)
+    ]
     return report
 
 
