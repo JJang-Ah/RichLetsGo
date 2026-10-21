@@ -25,6 +25,7 @@ from .store import MarketDataStore
 from .validate import funding_gaps, missing_bar_ranges, parse_funding, parse_klines
 
 DEFAULT_HISTORY = timedelta(days=3 * 365)  # D70: three years
+MAX_REJECTED_DETAIL = 200  # raw rows kept per series in the run record; the count is exact
 
 
 @dataclass(slots=True)
@@ -34,6 +35,7 @@ class SeriesReport:
     received: int = 0
     stored: int = 0
     rejected: int = 0
+    rejected_rows: list[dict[str, object]] = field(default_factory=list)
     in_progress_dropped: int = 0
     gaps: list[tuple[str, str]] = field(default_factory=list)
     conflicts: list[str] = field(default_factory=list)
@@ -76,6 +78,10 @@ def ingest_bars(
             batch = parse_klines(rows, symbol, interval, now)
             report.received += len(rows)
             report.rejected += len(batch.rejected)
+            for row in batch.rejected[: MAX_REJECTED_DETAIL - len(report.rejected_rows)]:
+                report.rejected_rows.append(
+                    {"range": [_iso(lo), _iso(hi)], "reason": row.reason, "raw": list(row.raw)}
+                )
             report.in_progress_dropped += batch.in_progress_dropped
             report.conflicts += [f"response {_iso(t)}" for t in batch.conflicts]
             fetched += [b for b in batch.bars if lo <= b.start <= hi]
@@ -272,7 +278,17 @@ def main(
             minute_range=minute_range,
             with_funding=not args.skip_funding,
         )
-        summary: dict[str, object] = {r.name: _as_dict(r) for r in result.reports}
+        summary: dict[str, object] = {
+            "request": {
+                "symbols": args.symbols,
+                "intervals": args.intervals,
+                "since": _iso(since),
+                "now": _iso(started),
+                "minute_range": [_iso(t) for t in minute_range] if minute_range else None,
+                "with_funding": not args.skip_funding,
+            },
+            "series": {r.name: _as_dict(r) for r in result.reports},
+        }
         store.record_run(
             started=started,
             finished=now(),
@@ -300,6 +316,7 @@ def _as_dict(report: SeriesReport) -> dict[str, object]:
         "received": report.received,
         "stored": report.stored,
         "rejected": report.rejected,
+        "rejected_rows": report.rejected_rows,
         "in_progress_dropped": report.in_progress_dropped,
         "gaps": report.gaps,
         "conflicts": report.conflicts,

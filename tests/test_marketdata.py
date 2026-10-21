@@ -171,6 +171,50 @@ def test_invalid_rows_are_rejected_not_stored(row):
     assert not batch.bars and len(batch.rejected) == 1
 
 
+def test_rejected_rows_keep_raw_reason_and_requested_range(tmp_path):
+    """I13: a rejected row can be reproduced from the run record alone."""
+    now = T0 + timedelta(hours=6)
+
+    class OneBadRow(FakeBybit):
+        def get(self, url, timeout):
+            status, body = super().get(url, timeout)
+            if "/kline" in url:
+                payload = json.loads(body)
+                row = next(r for r in payload["result"]["list"] if int(r[0]) == to_ms(T0 + HOUR))
+                row[3] = str(D(row[2]) + 1)  # low above high
+                body = json.dumps(payload).encode()
+            return status, body
+
+    client, _ = client_for(OneBadRow(now))
+    with MarketDataStore(tmp_path) as store:
+        report = ingest_bars(client, store, BTC, Interval.HOUR, T0, now)
+    assert report.rejected == 1 and len(report.rejected_rows) == 1
+    detail = report.rejected_rows[0]
+    assert detail["range"] == ["2026-01-01T00:00:00Z", "2026-01-01T05:00:00Z"]
+    assert detail["raw"][0] == str(to_ms(T0 + HOUR)) and detail["reason"]
+    assert report.gaps == [("2026-01-01T01:00:00Z", "2026-01-01T01:00:00Z")]
+
+
+def test_rejected_detail_is_capped_but_count_is_exact(tmp_path, monkeypatch):
+    monkeypatch.setattr(ingest_module, "MAX_REJECTED_DETAIL", 2)
+    now = T0 + timedelta(hours=6)
+
+    class AllBad(FakeBybit):
+        def get(self, url, timeout):
+            status, body = super().get(url, timeout)
+            if "/kline" in url:
+                payload = json.loads(body)
+                for row in payload["result"]["list"]:
+                    row[1] = "x"
+                body = json.dumps(payload).encode()
+            return status, body
+
+    client, _ = client_for(AllBad(now))
+    with MarketDataStore(tmp_path) as store:
+        report = ingest_bars(client, store, BTC, Interval.HOUR, T0, now)
+    assert report.rejected == 6 and len(report.rejected_rows) == 2
+
+
 def test_duplicate_rows_in_one_response():
     row = ["1767225600000", "10", "11", "9", "10", "1", "1"]
     same = parse_klines([row, list(row)], BTC, Interval.HOUR, T0 + timedelta(days=1))
@@ -495,6 +539,17 @@ def test_cli_uses_config_relative_path_regardless_of_cwd(tmp_path, monkeypatch):
     assert db.exists() and not (elsewhere / "data").exists()
     runs = sqlite3.connect(db).execute("SELECT ok, code_commit FROM ingest_runs").fetchall()
     assert runs == [(1, "unknown")]
+    (summary,) = sqlite3.connect(db).execute("SELECT summary_json FROM ingest_runs").fetchone()
+    summary = json.loads(summary)
+    assert summary["request"] == {
+        "symbols": ["BTCUSDT"],
+        "intervals": ["60"],
+        "since": "2026-01-01T00:00:00Z",
+        "now": now.isoformat().replace("+00:00", "Z"),
+        "minute_range": None,
+        "with_funding": True,
+    }
+    assert summary["series"]["bars BTCUSDT 60"]["rejected_rows"] == []
 
 
 def test_minute_bars_require_explicit_range():
