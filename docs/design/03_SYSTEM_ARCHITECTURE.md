@@ -253,7 +253,7 @@ CREATED ──전송──→ SUBMITTED ──접수──→ OPEN ──일부 
   | `seq` | 저널 안 순번 (재생 순서) |
   | `op_type` | `create` / `amend` / `cancel` / `close` |
   | `target` | 대상 주문의 orderLinkId 와 거래소 orderId (create는 새 orderLinkId) |
-  | `request` | 보낸 내용 (amend는 이전 값과 새 trigger 가격) |
+  | `request` | 보낸 내용. amend는 바꾸는 필드 목록(trigger/qty), 이전 값(trigger·전체 수량·누적 체결), 요청 값 (D90) |
   | `result` | 응답 코드·내용 (`result` 단계만) |
   | `ts` | 시각 |
 - **정상 전송과 긴급 전송 (D65)**
@@ -263,7 +263,7 @@ CREATED ──전송──→ SUBMITTED ──접수──→ OPEN ──일부 
 - **재생**: DB가 복구되거나 프로세스가 재시작되면 저널을 `seq` 순서로 `protective_operations` 테이블에 반영한다. 중복 판단은 `(operation_id, phase)` 단위로 한다(이미 있으면 건너뜀). orderLinkId로 건너뛰지 않는다.
 - `requested`만 있고 `result`가 없는 작업(보내기 직전·직후 종료)은 결과를 거래소에서 확인한다.
   - `create`: orderLinkId로 5.3절 조회
-  - `amend`: 대상 주문의 현재 trigger 가격을 읽어 요청 값과 비교
+  - `amend`: 대상 주문의 상태·trigger·전체 수량을 읽어 판정한다. 종결이면 대체됨, 바꾸는 필드가 모두 요청 값이면 성공, 모두 이전 값이면 미적용, 그 밖은 대체됨. **과거 목표를 다시 보내지 않는다** — 다음 작업은 현재 상태로 새로 정한다 (D90)
   - `cancel`: 대상 주문의 현재 상태 확인
   - `close`: 해당 orderLinkId로 5.3절 조회와 체결 내역 확인
 - 그다음 4.3절 동기화로 거래소와 전체를 대조한다.
