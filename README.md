@@ -114,6 +114,19 @@ py -3.14 -m venv .venv
 - `start_day(snapshot, cash_flows)`에는 경계 스냅샷에 이미 반영된 입출금을 함께 전달합니다. 최고점을 보정하고 중복 ID는 무시하지만, 새 지갑 기준에 포함된 금액을 새날 순입금에 다시 넣지 않습니다.
 - 재개 확인은 pause_revision과 record_peak가 요청 당시와 같아야 한다. 평가액 변동은 |현재 평가액 - 요청 평가액| <= |요청 평가액| × resume_equity_tolerance_ratio이면 허용한다(상승·하락 대칭, 경계 포함). 이 비율은 RiskLimits의 필수 Decimal 설정이며 기본값 없이 0 이상 1 미만으로 받는다. 초과 시 새 확인을 요구한다. HALTED 재개 시 양수인 확인 시점 현재 평가액으로 위험 최고점을 설정하고 실제 적용값을 ResumeRecord.peak_reset.new_risk_peak에 기록한다. 프롬프트에는 허용 비율도 포함하여 호출자가 안내한다. 성공하면 기존 프롬프트를 모두 무효화한다.
 
+## 과거 시장 데이터 수집 (M2-01)
+
+백테스트용 Bybit 공개 데이터를 받습니다(API 키 없음). 설정 파일의 `[bybit_public] base_url`과 `paths.backtest.market_data_dir`만 읽고, 상대 경로는 설정 파일 위치 기준입니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m richletsgo.marketdata.ingest --config config.local.toml --symbols BTCUSDT ETHUSDT --intervals D 60
+```
+
+- 기본 기간은 최근 3년(D70)이고 `--since`로 바꿀 수 있습니다. 다시 실행하면 빠진 구간만 받습니다.
+- 1분봉은 `--intervals 1 --from <UTC> --to <UTC>`로 필요한 구간만 받습니다(`--to`는 미포함).
+- 마감된 봉만 저장합니다. 빠진 봉·펀딩은 지어내지 않고 보고합니다. 저장된 값과 다른 값이 오면 덮어쓰지 않고 실패로 끝냅니다.
+- 계약·주기 하나가 한 트랜잭션입니다. 응답 충돌이나 요청 실패가 있으면 그 계열은 아무것도 저장하지 않습니다. 다시 실행하면 처음부터 받습니다.
+- 상품 규칙과 위험 한도 단계는 실행할 때마다 그 시각 값으로 저장합니다(과거 시점 값이 아님). Bybit linear의 증거금률은 비율입니다.
 
 ## 포트폴리오·보호 주문 (M1-04)
 
