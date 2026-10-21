@@ -438,7 +438,7 @@ class PortfolioService:
                 and elapsed is not None
                 and elapsed >= (self.policy.retry_after * self.policy.max_protect_attempts)
             )
-            if exhausted or timed_out:
+            if exhausted or timed_out or recovery.reduction_attempts:
                 self._emit(
                     uow,
                     Action(
@@ -469,15 +469,42 @@ class PortfolioService:
                     ZERO,
                 )
                 deficit = max(ZERO, missing - outstanding)
-                if deficit:
+                if not deficit:
+                    continue
+                if (
+                    recovery.last_reduction_at is not None
+                    and self.clock.now() - recovery.last_reduction_at < self.policy.retry_after
+                ):
+                    continue
+                if recovery.reduction_attempts >= self.policy.max_close_attempts:
                     self._emit(
                         uow,
                         Action(
-                            f"{key}:reduce",
+                            f"{key}:reduce-exhausted",
+                            ActionKind.ALERT,
+                            book.strategy,
+                            book.symbol,
+                            detail="unprotected reduction exhausted; contract remains paused; intervention required",
+                        ),
+                    )
+                else:
+                    self._emit(
+                        uow,
+                        Action(
+                            f"{key}:reduce:{recovery.reduction_attempts}",
                             ActionKind.REDUCE_UNPROTECTED,
                             book.strategy,
                             book.symbol,
                             -deficit if book.qty > 0 else deficit,
+                        ),
+                    )
+                    uow.portfolio.put_recovery(
+                        book.strategy,
+                        book.symbol,
+                        replace(
+                            recovery,
+                            reduction_attempts=recovery.reduction_attempts + 1,
+                            last_reduction_at=self.clock.now(),
                         ),
                     )
                 continue

@@ -218,9 +218,19 @@ class ProtectionRecovery:
     attempts: int = 0
     last_attempt_at: datetime | None = None
 
+    reduction_attempts: int = 0
+    last_reduction_at: datetime | None = None
+
     def __post_init__(self) -> None:
         require_utc(self.observed_at)
         if self.last_attempt_at is not None:
             require_utc(self.last_attempt_at)
-        if not self.recovery_id or self.snapshot_revision < 0 or self.attempts < 0:
+        if self.last_reduction_at is not None:
+            require_utc(self.last_reduction_at)
+        if (
+            not self.recovery_id
+            or self.snapshot_revision < 0
+            or self.attempts < 0
+            or self.reduction_attempts < 0
+        ):
             raise ValueError("invalid protection recovery")

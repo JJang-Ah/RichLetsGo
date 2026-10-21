@@ -976,3 +976,76 @@ def test_protection_recovery_and_snapshot_metadata_rollback_with_fill():
             assert u.portfolio.recovery(S1, BTC) is not None
 
     asyncio.run(scenario())
+
+
+async def exhausted_protection():
+    db, clock, svc, router = setup()
+    entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+    await svc.on_order(attached_event(entry, qty="-0.2"), reference_price=Price(D(90)))
+    await svc.on_execution(fill(entry, "0.4"))
+    stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+    clock.advance(timedelta(seconds=1))
+    await svc.confirm_stop_snapshot(BTC, (stop.key,), clock.now())
+    for _ in range(POLICY.max_protect_attempts):
+        protect = [o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT][-1]
+        await terminal(db, protect, OrderState.REJECTED)
+        clock.advance(POLICY.retry_after)
+        await svc.tick()
+    return db, clock, svc, stop
+
+
+@pytest.mark.parametrize("failed", [OrderState.EXPIRED, OrderState.REJECTED])
+def test_unprotected_reduction_retries_after_restart_and_stops_at_limit(failed):
+    async def scenario():
+        db, clock, svc, stop = await exhausted_protection()
+        first = next(o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE)
+        await terminal(db, first, failed)
+        svc = PortfolioService(db.unit_of_work, clock, iter(["retry-reduce"]).__next__, POLICY)
+        clock.advance(POLICY.retry_after - timedelta(seconds=1))
+        await svc.tick()
+        assert len([o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE]) == 1
+        clock.advance(timedelta(seconds=1))
+        await svc.tick()
+        closes = [o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE]
+        assert len(closes) == 2 and closes[-1].qty == Qty(D("-0.2"))
+        await terminal(db, closes[-1], failed)
+        for _ in range(12):
+            clock.advance(POLICY.retry_after)
+            await svc.tick()
+        assert (
+            len([o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE])
+            == POLICY.max_close_attempts
+        )
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+            assert u.orders.get(stop.key).state is OrderState.OPEN
+            assert u.portfolio.book(S1, BTC).qty == D("0.4")
+            assert sum("reduction exhausted" in a.detail for a in u.portfolio.actions()) == 1
+            assert u.portfolio.recovery(S1, BTC).reduction_attempts == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "state,cum,expected",
+    [
+        (OrderState.UNKNOWN, "0", None),
+        (OrderState.OPEN, "0.1", None),
+        (OrderState.EXPIRED, "0.1", D("-0.1")),
+        (OrderState.FILLED, "0.2", None),
+    ],
+)
+def test_reduction_retry_excludes_open_and_unbooked_quantities(state, cum, expected):
+    async def scenario():
+        db, clock, svc, _ = await exhausted_protection()
+        first = next(o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE)
+        await terminal(db, first, state, cum)
+        clock.advance(POLICY.retry_after)
+        await svc.tick()
+        await svc.tick()
+        closes = [o for o in await orders(db) if o.purpose is OrderPurpose.CLOSE]
+        assert len(closes) == (1 if expected is None else 2)
+        if expected is not None:
+            assert closes[-1].qty == Qty(expected)
+
+    asyncio.run(scenario())
