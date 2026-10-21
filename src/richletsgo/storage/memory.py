@@ -2,13 +2,14 @@
 
 import asyncio
 from dataclasses import dataclass, field
+from datetime import datetime
 from decimal import Decimal
 from types import TracebackType
 from typing import Self
 
 from richletsgo.domain import Environment, Qty, StrategyId, Symbol
 from richletsgo.oms.models import OrderRecord
-from richletsgo.portfolio.models import Action, CloseIntent, StrategyBook
+from richletsgo.portfolio.models import Action, CloseIntent, ProtectionRecovery, StrategyBook
 from richletsgo.risk.records import DecisionRecord, EpisodeRecord, EpisodeState
 
 from .contracts import (
@@ -42,6 +43,12 @@ class _State:
     funding_ids: set[str] = field(default_factory=set)
     stop_revisions: dict[Symbol, int] = field(default_factory=dict)
 
+    stop_times: dict[Symbol, datetime] = field(default_factory=dict)
+    pause_revisions: dict[Symbol, int] = field(default_factory=dict)
+    recoveries: dict[tuple[StrategyId, Symbol], ProtectionRecovery] = field(default_factory=dict)
+
+    fill_times: dict[Symbol, datetime] = field(default_factory=dict)
+
     def clone(self) -> "_State":
         # Values are immutable, including nested raw event payloads.
         return _State(
@@ -58,6 +65,10 @@ class _State:
             self.paused.copy(),
             self.funding_ids.copy(),
             self.stop_revisions.copy(),
+            self.stop_times.copy(),
+            self.pause_revisions.copy(),
+            self.recoveries.copy(),
+            self.fill_times.copy(),
         )
 
 
@@ -258,6 +269,7 @@ class _Portfolio:
 
     def pause(self, symbol: Symbol) -> None:
         self.owner.state.paused.add(symbol)
+        self.owner.state.pause_revisions[symbol] = self.stop_revision(symbol)
 
     def funding_seen(self, funding_id: str) -> bool:
         return funding_id in self.owner.state.funding_ids
@@ -268,8 +280,35 @@ class _Portfolio:
     def stop_revision(self, symbol: Symbol) -> int:
         return self.owner.state.stop_revisions.get(symbol, 0)
 
-    def next_stop_revision(self, symbol: Symbol) -> None:
+    def next_stop_revision(self, symbol: Symbol, at: datetime) -> None:
         self.owner.state.stop_revisions[symbol] = self.stop_revision(symbol) + 1
+        self.owner.state.stop_times[symbol] = at
+
+    def stop_snapshot_at(self, symbol: Symbol) -> datetime | None:
+        return self.owner.state.stop_times.get(symbol)
+
+    def last_fill_at(self, symbol: Symbol) -> datetime | None:
+        return self.owner.state.fill_times.get(symbol)
+
+    def record_fill_at(self, symbol: Symbol, at: datetime) -> None:
+        self.owner.state.fill_times[symbol] = at
+
+    def pause_revision(self, symbol: Symbol) -> int:
+        return self.owner.state.pause_revisions.get(symbol, 0)
+
+    def clear_pause(self, symbol: Symbol) -> None:
+        self.owner.state.paused.discard(symbol)
+
+    def recovery(self, strategy: StrategyId, symbol: Symbol) -> ProtectionRecovery | None:
+        return self.owner.state.recoveries.get((strategy, symbol))
+
+    def put_recovery(
+        self, strategy: StrategyId, symbol: Symbol, recovery: ProtectionRecovery | None
+    ) -> None:
+        if recovery is None:
+            self.owner.state.recoveries.pop((strategy, symbol), None)
+        else:
+            self.owner.state.recoveries[strategy, symbol] = recovery
 
 
 class InMemoryUnitOfWork:

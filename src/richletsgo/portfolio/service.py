@@ -33,6 +33,7 @@ from .models import (
     CloseIntent,
     ClosePolicy,
     CloseState,
+    ProtectionRecovery,
     StopLink,
     StrategyBook,
     apply_book_fill,
@@ -127,6 +128,7 @@ class PortfolioService:
 
     def book_execution(self, uow: UnitOfWork, event: ExecutionEvent, attr: Attribution) -> None:
         qty, symbol = event.qty.value, event.symbol
+        uow.portfolio.record_fill_at(symbol, self.clock.now())
         if attr.purpose is OrderPurpose.ENTRY and attr.strategy is not None:
             book = uow.portfolio.book(attr.strategy, symbol)
             order = uow.orders.find(event.order_link_id, event.exchange_order_id)
@@ -137,6 +139,20 @@ class PortfolioService:
             if order.attached_stop:
                 book = replace(book, stop_price=order.attached_stop.stop_loss)
             uow.portfolio.put_book(book)
+            recovery = uow.portfolio.recovery(attr.strategy, symbol)
+            uow.portfolio.put_recovery(
+                attr.strategy,
+                symbol,
+                replace(
+                    recovery,
+                    snapshot_revision=uow.portfolio.stop_revision(symbol),
+                    observed_at=self.clock.now(),
+                )
+                if recovery
+                else ProtectionRecovery(
+                    self.unique(), uow.portfolio.stop_revision(symbol), self.clock.now()
+                ),
+            )
         else:
             strategies = ([attr.strategy] if attr.strategy else []) + [StrategyId.S2, StrategyId.S1]
             seen: set[StrategyId] = set()
@@ -352,30 +368,34 @@ class PortfolioService:
                     self._emit(uow, action)
                 if updated.state is CloseState.DONE:
                     uow.episodes.put(replace(episode, state=EpisodeState.CLOSED))
-        # Ordinary entry protection. Never assume a locally CREATED/UNKNOWN stop is confirmed.
+        self._recover_protection(uow)
+
+    def _recover_protection(self, uow: UnitOfWork) -> None:
         for book in uow.portfolio.books():
-            if not book.qty:
-                continue
-            intent = next(
-                (
-                    i
-                    for i in uow.portfolio.intents()
-                    if i.symbol is book.symbol and i.state is not CloseState.DONE
-                ),
-                None,
-            )
-            if intent and intent.strategy is not book.strategy:
-                continue  # close machine owns other-strategy recovery and retry limits
             orders = [
                 o
                 for o in uow.orders.all()
-                if o.symbol is book.symbol and o.strategy is book.strategy and o.purpose in STOPS
+                if o.symbol is book.symbol and o.strategy is book.strategy
             ]
             pending = any(
-                o.state in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
+                o.purpose in STOPS
+                and o.state in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
                 for o in orders
             )
             missing = abs(book.qty) - sum((s.qty for s in book.stops), ZERO)
+            recovery = uow.portfolio.recovery(book.strategy, book.symbol)
+            if missing == 0 and not pending:
+                uow.portfolio.put_recovery(book.strategy, book.symbol, None)
+                continue
+            if not book.qty:
+                continue
+            if any(
+                i.symbol is book.symbol
+                and i.strategy is not book.strategy
+                and i.state is not CloseState.DONE
+                for i in uow.portfolio.intents()
+            ):
+                continue  # close machine owns other-strategy protection until DONE
             if missing < 0 and not pending:
                 self._emit(
                     uow,
@@ -387,18 +407,104 @@ class PortfolioService:
                         abs(book.qty),
                     ),
                 )
-            if missing > 0 and not pending:
-                count = sum(o.purpose is OrderPurpose.PROTECT for o in orders)
+                continue
+            if missing <= 0:
+                continue
+            if recovery is None:
+                recovery = ProtectionRecovery(
+                    self.unique(), uow.portfolio.stop_revision(book.symbol), self.clock.now()
+                )
+                uow.portfolio.put_recovery(book.strategy, book.symbol, recovery)
+            key = f"protect:{book.strategy}:{book.symbol}:{recovery.recovery_id}"
+            self._emit(
+                uow,
+                Action(
+                    f"{key}:query:{uow.portfolio.stop_revision(book.symbol)}",
+                    ActionKind.QUERY_STOPS,
+                    book.strategy,
+                    book.symbol,
+                ),
+            )
+            elapsed = (
+                self.clock.now() - recovery.last_attempt_at
+                if recovery.last_attempt_at is not None
+                else None
+            )
+            if elapsed is not None and elapsed < self.policy.retry_after:
+                continue
+            exhausted = recovery.attempts >= self.policy.max_protect_attempts
+            timed_out = (
+                pending
+                and elapsed is not None
+                and elapsed >= (self.policy.retry_after * self.policy.max_protect_attempts)
+            )
+            if exhausted or timed_out:
                 self._emit(
                     uow,
                     Action(
-                        f"protect:{book.strategy}:{book.symbol}:{count}",
-                        ActionKind.PROTECT,
+                        f"{key}:pause",
+                        ActionKind.PAUSE,
                         book.strategy,
                         book.symbol,
-                        -missing if book.qty > 0 else missing,
+                        detail="protection recovery exhausted",
                     ),
                 )
+                self._emit(
+                    uow,
+                    Action(
+                        f"{key}:alert",
+                        ActionKind.ALERT,
+                        book.strategy,
+                        book.symbol,
+                        detail="protection recovery exhausted",
+                    ),
+                )
+                outstanding = sum(
+                    (
+                        max(ZERO, o.exchange_cum_exec_qty - abs(o.booked_qty.value))
+                        + (remaining(o) if not o.state.is_terminal else ZERO)
+                        for o in orders
+                        if o.purpose is OrderPurpose.CLOSE
+                    ),
+                    ZERO,
+                )
+                deficit = max(ZERO, missing - outstanding)
+                if deficit:
+                    self._emit(
+                        uow,
+                        Action(
+                            f"{key}:reduce",
+                            ActionKind.REDUCE_UNPROTECTED,
+                            book.strategy,
+                            book.symbol,
+                            -deficit if book.qty > 0 else deficit,
+                        ),
+                    )
+                continue
+            if pending:
+                continue
+            snapshot_at = uow.portfolio.stop_snapshot_at(book.symbol)
+            if (
+                uow.portfolio.stop_revision(book.symbol) <= recovery.snapshot_revision
+                or snapshot_at is None
+                or snapshot_at <= recovery.observed_at
+            ):
+                continue
+            self._emit(
+                uow,
+                Action(
+                    f"{key}:attempt:{recovery.attempts}",
+                    ActionKind.PROTECT,
+                    book.strategy,
+                    book.symbol,
+                    -missing if book.qty > 0 else missing,
+                ),
+            )
+            uow.portfolio.put_recovery(
+                book.strategy,
+                book.symbol,
+                replace(recovery, attempts=recovery.attempts + 1, last_attempt_at=self.clock.now()),
+            )
 
     async def on_execution(self, event: ExecutionEvent) -> FillResult:
         return await apply_execution(self.uow_factory(), event, self.book_execution)
@@ -424,11 +530,14 @@ class PortfolioService:
         self, symbol: Symbol, keys: Sequence[str], at: datetime
     ) -> None:
         """After feeding a COMPLETE successful stop query via on_order, confirm its keys.
-        Caller serializes this query with account event ingestion; partial/failed queries
-        must never reach this method. A fresh revision gates D58 and final verification.
+        at is the query START time. Caller serializes the query with account
+        event ingestion; partial/failed queries must never reach this method. A fresh revision gates D58 and final verification.
         """
         require_utc(at)
         async with self.uow_factory() as uow:
+            last_fill = uow.portfolio.last_fill_at(symbol)
+            if last_fill is not None and at <= last_fill:
+                raise ValueError("snapshot must start after the latest booked fill")
             for key in keys:
                 o = uow.orders.get(key)
                 if (
@@ -448,8 +557,82 @@ class PortfolioService:
                     and o.state in CONFIRMED
                 ):
                     uow.orders.put(replace(o, state=OrderState.CANCELLED, updated_at=at))
-            uow.portfolio.next_stop_revision(symbol)
+            previous = uow.portfolio.stop_snapshot_at(symbol)
+            if previous is not None and at <= previous:
+                raise ValueError("snapshot must advance observation time")
+            uow.portfolio.next_stop_revision(symbol, at)
             self.reconcile(uow)
+            await uow.commit()
+
+    async def recover_system_pause(self, symbol: Symbol, exchange_qty: Qty, at: datetime) -> None:
+        """M1-06 calls after a serialized complete account synchronization at `at`.
+
+        Position and stop snapshots must describe the same synchronized state. This
+        clears only the portfolio contract pause, never manual/risk HALTED state.
+        """
+        require_utc(at)
+        async with self.uow_factory() as uow:
+            if not uow.portfolio.paused(symbol):
+                return
+            if (
+                uow.portfolio.stop_revision(symbol) <= uow.portfolio.pause_revision(symbol)
+                or uow.portfolio.stop_snapshot_at(symbol) != at
+            ):
+                raise ValueError("fresh synchronized stop snapshot required")
+            last_fill = uow.portfolio.last_fill_at(symbol)
+            if last_fill is not None and at <= last_fill:
+                raise ValueError("snapshot predates a booked fill")
+            orders = [o for o in uow.orders.all() if o.symbol is symbol]
+            if any(
+                o.updated_at > at
+                or o.exchange_cum_exec_qty > abs(o.booked_qty.value)
+                or (not o.state.is_terminal and o.purpose not in STOPS)
+                or o.state in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
+                for o in orders
+            ):
+                raise ValueError("unsettled orders prevent recovery")
+            if any(
+                f.event.symbol is symbol and f.status is FillStatus.PENDING_ATTRIBUTION
+                for f in uow.fills.all()
+            ):
+                raise ValueError("pending attribution prevents recovery")
+            if any(
+                i.symbol is symbol and i.state is not CloseState.DONE
+                for i in uow.portfolio.intents()
+            ):
+                raise ValueError("unfinished close prevents recovery")
+            if any(
+                (r := uow.portfolio.recovery(strategy, symbol)) is not None and r.observed_at >= at
+                for strategy in StrategyId
+            ):
+                raise ValueError("snapshot predates a booked fill")
+            self._sync_links(uow)
+            books = [b for b in uow.portfolio.books() if b.symbol is symbol]
+            if invariants(books, {symbol: exchange_qty}):
+                raise ValueError("position/protection mismatch prevents recovery")
+            linked = {s.order_key for b in books for s in b.stops}
+            if any(
+                o.purpose in STOPS and o.state in CONFIRMED and o.key not in linked for o in orders
+            ):
+                raise ValueError("unattributed stops prevent recovery")
+            if any(
+                a.symbol is symbol
+                and a.kind not in (ActionKind.QUERY_STOPS, ActionKind.ALERT, ActionKind.PAUSE)
+                for a in uow.portfolio.actions()
+            ):
+                raise ValueError("undelivered actions prevent recovery")
+            uow.portfolio.clear_pause(symbol)
+            for strategy in StrategyId:
+                uow.portfolio.put_recovery(strategy, symbol, None)
+            uow.portfolio.emit(
+                Action(
+                    f"recovered:{symbol}:{uow.portfolio.stop_revision(symbol)}",
+                    ActionKind.ALERT,
+                    StrategyId.S1,
+                    symbol,
+                    detail=f"system contract pause cleared after synchronization at {at.isoformat()}",
+                )
+            )
             await uow.commit()
 
     async def funding(self, funding_id: str, symbol: Symbol, amount: Decimal) -> None:

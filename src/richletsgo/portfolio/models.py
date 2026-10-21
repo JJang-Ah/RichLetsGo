@@ -206,3 +206,21 @@ def apply_book_fill(book: StrategyBook, qty: Decimal, price: Decimal, fee: Decim
     return replace(
         book, qty=new_qty, avg_price=average, realized_pnl=realized, fees=book.fees + fee
     )
+
+
+@dataclass(frozen=True, slots=True)
+class ProtectionRecovery:
+    """Persisted ordinary protection episode, including fill/query ordering barrier."""
+
+    recovery_id: str
+    snapshot_revision: int
+    observed_at: datetime
+    attempts: int = 0
+    last_attempt_at: datetime | None = None
+
+    def __post_init__(self) -> None:
+        require_utc(self.observed_at)
+        if self.last_attempt_at is not None:
+            require_utc(self.last_attempt_at)
+        if not self.recovery_id or self.snapshot_revision < 0 or self.attempts < 0:
+            raise ValueError("invalid protection recovery")

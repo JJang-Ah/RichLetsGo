@@ -661,10 +661,14 @@ def test_score_is_immutable_and_threshold_or_disagreement_block():
 
 def test_missing_attachment_requests_only_missing_protection_and_not_twice():
     async def scenario():
-        db, _, svc, r = setup()
+        db, clock, svc, r = setup()
         a = await r.handle(signal(), market(), RISK_INPUT)
         await svc.on_order(attached_event(a.order, qty="-0.2"), reference_price=Price(D(90)))
         await svc.on_execution(fill(a.order, "0.4"))
+        assert not any(o.purpose is OrderPurpose.PROTECT for o in await orders(db))
+        clock.advance(timedelta(seconds=1))
+        stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+        await svc.confirm_stop_snapshot(BTC, (stop.key,), clock.now())
         await svc.tick()
         protect = [o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]
         assert len(protect) == 1 and protect[0].qty == Qty(D("-0.2"))
@@ -741,5 +745,234 @@ def test_decision_hook_failure_rolls_back_entry_decision_episode_and_close_inten
         async with db.unit_of_work() as u:
             assert not u.orders.all() and not u.decisions.all() and not u.episodes.all()
             assert not u.portfolio.intents() and not u.portfolio.actions()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("fill_first", [True, False])
+def test_attached_stop_delivery_order_never_creates_extra_protection(fill_first):
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        if fill_first:
+            await svc.on_execution(fill(entry, "0.4"))
+            await svc.tick()
+            assert not any(o.purpose is OrderPurpose.PROTECT for o in await orders(db))
+        await svc.on_order(attached_event(entry, qty="-0.4"), reference_price=Price(D(90)))
+        if not fill_first:
+            await svc.on_execution(fill(entry, "0.4"))
+        stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (stop.key,), clock.now())
+        await svc.tick()
+        assert not any(o.purpose is OrderPurpose.PROTECT for o in await orders(db))
+        async with db.unit_of_work() as u:
+            assert sum(s.qty for s in u.portfolio.book(S1, BTC).stops) == D("0.4")
+
+    asyncio.run(scenario())
+
+
+def test_query_started_before_late_fill_cannot_authorize_protection():
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        query_started = clock.now()
+        clock.advance(timedelta(seconds=1))
+        await svc.on_execution(fill(entry, "0.4"))  # old exchange timestamp, received now
+        with pytest.raises(ValueError, match="latest booked fill"):
+            await svc.confirm_stop_snapshot(BTC, (), query_started)
+        async with db.unit_of_work() as u:
+            assert u.portfolio.stop_revision(BTC) == 0
+        assert not any(o.purpose is OrderPurpose.PROTECT for o in await orders(db))
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (), clock.now())
+        assert len([o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]) == 1
+
+    asyncio.run(scenario())
+
+
+def test_ordinary_protection_rejections_are_bounded_across_restart():
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        await svc.on_order(attached_event(entry, qty="-0.2"), reference_price=Price(D(90)))
+        await svc.on_execution(fill(entry, "0.4"))
+        stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (stop.key,), clock.now())
+        first = next(o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT)
+        await terminal(db, first, OrderState.REJECTED)
+        restarted = PortfolioService(
+            db.unit_of_work, clock, iter(["restart1", "restart2"]).__next__, POLICY
+        )
+        clock.advance(timedelta(seconds=4))
+        await restarted.tick()
+        assert len([o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]) == 1
+        clock.advance(timedelta(seconds=1))
+        await restarted.tick()
+        protects = [o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]
+        assert len(protects) == POLICY.max_protect_attempts
+        await terminal(db, protects[-1], OrderState.REJECTED)
+        clock.advance(timedelta(seconds=5))
+        for _ in range(5):
+            await restarted.tick()
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+            assert u.orders.get(stop.key).state is OrderState.OPEN
+            actions = u.portfolio.actions()
+            assert sum(a.kind is ActionKind.ALERT for a in actions) == 1
+            reductions = [a for a in actions if a.kind is ActionKind.REDUCE_UNPROTECTED]
+            assert len(reductions) == 1 and reductions[0].qty == D("-0.2")
+            assert not any(
+                a.kind in (ActionKind.CANCEL_STOP, ActionKind.TRIM_STOP) for a in actions
+            )
+        assert len([o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]) == 2
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("state", [OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN])
+def test_unconfirmed_protection_is_not_duplicated_and_eventually_pauses(state):
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        await svc.on_execution(fill(entry, "0.4"))
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (), clock.now())
+        protection = next(o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT)
+        await terminal(db, protection, state)
+        clock.advance(timedelta(seconds=5))
+        await svc.tick()
+        async with db.unit_of_work() as u:
+            assert not u.portfolio.paused(BTC)
+        clock.advance(timedelta(seconds=5))
+        await svc.tick()
+        await svc.tick()
+        assert len([o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT]) == 1
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+            assert sum(a.kind is ActionKind.REDUCE_UNPROTECTED for a in u.portfolio.actions()) == 1
+
+    asyncio.run(scenario())
+
+
+def test_system_pause_recovery_requires_fresh_sync_and_preserves_risk_halt():
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        await svc.on_order(attached_event(entry), reference_price=Price(D(90)))
+        await svc.on_execution(fill(entry, "1"))
+        await terminal(db, entry)
+        stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+        async with db.unit_of_work() as u:
+            u.portfolio.pause(BTC)
+            await u.commit()
+        with pytest.raises(ValueError, match="fresh synchronized"):
+            await svc.recover_system_pause(BTC, Qty(D(1)), clock.now())
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (stop.key,), clock.now())
+        with pytest.raises(ValueError, match="mismatch"):
+            await svc.recover_system_pause(BTC, Qty(D("0.9")), clock.now())
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+        # Independent risk engine halt must survive clearing the contract pause.
+        router.gate.pauses = PauseState((Pause(PauseKind.HALTED, "manual", NOW),))
+        await svc.recover_system_pause(BTC, Qty(D(1)), clock.now())
+        async with db.unit_of_work() as u:
+            assert not u.portfolio.paused(BTC)
+            assert any("pause cleared" in a.detail for a in u.portfolio.actions())
+        result = await router.handle(signal(S2), market(), RISK_INPUT)
+        assert result.order is None and result.decision.kind is DecisionKind.REJECTED
+
+    asyncio.run(scenario())
+
+
+def test_system_pause_cannot_clear_with_unknown_or_missing_protection():
+    async def scenario():
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        await svc.on_execution(fill(entry, "1"))
+        async with db.unit_of_work() as u:
+            u.portfolio.pause(BTC)
+            await u.commit()
+        clock.advance(timedelta(seconds=1))
+        await svc.confirm_stop_snapshot(BTC, (), clock.now())
+        with pytest.raises(ValueError, match="unsettled"):
+            await svc.recover_system_pause(BTC, Qty(D(1)), clock.now())
+        await terminal(db, entry)
+        protection = next(o for o in await orders(db) if o.purpose is OrderPurpose.PROTECT)
+        await terminal(db, protection, OrderState.REJECTED)
+        with pytest.raises(ValueError, match="mismatch"):
+            await svc.recover_system_pause(BTC, Qty(D(1)), clock.now())
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize(
+    "unsafe", ["repause", "late_fill", "pending_attribution", "unfinished_close"]
+)
+def test_recovery_rejects_state_changes_after_snapshot(unsafe):
+    async def scenario():
+        from richletsgo.storage.contracts import FillRecord, FillStatus
+
+        db, clock, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+        await svc.on_order(attached_event(entry, qty="-0.4"), reference_price=Price(D(90)))
+        await svc.on_execution(fill(entry, "0.4"))
+        await terminal(db, entry, OrderState.CANCELLED)
+        stop = next(o for o in await orders(db) if o.purpose is OrderPurpose.ATTACHED_SL)
+        async with db.unit_of_work() as u:
+            u.portfolio.pause(BTC)
+            await u.commit()
+        clock.advance(timedelta(seconds=1))
+        at = clock.now()
+        await svc.confirm_stop_snapshot(BTC, (stop.key,), at)
+        if unsafe == "late_fill":
+            await svc.on_execution(fill(entry, "0.1", key="late"))
+        async with db.unit_of_work() as u:
+            if unsafe == "repause":
+                u.portfolio.pause(BTC)
+            elif unsafe == "pending_attribution":
+                u.fills.add(
+                    FillRecord(
+                        fill(entry, "0.1", key="pending"),
+                        FillStatus.PENDING_ATTRIBUTION,
+                        None,
+                        None,
+                    )
+                )
+            elif unsafe == "unfinished_close":
+                episode = u.episodes.active_for(S1, BTC)
+                u.portfolio.put_intent(CloseIntent("unfinished", episode.episode_id, S1, BTC, at))
+            await u.commit()
+        with pytest.raises(ValueError):
+            await svc.recover_system_pause(BTC, Qty(D("0.4")), at)
+        async with db.unit_of_work() as u:
+            assert u.portfolio.paused(BTC)
+
+    asyncio.run(scenario())
+
+
+def test_protection_recovery_and_snapshot_metadata_rollback_with_fill():
+    async def scenario():
+        db, _, svc, router = setup()
+        entry = (await router.handle(signal(), market(), RISK_INPUT)).order
+
+        def failing_hook(uow, event, attr):
+            svc.book_execution(uow, event, attr)
+            raise RuntimeError("rollback after recovery state")
+
+        with pytest.raises(RuntimeError):
+            await apply_execution(db.unit_of_work(), fill(entry, "0.4"), failing_hook)
+        async with db.unit_of_work() as u:
+            assert u.portfolio.recovery(S1, BTC) is None
+            assert u.portfolio.last_fill_at(BTC) is None
+            assert not u.portfolio.actions()
+            assert u.portfolio.book(S1, BTC).qty == 0
+        await svc.on_execution(fill(entry, "0.4"))
+        async with db.unit_of_work() as u:
+            assert u.portfolio.recovery(S1, BTC) is not None
 
     asyncio.run(scenario())
