@@ -335,3 +335,13 @@
 - 전송 전 폐기한 AMEND_STOP의 키가 emitted에 남아 같은 목표를 다시 만들지 못하는 문제를 수정했다. TrailRecovery에 실제 시도와 별개인 `discards`를 저장하고 작업 키에 포함한다. 폐기 번호 증가와 acknowledge는 같은 UoW에서 커밋하며 실제 attempts·last_attempt_at은 바꾸지 않는다. 이전 직렬화에는 discards=0을 적용한다.
 - 다른 전략의 같은 계약 청산 때문에 폐기 → 청산 종료 → 같은 목표 재전송을 재시작 유무 2개 사례로 검증했다. 중복 reconcile은 작업 1개, 폐기는 시도 0회, 이후 전송은 시도 1회임을 확인했다. 기존 낡은 목표·청산·이미 개선된 손절 폐기 테스트도 유지했다.
 - Python 3.12·3.14 각각 **556 passed**, ruff check/format, mypy strict(55 소스), diff check 통과. 다음: Claude 재검토. 병합은 하지 않았다.
+
+
+## 2026-10-23 — Codex (M2-02 지표·전략 후보 4개)
+
+- PR #21 병합 main(b054f31)에서 `task/M2-02-indicators-and-strategies` 시작. strategy에 ClosedBars, SMA/채널/모표준편차 볼린저/Wilder RSI·ATR, 불변 매개변수·상태·결과, S1-A/B·S2-A/B 순수 함수를 구현했다.
+- ClosedBars는 명시적인 UTC as_of로 미마감·혼합·중복·역순·누락 봉을 거절한다. through로 과거 접두 구간을 먼저 선택한다. S1 이전 상태와 S2가 받는 일봉 상태의 시간 경계도 검증한다. Decimal 34자리 지역 컨텍스트를 사용하며 float 변환은 없다.
+- S1은 매일 같은 추세의 시장 신호와 단조 추적 목표를 출력한다. 방향 전환은 반대 ENTRY와 새 방향 초기 채널이다. S2는 각 봉의 밴드·RSI로 재진입을 판단하고, 실제 열린 에피소드에만 EXIT를 낸다. 추세 소멸/전환·보유 초과 청산은 지표 워밍업에 막히지 않는다.
+- 계산 규약(ATR 첫 TR/RSI flat=50/보유 봉 경계/비양수 초기 손절 시 진입 없음)을 M2-02 명세에 기록했다. S1State·S2Episode·결과는 JSON 왕복 가능하다. Wilder 값 재현을 위해 동일한 데이터 시작점을 유지해야 한다. M2-03은 같은 시각 일봉 먼저, 시간봉 다음 순서와 실제 진입 봉 정보를 연결한다.
+- 새 테스트 51개: 손계산 지표, 워밍업, 4후보 미래 봉 추가 불변, 숏 대칭, 밴드 시점 fixture, 최대 보유 경계, 가격 필드, JSON·결정성, 입력 검증, M2-02a trail_stop 연결. Python 3.12·3.14 각각 **607 passed**, ruff check/format, mypy strict(59 소스) 통과.
+- 다음: Claude 구현 검토 후 병합. M2-03 시작 시 D88 `[backtest.research_risk]`·`[backtest.selection]` 설정 예시 구조와 수수료 값을 확인하고 불편한 점은 PR 코멘트로 알린다. 실제 주문·성과 측정은 이번 범위에 포함하지 않았다.
