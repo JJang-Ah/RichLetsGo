@@ -33,6 +33,13 @@ from richletsgo.exchange.contracts import (
 )
 from richletsgo.portfolio.models import Action, ActionKind, StrategyBook
 from richletsgo.portfolio.service import CONFIRMED, STOPS, PortfolioService, invariants, remaining
+from richletsgo.portfolio.trailing import (
+    can_amend,
+    ingest_trail_record,
+    recoveries,
+    recovery,
+    settle_trails,
+)
 from richletsgo.risk.equity import AccountSnapshot
 from richletsgo.risk.pause import PauseKind, PauseState
 from richletsgo.risk.records import EpisodeState
@@ -197,6 +204,7 @@ class Synchronizer:
             combined.update({r.key: r for r in records})
             for record in combined.values():
                 uow.recovery.put(record.key, record.encode())
+                ingest_trail_record(uow, record)
                 if record.action_key:
                     uow.portfolio.acknowledge(record.action_key)
                 payload = record.payload()
@@ -299,6 +307,18 @@ class Synchronizer:
         for execution in executions:
             await self.portfolio.on_execution(execution)
         async with self.uow_factory() as uow:
+            observed = frozenset(
+                o.key
+                for event in (*history, *opened)
+                if (o := uow.orders.find(event.order_link_id, event.exchange_order_id)) is not None
+            )
+            settle_trails(
+                uow,
+                self.clock.now(),
+                self.portfolio.policy,
+                queried=observed,
+                query_started=started,
+            )
             unresolved = any(
                 o.symbol is symbol
                 and (
@@ -449,6 +469,40 @@ class Synchronizer:
                     await self.sender.send(order, action_key=action.key)
                 elif action.kind in (ActionKind.CANCEL_ENTRY, ActionKind.CANCEL_STOP):
                     await self.sender.cancel(order, action_key=action.key)
+                elif action.kind is ActionKind.AMEND_STOP:
+                    async with self.uow_factory() as uow:
+                        current = uow.orders.get(order.key)
+                        target = action.trigger
+                        attempt = None
+                        if current and target and can_amend(uow, current, target):
+                            state = recovery(uow, current.key, target)
+                            if (
+                                action.key == state.action_key
+                                and state.attempts < self.portfolio.policy.max_protect_attempts
+                                and (
+                                    state.last_attempt_at is None
+                                    or self.clock.now() - state.last_attempt_at
+                                    >= self.portfolio.policy.retry_after
+                                )
+                            ):
+                                attempt = state.attempts
+                        if attempt is None:
+                            if target is not None:
+                                state = recovery(uow, order.key, target)
+                                if action.key == state.action_key:
+                                    uow.recovery.put(
+                                        state.key,
+                                        replace(state, discards=state.discards + 1).encode(),
+                                    )
+                            # Persist the next work identity atomically with removal.
+                            uow.portfolio.acknowledge(action.key)
+                            await uow.commit()
+                            continue
+                    if attempt is not None:
+                        assert current is not None
+                        await self.sender.amend(
+                            current, trigger=target, action_key=action.key, trail_attempt=attempt
+                        )
                 elif action.kind is ActionKind.TRIM_STOP:
                     async with self.uow_factory() as uow:
                         owned = any(
@@ -462,6 +516,31 @@ class Synchronizer:
                             uow.portfolio.acknowledge(action.key)
                             await uow.commit()
                         continue
+                    # A child stop can arrive before its entry execution. Recheck
+                    # excess now: a queued trim must not remove newly needed cover.
+                    async with self.uow_factory() as uow:
+                        order = uow.orders.get(order.key) or order
+                        held = uow.portfolio.book(order.strategy, order.symbol).qty
+                        others = sum(
+                            (
+                                remaining(o)
+                                for o in uow.orders.all()
+                                if o.key != order.key
+                                and o.strategy == order.strategy
+                                and o.symbol == order.symbol
+                                and o.purpose in STOPS
+                                and o.state in CONFIRMED
+                                and o.qty.value * held < 0
+                            ),
+                            Decimal(0),
+                        )
+                        keep = max(action.qty, abs(held) - others, Decimal(0))
+                    if order.state not in CONFIRMED or keep >= remaining(order):
+                        async with self.uow_factory() as uow:
+                            uow.portfolio.acknowledge(action.key)
+                            await uow.commit()
+                        continue
+                    action = replace(action, qty=keep)
                     if action.qty == 0:
                         await self.sender.cancel(order, action_key=action.key)
                     else:
@@ -502,6 +581,8 @@ class Synchronizer:
                 )
             if order is not None:
                 payload = request.payload()
+                if "qty" not in payload["fields"]:
+                    continue
                 kept = abs(Decimal(payload["after"]["qty"])) - Decimal(
                     payload["before"]["cumulative"]
                 )
@@ -694,6 +775,7 @@ class Synchronizer:
                             or o.exchange_cum_exec_qty > abs(o.booked_qty.value)
                             for o in uow.orders.all()
                         )
+                        unsettled = unsettled or any(r.in_flight for r in recoveries(uow))
                         pending = any(
                             f.status is FillStatus.PENDING_ATTRIBUTION for f in uow.fills.all()
                         )

@@ -10,6 +10,7 @@ from decimal import Decimal
 from richletsgo.domain import (
     Clock,
     ExecutionEvent,
+    InstrumentSpec,
     OrderEvent,
     OrderPurpose,
     OrderState,
@@ -38,6 +39,7 @@ from .models import (
     StrategyBook,
     apply_book_fill,
 )
+from .trailing import align_stops, closing_symbol, favorable, recoveries, settle_trails
 
 STOPS = (OrderPurpose.ATTACHED_SL, OrderPurpose.PROTECT)
 CONFIRMED = (OrderState.OPEN, OrderState.PARTIALLY_FILLED)
@@ -98,6 +100,38 @@ class PortfolioService:
             policy,
         )
 
+    def trail_stop(
+        self,
+        uow: UnitOfWork,
+        strategy: StrategyId,
+        symbol: Symbol,
+        spec: InstrumentSpec,
+        desired: Price,
+    ) -> None:
+        """Update the account target only; reconciliation owns order-level work."""
+        if not isinstance(spec, InstrumentSpec) or spec.symbol is not symbol:
+            raise ValueError("instrument must match target symbol")
+        if not isinstance(desired, Price):
+            raise TypeError("desired must be Price")
+        episode = uow.episodes.active_for(strategy, symbol)
+        book = uow.portfolio.book(strategy, symbol)
+        if (
+            episode is None
+            or episode.state is not EpisodeState.OPEN
+            or not book.qty
+            or closing_symbol(uow, symbol)
+        ):
+            return
+        aligned = (
+            spec.round_price_down(desired.value)
+            if book.qty > 0
+            else spec.round_price_up(desired.value)
+        )
+        if book.stop_price is None or favorable(aligned, book.stop_price.value, book.qty):
+            uow.portfolio.put_book(
+                replace(book, stop_price=Price(aligned), stop_episode_id=episode.episode_id)
+            )
+
     def request_close(self, uow: UnitOfWork, episode: EpisodeRecord) -> CloseIntent:
         existing = uow.portfolio.intent(episode.episode_id)
         if existing is not None:
@@ -137,7 +171,19 @@ class PortfolioService:
                 raise ValueError("entry cannot reverse an existing strategy position")
             book = apply_book_fill(book, qty, event.price.value, event.fee)
             if order.attached_stop:
-                book = replace(book, stop_price=order.attached_stop.stop_loss)
+                episode = next(
+                    (e for e in uow.episodes.all() if order.key in e.entry_order_keys), None
+                )
+                episode_id = episode.episode_id if episode else None
+                target = order.attached_stop.stop_loss
+                if (
+                    episode_id is not None
+                    and episode_id == book.stop_episode_id
+                    and book.stop_price is not None
+                    and favorable(book.stop_price.value, target.value, qty)
+                ):
+                    target = book.stop_price
+                book = replace(book, stop_price=target, stop_episode_id=episode_id)
             uow.portfolio.put_book(book)
             recovery = uow.portfolio.recovery(attr.strategy, symbol)
             uow.portfolio.put_recovery(
@@ -369,6 +415,8 @@ class PortfolioService:
                 if updated.state is CloseState.DONE:
                     uow.episodes.put(replace(episode, state=EpisodeState.CLOSED))
         self._recover_protection(uow)
+        settle_trails(uow, self.clock.now(), self.policy)
+        align_stops(uow, self.clock.now(), self.policy)
 
     def _recover_protection(self, uow: UnitOfWork) -> None:
         for book in uow.portfolio.books():
@@ -633,6 +681,19 @@ class PortfolioService:
                 for strategy in StrategyId
             ):
                 raise ValueError("snapshot predates a booked fill")
+            for trail in recoveries(uow):
+                order = uow.orders.get(trail.order_key)
+                if order is None or order.symbol is not symbol or order.state.is_terminal:
+                    continue
+                book = uow.portfolio.book(order.strategy, symbol)
+                if trail.in_flight or (
+                    trail.attempts >= self.policy.max_protect_attempts
+                    and book.qty
+                    and book.stop_price == trail.target
+                    and order.trigger_price is not None
+                    and favorable(trail.target.value, order.trigger_price.value, book.qty)
+                ):
+                    raise ValueError("unresolved trailing stop prevents recovery")
             self._sync_links(uow)
             books = [b for b in uow.portfolio.books() if b.symbol is symbol]
             if invariants(books, {symbol: exchange_qty}):

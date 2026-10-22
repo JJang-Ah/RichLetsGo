@@ -17,6 +17,7 @@ from richletsgo.exchange.contracts import (
     OrderRequest,
 )
 from richletsgo.portfolio.models import StopParameters
+from richletsgo.portfolio.trailing import ingest_trail_record
 from richletsgo.risk.pause import Pause, PauseKind, PauseState
 from richletsgo.storage.contracts import UnitOfWork
 
@@ -91,6 +92,7 @@ class OrderSender:
     async def _save(self, record: JournalRecord) -> None:
         async with self.uow_factory() as uow:
             uow.recovery.put(record.key, record.encode())
+            ingest_trail_record(uow, record)
             if record.action_key:
                 uow.portfolio.acknowledge(record.action_key)
             await uow.commit()
@@ -274,13 +276,14 @@ class OrderSender:
         trigger: Price | None = None,
         qty: Qty | None = None,
         action_key: str | None = None,
+        trail_attempt: int | None = None,
     ) -> CommandResult:
         target = order.order_link_id or order.exchange_order_id
         assert target is not None
         fields = (["trigger"] if trigger else []) + (["qty"] if qty else [])
         if not fields:
             return ExchangeError(ErrorCode.REJECTED, "amend requires fields")
-        payload = {
+        payload: dict[str, Any] = {
             "symbol": order.symbol.value,
             "fields": fields,
             "before": {
@@ -293,6 +296,12 @@ class OrderSender:
                 "qty": str(qty.value) if qty else None,
             },
         }
+        if trail_attempt is not None:
+            payload["trail"] = {
+                "order_key": order.key,
+                "attempt": trail_attempt,
+                "requested_at": self.clock.now().isoformat(),
+            }
         return await self.protective(
             "amend",
             target,
