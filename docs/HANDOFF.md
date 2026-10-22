@@ -315,4 +315,5 @@
 - PR #19(M1-06) 병합(06abde8)으로 M1 작업 6개 완료. M1-00에 완료 판정 표 추가: V0 39행 추적(대응표 테스트 42개 실재 확인), CI·로컬 535 passed, `trading_lab` 삭제, 외부 연결 없음 → **M1 완료**.
 - M2-02 명세를 병합된 코드와 대조해 보완(사용자 확인 2026-10-22): `MarketSignal` 확정과 `EXIT` 가격 필드 규칙, S1·S2 입력·상태 계약(직전 상태, 열린 S2 에피소드, JSON 왕복), **추적 손절 연결 경로 추가**(M1-04에 trigger 수정 작업이 없던 빈틈 → `trail_stop` + `AMEND_STOP` + 동기화기 연결, 전략 코드와 커밋 분리).
 - 다음 담당자: Codex — M2-02 구현(`task/M2-02-indicators-and-strategies`). 검토: Claude Code.
+- 추가(PR #20 Codex 검토 P1 3·P2 1 반영): 추적 손절 연결을 별도 작업 **M2-02a**로 분리하고 먼저 구현하기로 함. 목표 갱신과 주문별 맞추기 분리(같은 목표 재시도·늦은 OPEN), 진행 중 amend 판정 후 재시도·`TrailRecovery` 한도, 전송 직전 확인(낮추지 않음), trigger만 바꾼 `UNSUPPORTED`를 D90 교체에서 제외, 늦은 진입 체결이 목표를 되돌리지 않게 `stop_episode_id`, `InstrumentSpec` 입력. M1 완료 표 문구 정정. 순서: M2-02a → M2-02.
 
