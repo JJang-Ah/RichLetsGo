@@ -211,7 +211,8 @@ def test_stale_and_closing_actions_are_discarded_without_attempts(tmp_path):
         await target(db, svc, "98")
         await svc.tick()
         await sync._actions(NOW)
-        assert [s.target.value for s in await attempts(db)] == [D(98)]
+        assert [s.target.value for s in await attempts(db) if s.attempts] == [D(98)]
+        assert all(s.attempts == 0 for s in await attempts(db) if s.target.value != 98)
         await sync.tick()
         await target(db, svc, "99")
         await svc.tick()
@@ -219,7 +220,8 @@ def test_stale_and_closing_actions_are_discarded_without_attempts(tmp_path):
         await target(db, svc, "100")
         assert (await book(db)).stop_price.value == 99
         await sync._actions(NOW)
-        assert [s.target.value for s in await attempts(db)] == [D(98)]
+        assert [s.target.value for s in await attempts(db) if s.attempts] == [D(98)]
+        assert all(s.attempts == 0 for s in await attempts(db) if s.target.value != 98)
         await sync.close()
 
     asyncio.run(scenario())
@@ -437,8 +439,51 @@ def test_already_improved_stop_discards_queued_action(tmp_path):
             u.orders.put(replace(stop, trigger_price=Price(D(98))))
             await u.commit()
         await sync._actions(NOW)
-        assert not await attempts(db)
+        assert all(s.attempts == 0 and s.discards == 1 for s in await attempts(db))
         assert not sync.journal.read()
+        await sync.close()
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("reboot", [False, True])
+def test_discard_during_other_strategy_close_requeues_same_target(tmp_path, reboot):
+    from richletsgo.portfolio.models import CloseIntent, CloseState
+
+    async def scenario():
+        db, clock, svc, router, ex, sync = await account(tmp_path)
+        await target(db, svc, "95")
+        await svc.tick()
+        closing = CloseIntent("s2-close", "s2-episode", StrategyId.S2, BTC, clock.now())
+        async with db.unit_of_work() as u:
+            original_key = next(
+                a.key for a in u.portfolio.actions() if a.kind is ActionKind.AMEND_STOP
+            )
+            u.portfolio.put_intent(closing)
+            await u.commit()
+        await sync._actions(NOW)
+        state = (await attempts(db))[0]
+        assert state.attempts == 0 and state.discards == 1
+        assert state.last_attempt_at is None and state.in_flight is None
+        assert not sync.journal.read()
+        async with db.unit_of_work() as u:
+            assert not u.portfolio.actions()
+        if reboot:
+            sync = await restart(db, clock, svc, router, ex, sync, tmp_path)
+            assert (await attempts(db))[0] == state
+        async with db.unit_of_work() as u:
+            u.portfolio.put_intent(replace(closing, state=CloseState.DONE))
+            await u.commit()
+        await svc.tick()
+        await svc.tick()
+        async with db.unit_of_work() as u:
+            actions = [a for a in u.portfolio.actions() if a.kind is ActionKind.AMEND_STOP]
+            assert len(actions) == 1 and actions[0].key != original_key
+        await sync.tick()
+        await sync.tick()
+        assert [o.trigger_price.value for o in await ex.get_open_orders(BTC)] == [D(95)]
+        state = (await attempts(db))[0]
+        assert state.attempts == 1 and state.discards == 1 and state.in_flight is None
         await sync.close()
 
     asyncio.run(scenario())

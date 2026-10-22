@@ -37,6 +37,7 @@ class TrailRecovery:
     attempts: int = 0
     last_attempt_at: datetime | None = None
     in_flight: str | None = None
+    discards: int = 0
 
     @property
     def key(self) -> str:
@@ -44,7 +45,7 @@ class TrailRecovery:
 
     @property
     def action_key(self) -> str:
-        return f"amend:{self.order_key}:{target_text(self.target)}:{self.attempts}"
+        return f"amend:{self.order_key}:{target_text(self.target)}:{self.attempts}:{self.discards}"
 
     def encode(self) -> str:
         return json.dumps(
@@ -52,6 +53,7 @@ class TrailRecovery:
                 "order_key": self.order_key,
                 "target": target_text(self.target),
                 "attempts": self.attempts,
+                "discards": self.discards,
                 "last_attempt_at": self.last_attempt_at.isoformat()
                 if self.last_attempt_at
                 else None,
@@ -70,6 +72,7 @@ class TrailRecovery:
             if data["last_attempt_at"]
             else None,
             data["in_flight"],
+            data.get("discards", 0),
         )
 
 

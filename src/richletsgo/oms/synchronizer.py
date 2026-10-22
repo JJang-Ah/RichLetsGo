@@ -486,6 +486,18 @@ class Synchronizer:
                                 )
                             ):
                                 attempt = state.attempts
+                        if attempt is None:
+                            if target is not None:
+                                state = recovery(uow, order.key, target)
+                                if action.key == state.action_key:
+                                    uow.recovery.put(
+                                        state.key,
+                                        replace(state, discards=state.discards + 1).encode(),
+                                    )
+                            # Persist the next work identity atomically with removal.
+                            uow.portfolio.acknowledge(action.key)
+                            await uow.commit()
+                            continue
                     if attempt is not None:
                         assert current is not None
                         await self.sender.amend(

@@ -328,3 +328,10 @@
 - `stop_episode_id`로 같은 에피소드의 늦은 진입이 목표를 되돌리지 않게 하고 새 에피소드는 초기 손절로 시작한다. 자식 손절 알림이 체결보다 먼저 올 때 예약된 TRIM이 새 보호를 없애지 않도록 전송 직전 필요 잔량을 재확인한다. 기존 수량 변환 테스트는 실제 초과 보호 상태를 구성하도록 보정했다.
 - 새 V0 통합 19개. Python 3.12·3.14 각각 **554 passed**, ruff check/format, mypy strict(55 소스) 통과. 실제 Bybit·Oracle 호출 없음.
 - 다음: Claude가 M2-02a를 검토하고 사용자 병합 후 Codex가 `task/M2-02-indicators-and-strategies`에서 M2-02 구현. 실제 부착 손절 trigger amend와 부모 연결은 M3-07 C3. M2-03 시작 시 D88 설정 예시 키(`[backtest.research_risk]`, `[backtest.selection]`)·수수료 값 확인을 유지한다.
+
+
+## 2026-10-23 — Codex (PR #21 Claude P2 수정)
+
+- 전송 전 폐기한 AMEND_STOP의 키가 emitted에 남아 같은 목표를 다시 만들지 못하는 문제를 수정했다. TrailRecovery에 실제 시도와 별개인 `discards`를 저장하고 작업 키에 포함한다. 폐기 번호 증가와 acknowledge는 같은 UoW에서 커밋하며 실제 attempts·last_attempt_at은 바꾸지 않는다. 이전 직렬화에는 discards=0을 적용한다.
+- 다른 전략의 같은 계약 청산 때문에 폐기 → 청산 종료 → 같은 목표 재전송을 재시작 유무 2개 사례로 검증했다. 중복 reconcile은 작업 1개, 폐기는 시도 0회, 이후 전송은 시도 1회임을 확인했다. 기존 낡은 목표·청산·이미 개선된 손절 폐기 테스트도 유지했다.
+- Python 3.12·3.14 각각 **556 passed**, ruff check/format, mypy strict(55 소스), diff check 통과. 다음: Claude 재검토. 병합은 하지 않았다.

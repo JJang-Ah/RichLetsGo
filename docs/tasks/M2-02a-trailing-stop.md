@@ -34,9 +34,10 @@ S1이 계산한 "원하는 손절가"를 거래소 손절 주문까지 반영한
    - 미확인 손절(CREATED·SUBMITTED·UNKNOWN)에는 내지 않는다. 확인된 뒤 다음 `reconcile`에서 맞춘다.
    - 청산 의도가 진행 중이면 내지 않는다(청산 상태 기계가 손절을 관리).
    - **진행 중인 amend가 있으면 새로 내지 않는다.** 같은 주문에 대해 결과가 확정되지 않은 amend(저널 `requested`만 있음, 또는 결과가 TIMEOUT)가 있으면, 먼저 주문 조회로 판정한다(D90 재생 규칙: 적용됨 / 미적용 / 대체됨). 판정 뒤 실제 trigger가 여전히 목표에 못 미칠 때만 다음 시도를 낸다.
-   - **시도 기록** `TrailRecovery(order_key, target, attempts, last_attempt_at, in_flight)` — 계좌 UoW에 저장해 재시작해도 유지한다 (PR #20 재검토 1번).
+   - **시도 기록** `TrailRecovery(order_key, target, attempts, last_attempt_at, in_flight, discards)` — 계좌 UoW에 저장해 재시작해도 유지한다 (PR #20 재검토 1번).
      - `attempts`는 **거래소에 실제로 보낸 요청 수**다. 동기화기가 전송을 인수하는 순간(저널 `requested` 기록과 같은 시점) 1 올리고, `last_attempt_at`·`in_flight = 그 요청의 operation_id`를 남긴다. 거절·TIMEOUT·Accepted 모두 한 번으로 센다. 전송 직전 확인(3번)으로 보내지 않고 버린 작업은 세지 않는다.
-     - 작업 키: `amend:{order_key}:{target}:{attempts}`. 키에 들어가는 `attempts`는 **다음에 보낼 시도 번호**라서, 한 번 보낸 뒤에는 키가 반드시 바뀐다. 그래서 `PortfolioRepository.emit`이 acknowledge된 키를 영구 보존해도, `OrderSender._claimed`가 같은 키를 막아도 재시도가 막히지 않는다. 같은 판단을 두 번 처리하면(보내기 전) 같은 키라 작업이 하나다.
+     - 작업 키: `amend:{order_key}:{target}:{attempts}:{discards}`. 키에 들어가는 `attempts`는 **다음에 보낼 시도 번호**라서, 한 번 보낸 뒤에는 키가 반드시 바뀐다. 그래서 `PortfolioRepository.emit`이 acknowledge된 키를 영구 보존해도, `OrderSender._claimed`가 같은 키를 막아도 재시도가 막히지 않는다. 같은 판단을 두 번 처리하면(보내기 전) 같은 키라 작업이 하나다.
+     - PR #21 검토 반영: 전송 전 폐기는 `discards`만 올리고 acknowledge와 같은 UoW에서 저장한다. 실제 시도 횟수·마지막 전송 시각은 바꾸지 않는다. 일시적인 다른 전략 청산이 끝나면 같은 목표·같은 시도 번호라도 새 폐기 번호로 작업을 만들 수 있다. 폐기 번호도 재시작 시 복원한다.
      - `ClosePolicy.retry_after` 간격, `max_protect_attempts` 횟수. 한도를 넘으면 그 계약 신규 진입 정지 + 알림. 기존 손절은 그대로 둔다. 목표가 더 유리하게 바뀌면 새 목표에 대한 시도 기록을 새로 시작한다.
    - **진행 중(`in_flight`)의 끝** — 다음 중 하나가 확인돼야 끝난다. 그 전에는 새 작업을 내지 않는다.
      - 주문 이벤트·조회에서 실제 trigger가 요청 값이 됨 → **적용됨**.
