@@ -81,3 +81,9 @@
 - D88의 `config.example.toml` 키 구조 `[backtest.research_risk]`, `[backtest.selection]`가 실제 로더·위험 엔진·후보 선택 입력에 적합한지 확인한다.
 - 연구 수수료 값을 구현 시점의 Bybit 공식 수수료표와 대조한다. 실거래 수치로 자동 전용하지 않는다.
 - 키 구조나 값 연결이 불편하거나 모호하면 첫 줄 `**[Codex]**`인 PR 코멘트로 구체적인 문제와 제안을 남긴다. 이 확인은 M2-03 시작 시 수행할 일이며 M1-04에서 확인 완료로 처리하지 않는다.
+
+
+## M2-02 연결 보완 (PR #22 검토, 2026-10-23)
+
+- Wilder RSI·ATR은 마지막 10×n개 봉에서 seed부터 계산한다. `strategy.candidates.required_bars(params)`가 직전 지표까지 포함한 최소 평가 창을 반환한다. 운영 시작 시 최소 그 수의 마감 봉을 적재하며, 백테스트는 한 번 검증한 전체 이력에서 `through(start, lookback=required_bars(params))`로 잘라 평가한다. 이력 전체 접두를 매번 만들지 않는다.
+- S1 결과가 EXIT면 청산 라우터로 전달하고 그 봉에서는 `trail_stop`을 호출하지 않는다. 목표 후보가 종가를 이미 넘어선 경우 기존 목표를 유지하며 ENTRY를 내지 않는 규칙이다. 최초 판단에 직전 목표가 없으면 S1State.stop_price는 None일 수 있다. 추세 자체는 유지하며 다음 유효한 판단에서 목표와 ENTRY가 만들어진다.
