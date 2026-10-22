@@ -309,3 +309,12 @@
 - 03 4.3절·M1-06 명세를 먼저 갱신했다. P3: exhausted 교체 그룹 수동 종료·재대조는 M3-05에 인수인계했고, missing_action_order 알림에 수동 확인 필요를 명시했다.
 - 회귀 4개: 무체결 8일간 일일 대조 후 재시작·청산, 실제 8일 중단 시 정지 유지와 청산 전송, 조회 실패 시 워터마크 유지·조회 시작 시각 저장, 계약별 가장 이른 워터마크. 기존 늦은 체결 회귀도 통과.
 - Python 3.12·3.14 각각 535 passed. ruff check/format, mypy strict(54 소스) 통과. 다음: Claude 재검토, 병합은 사용자 담당.
+
+## 2026-10-22 — Claude Code (M1 완료 판정, M2-02 명세 점검)
+
+- PR #19(M1-06) 병합(06abde8)으로 M1 작업 6개 완료. M1-00에 완료 판정 표 추가: V0 39행 추적(대응표 테스트 42개 실재 확인), CI·로컬 535 passed, `trading_lab` 삭제, 외부 연결 없음 → **M1 완료**.
+- M2-02 명세를 병합된 코드와 대조해 보완(사용자 확인 2026-10-22): `MarketSignal` 확정과 `EXIT` 가격 필드 규칙, S1·S2 입력·상태 계약(직전 상태, 열린 S2 에피소드, JSON 왕복), **추적 손절 연결 경로 추가**(M1-04에 trigger 수정 작업이 없던 빈틈 → `trail_stop` + `AMEND_STOP` + 동기화기 연결, 전략 코드와 커밋 분리).
+- 다음 담당자: Codex — M2-02 구현(`task/M2-02-indicators-and-strategies`). 검토: Claude Code.
+- 추가(PR #20 Codex 검토 P1 3·P2 1 반영): 추적 손절 연결을 별도 작업 **M2-02a**로 분리하고 먼저 구현하기로 함. 목표 갱신과 주문별 맞추기 분리(같은 목표 재시도·늦은 OPEN), 진행 중 amend 판정 후 재시도·`TrailRecovery` 한도, 전송 직전 확인(낮추지 않음), trigger만 바꾼 `UNSUPPORTED`를 D90 교체에서 제외, 늦은 진입 체결이 목표를 되돌리지 않게 `stop_episode_id`, `InstrumentSpec` 입력. M1 완료 표 문구 정정. 순서: M2-02a → M2-02.
+- 추가(PR #20 Codex 재검토 P2 2건): M2-02a `attempts`는 실제 보낸 요청 수(거절·TIMEOUT·Accepted 모두 계수, 전송 전 폐기는 제외)이고 작업 키에 다음 시도 번호를 넣어 재시도가 옛 키에 막히지 않게 함. Accepted도 적용 확인 전에는 `in_flight`. `trail_stop`에 대상 `symbol`을 따로 받아 `spec.symbol`과 비교.
+
