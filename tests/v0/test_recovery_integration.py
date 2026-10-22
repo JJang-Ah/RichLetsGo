@@ -1436,3 +1436,116 @@ def test_replacement_equal_half_stops_are_both_retained(tmp_path):
         await sync.close()
 
     asyncio.run(scenario())
+
+
+def test_long_holding_with_daily_reconciliation_restarts_and_closes(tmp_path):
+    async def scenario():
+        db, clock, svc, router, ex, sync = await filled_account(tmp_path)
+        for _ in range(8):
+            clock.advance(timedelta(days=1))
+            await sync.tick()
+            assert not any(p.reason == "history_out_of_range" for p in sync.pauses.active())
+        async with db.unit_of_work() as u:
+            assert u.recovery.get("reconciliation:" + BTC.value) == clock.now().isoformat()
+        await sync.close()
+        fresh = Synchronizer(
+            db.unit_of_work,
+            ex,
+            svc,
+            ProtectiveJournal(tmp_path),
+            clock,
+            router.gate.pauses,
+            sync.sender.unique,
+            POLICY,
+            (BTC,),
+        )
+        clock.advance(timedelta(seconds=1))
+        assert await fresh.synchronize()
+        await router.handle(signal(kind="EXIT", bar=clock.now()), market(), RISK_INPUT)
+        await fresh.tick()
+        assert any(o.reduce_only and not o.trigger_price for o in await ex.get_open_orders(BTC))
+        await fresh.close()
+
+    asyncio.run(scenario())
+
+
+def test_history_gap_keeps_pause_but_refreshes_and_sends_close(tmp_path):
+    async def scenario():
+        db, clock, svc, router, ex, sync = await filled_account(tmp_path)
+        async with db.unit_of_work() as u:
+            watermark = u.recovery.get("reconciliation:" + BTC.value)
+        await sync.close()
+        clock.advance(timedelta(days=8))
+        fresh = Synchronizer(
+            db.unit_of_work,
+            ex,
+            svc,
+            ProtectiveJournal(tmp_path),
+            clock,
+            router.gate.pauses,
+            sync.sender.unique,
+            POLICY,
+            (BTC,),
+        )
+        assert not await fresh.synchronize()
+        await router.handle(signal(kind="EXIT", bar=clock.now()), market(), RISK_INPUT)
+        await fresh.tick()
+        assert any(o.reduce_only and not o.trigger_price for o in await ex.get_open_orders(BTC))
+        async with db.unit_of_work() as u:
+            assert u.recovery.get("reconciliation:" + BTC.value) == watermark
+            assert u.recovery.get("history_gap:" + BTC.value) == "unresolved"
+        assert "history_out_of_range" in fresh.alerts
+        assert not await fresh.synchronize()
+        await fresh.close()
+
+    asyncio.run(scenario())
+
+
+def test_reconciliation_watermark_uses_query_start_and_ignores_failed_round(tmp_path, monkeypatch):
+    from richletsgo.exchange.contracts import ExchangeError
+
+    async def scenario():
+        db, clock, svc, router, ex, sync = await filled_account(tmp_path)
+        original = ex.get_executions
+        async with db.unit_of_work() as u:
+            previous = u.recovery.get("reconciliation:" + BTC.value)
+
+        async def failed(symbol, since):
+            return ExchangeError(ErrorCode.TIMEOUT, "query failed")
+
+        monkeypatch.setattr(ex, "get_executions", failed)
+        clock.advance(timedelta(seconds=10))
+        await sync._refresh(BTC, NOW)
+        async with db.unit_of_work() as u:
+            assert u.recovery.get("reconciliation:" + BTC.value) == previous
+        started = clock.now()
+
+        async def slow(symbol, since):
+            clock.advance(timedelta(seconds=10))
+            return await original(symbol, since)
+
+        monkeypatch.setattr(ex, "get_executions", slow)
+        await sync._refresh(BTC, NOW)
+        async with db.unit_of_work() as u:
+            assert u.recovery.get("reconciliation:" + BTC.value) == started.isoformat()
+        assert await sync._since() == started - POLICY.overlap
+        await sync.close()
+
+    asyncio.run(scenario())
+
+
+def test_reconciliation_uses_oldest_contract_watermark(tmp_path):
+    from richletsgo.domain import Symbol
+
+    async def scenario():
+        db, clock, svc, router, ex, sync = await filled_account(tmp_path)
+        sync.symbols = (BTC, Symbol.ETHUSDT)
+        old = clock.now() - timedelta(days=2)
+        async with db.unit_of_work() as u:
+            u.recovery.put("reconciliation:ETHUSDT", old.isoformat())
+            await u.commit()
+        await sync._refresh(BTC, NOW)
+        assert await sync._since() == old - POLICY.overlap
+        await sync.close()
+
+    asyncio.run(scenario())

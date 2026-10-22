@@ -156,13 +156,30 @@ class Synchronizer:
         )
 
     async def _since(self) -> datetime | None:
-        async with self.uow_factory() as uow:
-            times = [f.event.exec_time for f in uow.fills.all()]
         now = self.clock.now()
-        if times and max(times) < now - self.policy.history_window + self.policy.overlap:
+        starts: list[datetime] = []
+        gap = False
+        async with self.uow_factory() as uow:
+            for symbol in self.symbols:
+                key = "reconciliation:" + symbol.value
+                raw = uow.recovery.get(key)
+                times = [f.event.exec_time for f in uow.fills.all() if f.event.symbol is symbol]
+                checked = datetime.fromisoformat(raw) if raw else max(times, default=None)
+                gap_key = "history_gap:" + symbol.value
+                if uow.recovery.get(gap_key) or (
+                    checked is not None
+                    and checked < now - self.policy.history_window + self.policy.overlap
+                ):
+                    uow.recovery.put(gap_key, "unresolved")
+                    gap = True
+                starts.append(
+                    checked - self.policy.overlap if checked else now - self.policy.history_window
+                )
+            await uow.commit()
+        if gap:
             self.sender.pause("history_out_of_range")
             return None
-        return max(times) - self.policy.overlap if times else now - self.policy.history_window
+        return min(starts)
 
     async def _load_journal(self) -> tuple[JournalRecord, ...]:
         records = self.journal.read()
@@ -261,6 +278,7 @@ class Synchronizer:
         self.journal.archive({r.key for r in records})
 
     async def _refresh(self, symbol: Symbol, since: datetime) -> tuple[OrderEvent, ...] | None:
+        started = self.clock.now()
         history = await self.gateway.get_order_history(symbol, since)
         executions = await self.gateway.get_executions(symbol, since)
         opened = await self.gateway.get_open_orders(symbol)
@@ -280,6 +298,21 @@ class Synchronizer:
             await self._order(event, confirmed=True)
         for execution in executions:
             await self.portfolio.on_execution(execution)
+        async with self.uow_factory() as uow:
+            unresolved = any(
+                o.symbol is symbol
+                and (
+                    o.exchange_cum_exec_qty > abs(o.booked_qty.value)
+                    or o.state in (OrderState.SUBMITTED, OrderState.UNKNOWN)
+                )
+                for o in uow.orders.all()
+            ) or any(
+                f.event.symbol is symbol and f.status is FillStatus.PENDING_ATTRIBUTION
+                for f in uow.fills.all()
+            )
+            if not unresolved and not uow.recovery.get("history_gap:" + symbol.value):
+                uow.recovery.put("reconciliation:" + symbol.value, started.isoformat())
+            await uow.commit()
         return opened
 
     async def _query_stops(self, symbol: Symbol, since: datetime) -> bool:
@@ -404,6 +437,9 @@ class Synchronizer:
                     order = uow.orders.get(action.order_key or "")
                 if order is None:
                     self.sender.pause("missing_action_order")
+                    self.alerts.append(
+                        "missing action order: manual reconciliation required: " + action.key
+                    )
                     continue
                 if action.kind in (
                     ActionKind.CLOSE,
@@ -622,15 +658,16 @@ class Synchronizer:
             try:
                 records = await self._load_journal()
                 since = await self._since()
+                history_complete = since is not None
                 if since is None:
-                    return False
+                    since = self.clock.now() - self.policy.history_window
                 account = await self.gateway.get_account()
                 if isinstance(account, ExchangeError):
                     self.sender.pause("query")
                     return False
                 self.account = account
                 for _ in range(self.policy.max_rounds):
-                    complete = True
+                    complete = history_complete
                     for symbol in self.symbols:
                         complete = await self._query_stops(symbol, since) and complete
                     await self._audit_unsettled()
@@ -714,13 +751,14 @@ class Synchronizer:
             try:
                 await self._drain()
                 since = await self._since()
-                if since is not None:
-                    for symbol in self.symbols:
-                        await self._refresh(symbol, since)
-                    await self._audit_unsettled()
-                    await self._unknowns()
-                    await self._actions(since)
-                    await self._resume_replacements(since)
+                if since is None:
+                    since = self.clock.now() - self.policy.history_window
+                for symbol in self.symbols:
+                    await self._refresh(symbol, since)
+                await self._audit_unsettled()
+                await self._unknowns()
+                await self._actions(since)
+                await self._resume_replacements(since)
                 if not self.gateway.connected:
                     self.sender.pause("stream")
                 await self._persist_pauses()

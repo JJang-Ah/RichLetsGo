@@ -300,3 +300,12 @@
 - D39: trading_lab 3파일·기존 테스트 9개 삭제, 임시 pytest pythonpath/ruff 제외 제거. README·REVIEW에 새 구현 및 초기 발견 1~8 대응을 기록했다.
 - 검증: Python 3.12·3.14 각각 531 passed. ruff check/format, mypy strict(54 소스) 통과. 실제 주문·Oracle·텔레그램은 실행하지 않았다.
 - 다음: Claude 구현 검토, 사용자 병합. 실제 Bybit 부착 Partial 수량 변경·자동 축소는 M3-07 C10. M2-03 시작 시 D88 설정 키 구조와 공식 수수료 확인은 계속 필요하다.
+
+
+## 2026-10-22 — Codex (PR #19 Claude P1·P3 반영)
+
+- 체결 시각 대신 계약별 완전 대조 시작 시각을 recovery에 저장한다. history/executions/open 조회·반영 성공 뒤에만 전진하며, 미확정 주문·미반영/귀속 보류 체결이 남으면 기준을 유지한다. 계좌 조회는 가장 오래된 계약 기준을 사용한다.
+- 실제 대조 공백이 조회 범위를 넘으면 history_gap을 영속화하고 진입 정지를 유지한다. 현재 조회 가능한 범위의 REST·UNKNOWN·보호 outbox·교체 처리는 tick과 synchronize 모두 계속한다. 제한된 조회 성공만으로 공백을 지우지 않는다.
+- 03 4.3절·M1-06 명세를 먼저 갱신했다. P3: exhausted 교체 그룹 수동 종료·재대조는 M3-05에 인수인계했고, missing_action_order 알림에 수동 확인 필요를 명시했다.
+- 회귀 4개: 무체결 8일간 일일 대조 후 재시작·청산, 실제 8일 중단 시 정지 유지와 청산 전송, 조회 실패 시 워터마크 유지·조회 시작 시각 저장, 계약별 가장 이른 워터마크. 기존 늦은 체결 회귀도 통과.
+- Python 3.12·3.14 각각 535 passed. ruff check/format, mypy strict(54 소스) 통과. 다음: Claude 재검토, 병합은 사용자 담당.
