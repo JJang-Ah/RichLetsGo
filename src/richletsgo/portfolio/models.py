@@ -47,6 +47,7 @@ class StrategyBook:
     funding: Decimal = Decimal(0)  # positive = cost, negative = receipt
     stop_price: Price | None = None
     stops: tuple[StopLink, ...] = ()
+    stop_episode_id: str | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.strategy, StrategyId) or not isinstance(self.symbol, Symbol):
@@ -143,6 +144,7 @@ class ActionKind(StrEnum):
     REDUCE_UNPROTECTED = "REDUCE_UNPROTECTED"
     CANCEL_STOP = "CANCEL_STOP"
     TRIM_STOP = "TRIM_STOP"
+    AMEND_STOP = "AMEND_STOP"
     QUERY_STOPS = "QUERY_STOPS"
     ALERT = "ALERT"
     PAUSE = "PAUSE"
@@ -157,6 +159,7 @@ class Action:
     qty: Decimal = Decimal(0)  # signed order quantity; TRIM_STOP is remaining absolute qty
     order_key: str | None = None
     detail: str = ""
+    trigger: Price | None = None
 
 
 @dataclass(frozen=True, slots=True)

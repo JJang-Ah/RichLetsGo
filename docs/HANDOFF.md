@@ -318,3 +318,13 @@
 - 추가(PR #20 Codex 검토 P1 3·P2 1 반영): 추적 손절 연결을 별도 작업 **M2-02a**로 분리하고 먼저 구현하기로 함. 목표 갱신과 주문별 맞추기 분리(같은 목표 재시도·늦은 OPEN), 진행 중 amend 판정 후 재시도·`TrailRecovery` 한도, 전송 직전 확인(낮추지 않음), trigger만 바꾼 `UNSUPPORTED`를 D90 교체에서 제외, 늦은 진입 체결이 목표를 되돌리지 않게 `stop_episode_id`, `InstrumentSpec` 입력. M1 완료 표 문구 정정. 순서: M2-02a → M2-02.
 - 추가(PR #20 Codex 재검토 P2 2건): M2-02a `attempts`는 실제 보낸 요청 수(거절·TIMEOUT·Accepted 모두 계수, 전송 전 폐기는 제외)이고 작업 키에 다음 시도 번호를 넣어 재시도가 옛 키에 막히지 않게 함. Accepted도 적용 확인 전에는 `in_flight`. `trail_stop`에 대상 `symbol`을 따로 받아 `spec.symbol`과 비교.
 
+
+
+## 2026-10-22 — Codex (M2-02a 추적 손절 연결)
+
+- PR #20 병합 명세에 따라 `task/M2-02a-trailing-stop`에서 별도 구현했다. `trail_stop`은 계약 규칙 검증·방향별 tick 정렬 후 목표만 갱신하고, reconcile이 확인된 주문별 `AMEND_STOP`을 만든다. 같은 목표 재시도·늦은 OPEN·추가 부분 체결도 포함한다.
+- `TrailRecovery`를 계좌 recovery 저장소에 저장하고 requested 저널 인수와 함께 시도 수·시각·진행 중 operation_id를 기록한다. Accepted는 적용 확인 전까지 진행 중이며, 간격 이후 성공한 조회로 미적용/대체를 판정한다. 작업 키에 다음 시도 번호를 넣고 재생을 멱등 처리한다. DB 실패 중 전송은 디스크 저널에서 복구한다.
+- 전송 직전 현재 목표·주문·청산 상태를 재확인한다. 한도 소진 시 계약 신규 진입을 정지하고 기존 손절을 유지한다. trigger-only UNSUPPORTED는 D90 수량 교체에서 제외한다.
+- `stop_episode_id`로 같은 에피소드의 늦은 진입이 목표를 되돌리지 않게 하고 새 에피소드는 초기 손절로 시작한다. 자식 손절 알림이 체결보다 먼저 올 때 예약된 TRIM이 새 보호를 없애지 않도록 전송 직전 필요 잔량을 재확인한다. 기존 수량 변환 테스트는 실제 초과 보호 상태를 구성하도록 보정했다.
+- 새 V0 통합 19개. Python 3.12·3.14 각각 **554 passed**, ruff check/format, mypy strict(55 소스) 통과. 실제 Bybit·Oracle 호출 없음.
+- 다음: Claude가 M2-02a를 검토하고 사용자 병합 후 Codex가 `task/M2-02-indicators-and-strategies`에서 M2-02 구현. 실제 부착 손절 trigger amend와 부모 연결은 M3-07 C3. M2-03 시작 시 D88 설정 예시 키(`[backtest.research_risk]`, `[backtest.selection]`)·수수료 값 확인을 유지한다.

@@ -1018,6 +1018,8 @@ def test_trim_remaining_converts_to_signed_total_and_zero_cancels(tmp_path):
             stop = next(o for o in u.orders.all() if o.purpose is OrderPurpose.ATTACHED_SL)
             stop = replace(stop, qty=Qty(D(-2)), exchange_cum_exec_qty=D(1), booked_qty=Qty(D(-1)))
             u.orders.put(stop)
+            current = u.portfolio.book(stop.strategy, BTC)
+            u.portfolio.put_book(replace(current, qty=D(".5")))
             u.portfolio.emit(
                 Action("trim-half", ActionKind.TRIM_STOP, stop.strategy, BTC, D(".5"), stop.key)
             )
@@ -1033,6 +1035,8 @@ def test_trim_remaining_converts_to_signed_total_and_zero_cancels(tmp_path):
         assert D(request.payload()["after"]["qty"]) == D("-1.5")
         assert remote.request.qty.value == D("-1.5")
         async with db.unit_of_work() as u:
+            current = u.portfolio.book(stop.strategy, BTC)
+            u.portfolio.put_book(replace(current, qty=D(0), avg_price=None))
             u.portfolio.emit(
                 Action("trim-zero", ActionKind.TRIM_STOP, stop.strategy, BTC, D(0), stop.key)
             )
