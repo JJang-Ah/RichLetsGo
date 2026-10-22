@@ -55,3 +55,21 @@
 - 발견 9의 `.gitignore` 정리를 M0-01에서 반영했다. 광범위한 `*secret*`·`*credentials*` 패턴을 제거하고 데이터 디렉터리를 루트 기준으로 제한했다. 설정·키 파일과 도구 산출물은 구체적인 패턴으로 제외한다.
 - 패키징·Python 버전·CI가 없다는 구성 문제는 `pyproject.toml`, src 패키지 구조, Python 3.12·3.14 Windows CI로 반영했다.
 - 발견 1~8과 기존 위험 검증 테스트 보강은 M1에서 새 로직으로 이전할 항목이다. M0는 기존 `trading_lab`의 동작을 바꾸지 않는다.
+
+
+## 2026-10-22 — M1 대체 구현 상태 (Codex)
+
+위 초기 검토는 역사 기록으로 보존한다. `trading_lab`과 기존 테스트 9개를 삭제하고 다음 검증으로 대체했다. 국내·미국 주식 어댑터와 통화 변환은 이번 범위가 아니다.
+
+| 발견 | 대체 구현·검증 |
+|---|---|
+| 1 청산 한도 면제 | risk.checks / test_full_reduction_of_oversized_position_ignores_limits_and_pauses |
+| 2 단일 주문 반전 | SignalRouter·에피소드 / test_signed_entry_exit_and_no_atomic_reversal |
+| 3 심볼 검사 | Symbol Enum / test_symbol_is_exact (USDT BTC·ETH만 허용) |
+| 4 정밀도 | InstrumentSpec·sizing / test_qty_rounding_does_not_inflate_risk, test_stop_is_aligned_away_from_entry_and_short_is_signed |
+| 5 예약·동시 검사 | 계좌 UoW RiskGate / test_two_symbols_share_atomic_account_limit |
+| 6 레버리지 설정 | RiskLimits·InstrumentSpec / test_risk_limits_reject_out_of_range, test_invalid_leverage_and_symbol |
+| 7 방향 매핑 | Side·signed·side_and_abs / test_adapter_conversion_round_trip_is_exact_under_low_precision |
+| 8 시세·슬리피지 | guards·exposure·sizing / test_data_gap_policy_blocks_entry_and_releases_after_backfill, test_fees_and_slippage_widen_the_stop_distance |
+
+Decimal 강제는 test_numeric_wrappers_reject_implicit_conversion, 레버리지와 위험 수량 분리는 test_leverage_changes_margin_not_quantity, reduce-only 방향·초과 축소 방지는 test_qty_rounding_and_reduce_only_clips로 검증한다. 기존 pytest pythonpath와 ruff 제외 설정도 제거했다.

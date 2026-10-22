@@ -8,6 +8,7 @@ from richletsgo.domain.values import finite_decimal
 
 
 class FaultKind(StrEnum):
+    AMEND_UNSUPPORTED = "AMEND_UNSUPPORTED"
     RESPONSE_LOST = "RESPONSE_LOST"
     HIDE_ORDER = "HIDE_ORDER"
     QUERY_ERROR = "QUERY_ERROR"
@@ -44,6 +45,7 @@ class Fault:
             "instrument",
         }
         allowed = {
+            FaultKind.AMEND_UNSUPPORTED: {"amend"},
             FaultKind.RESPONSE_LOST: {"place", "cancel", "amend"},
             FaultKind.HIDE_ORDER: {"place"},
             FaultKind.ORDER_FIRST: {"fill"},

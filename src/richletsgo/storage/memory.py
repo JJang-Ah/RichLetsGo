@@ -22,6 +22,7 @@ from .contracts import (
     OrderRepository,
     PortfolioRepository,
     PositionRepository,
+    RecoveryRepository,
     UnitOfWork,
 )
 
@@ -49,6 +50,8 @@ class _State:
 
     fill_times: dict[Symbol, datetime] = field(default_factory=dict)
 
+    recovery_data: dict[str, str] = field(default_factory=dict)
+
     def clone(self) -> "_State":
         # Values are immutable, including nested raw event payloads.
         return _State(
@@ -69,6 +72,7 @@ class _State:
             self.pause_revisions.copy(),
             self.recoveries.copy(),
             self.fill_times.copy(),
+            self.recovery_data.copy(),
         )
 
 
@@ -311,12 +315,27 @@ class _Portfolio:
             self.owner.state.recoveries[strategy, symbol] = recovery
 
 
+class _Recovery:
+    def __init__(self, owner: "InMemoryUnitOfWork") -> None:
+        self.owner = owner
+
+    def get(self, key: str) -> str | None:
+        return self.owner.state.recovery_data.get(key)
+
+    def put(self, key: str, value: str) -> None:
+        self.owner.state.recovery_data[key] = value
+
+    def items(self) -> tuple[tuple[str, str], ...]:
+        return tuple(self.owner.state.recovery_data.items())
+
+
 class InMemoryUnitOfWork:
     """Explicit commit. Exit without commit, exceptions and cancellation discard all staged state."""
 
     def __init__(self, database: InMemoryDatabase) -> None:
         self.database = database
         self.environment = database.environment
+        self.recovery: RecoveryRepository = _Recovery(self)
         self._working: _State | None = None
         self.portfolio: PortfolioRepository = _Portfolio(self)
         self.orders: OrderRepository = _Orders(self)

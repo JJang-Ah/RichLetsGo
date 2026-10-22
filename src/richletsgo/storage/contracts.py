@@ -106,7 +106,16 @@ class PortfolioRepository(Protocol):
     ) -> None: ...
 
 
+class RecoveryRepository(Protocol):
+    """Account-scoped serialized recovery records; participates in the same UoW."""
+
+    def get(self, key: str) -> str | None: ...
+    def put(self, key: str, value: str) -> None: ...
+    def items(self) -> tuple[tuple[str, str], ...]: ...
+
+
 class UnitOfWork(Protocol):
+    recovery: RecoveryRepository
     environment: Environment
     portfolio: PortfolioRepository
     orders: OrderRepository
