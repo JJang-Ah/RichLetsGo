@@ -51,11 +51,11 @@ S1이 계산한 "원하는 손절가"를 거래소 손절 주문까지 반영한
      - 실제 trigger가 이미 작업 trigger보다 같거나 유리하다.
      - 작업 trigger가 현재 목표보다 불리하다(오래 기다린 작업).
    - 이 확인으로 **개선된 손절을 과거 값으로 낮추는 일이 없다.**
-   - 전송: `sender.amend(order, trigger=…)`(저널 대상, D45·D65). 결과가 거절이면 시도 횟수를 올리고 기존 손절을 유지한다. TIMEOUT이면 2번의 "진행 중인 amend" 판정으로 넘긴다.
+   - 전송: `sender.amend(order, trigger=…)`(저널 대상, D45·D65). 전송을 인수할 때 2번 규칙대로 시도 번호를 올리고 `in_flight`를 남긴다. 결과(거절·TIMEOUT·Accepted)는 2번 "진행 중의 끝" 규칙으로 판정하고, 그동안 기존 손절을 유지한다.
 
 4. **trigger만 바꾸는 amend의 미지원 응답** (PR #20 검토 2번)
    - 현재 `Synchronizer._resume_replacements`는 action_key가 있는 **모든** amend `UNSUPPORTED` 저널을 D90 수량 교체로 보고 `payload["after"]["qty"]`를 읽는다. trigger만 바꾼 amend는 이 값이 `None`이라 `Decimal(None)`에서 멈춘다.
-   - 수정: 요청 `fields`에 `qty`가 있는 저널만 D90 교체 대상으로 고른다. trigger만 바꾼 `UNSUPPORTED`는 거절과 같게 처리한다(시도 횟수 증가, 기존 손절 유지, 한도 후 정지·알림). 이 메서드 수정도 이 작업 범위에 넣는다.
+   - 수정: 요청 `fields`에 `qty`가 있는 저널만 D90 교체 대상으로 고른다. trigger만 바꾼 `UNSUPPORTED`는 거절과 같게 처리한다(미적용으로 판정해 `in_flight`를 끝냄, 기존 손절 유지, 한도 후 정지·알림). 이 메서드 수정도 이 작업 범위에 넣는다.
 
 5. **늦은 진입 체결이 목표를 되돌리지 않게** (PR #20 검토 3번)
    - 현재 `PortfolioService.book_execution`(service.py 139~140)은 진입 체결마다 `book.stop_price = order.attached_stop.stop_loss`를 무조건 넣는다. 부분 진입 뒤 목표를 90 → 95로 올린 상태에서 같은 진입 주문의 늦은 체결이 오면 목표가 90으로 돌아간다.
