@@ -1,8 +1,7 @@
 """Decimal-only indicators, evaluated at the last bar of a validated prefix.
 
 A fixed 34-digit context keeps results independent of the caller's Decimal
-context. Wilder seeds use the entire supplied prefix; callers must retain the
-same history origin across evaluations (or implement equivalent persisted seeds).
+context. Wilder seeds restart in the last 10*n bars, identically in research and live use.
 """
 
 from dataclasses import dataclass
@@ -19,6 +18,12 @@ ZERO = Decimal(0)
 def period(n: int) -> None:
     if type(n) is not int or n < 1:
         raise ValueError("period must be a positive integer")
+
+
+def wilder_window(n: int) -> int:
+    """Bounded evaluation window; this is part of the strategy definition."""
+    period(n)
+    return 10 * n
 
 
 def positive(value: Decimal, name: str) -> None:
@@ -46,7 +51,7 @@ def channel(history: ClosedBars, n: int, *, include_current: bool) -> Channel | 
     period(n)
     if type(include_current) is not bool:
         raise TypeError("include_current must be explicit bool")
-    bars = history.bars if include_current else history.bars[:-1]
+    bars = history.bars[-n:] if include_current else history.bars[-n - 1 : -1]
     if len(bars) < n:
         return None
     return Channel(max(b.high for b in bars[-n:]), min(b.low for b in bars[-n:]))
@@ -75,13 +80,15 @@ def bollinger(history: ClosedBars, n: int, k: Decimal) -> Bands | None:
 def rsi(history: ClosedBars, n: int) -> Decimal | None:
     """Wilder RSI; seed mean of n close changes (n+1 bars), then (old*(n-1)+x)/n.
 
+    Use at most the last 10*n bars and seed inside that window.
     RSI=100*gain/(gain+loss). All-flat=50, gain-only=100, loss-only=0.
     """
     period(n)
     if len(history.bars) < n + 1:
         return None
     with localcontext(CALC):
-        changes = [b.close - a.close for a, b in zip(history.bars, history.bars[1:], strict=False)]
+        bars = history.bars[-wilder_window(n) :]
+        changes = [b.close - a.close for a, b in zip(bars, bars[1:], strict=False)]
         gains = [max(ZERO, x) for x in changes]
         losses = [max(ZERO, -x) for x in changes]
         gain, loss = sum(gains[:n], ZERO) / n, sum(losses[:n], ZERO) / n
@@ -96,6 +103,7 @@ def atr(history: ClosedBars, n: int) -> Decimal | None:
 
     First bar TR=high-low. Seed mean of first n TRs (warm-up n bars),
     then Wilder smoothing: (previous_ATR*(n-1)+TR)/n.
+    Evaluate only the last 10*n bars; first TR is relative to that window.
     """
     period(n)
     if len(history.bars) < n:
@@ -103,7 +111,7 @@ def atr(history: ClosedBars, n: int) -> Decimal | None:
     with localcontext(CALC):
         ranges = []
         previous = None
-        for bar in history.bars:
+        for bar in history.bars[-wilder_window(n) :]:
             tr = bar.high - bar.low
             if previous is not None:
                 tr = max(tr, abs(bar.high - previous.close), abs(bar.low - previous.close))

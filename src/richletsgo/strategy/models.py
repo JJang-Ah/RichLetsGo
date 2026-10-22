@@ -90,8 +90,8 @@ class S1State:
     def __post_init__(self) -> None:
         if not isinstance(self.symbol, Symbol) or not isinstance(self.trend, Trend):
             raise TypeError("invalid state symbol/trend")
-        if (self.trend is Trend.FLAT) != (self.stop_price is None):
-            raise ValueError("only FLAT has no stop price")
+        if self.trend is Trend.FLAT and self.stop_price is not None:
+            raise ValueError("FLAT cannot carry a stop price")
         if self.stop_price is not None and not isinstance(self.stop_price, Price):
             raise TypeError("stop must be Price")
         if self.bar_start is not None and not Interval.DAY.aligned(self.bar_start):

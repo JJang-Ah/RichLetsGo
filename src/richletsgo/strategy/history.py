@@ -31,12 +31,21 @@ class ClosedBars:
                 raise ValueError("bars must be ordered, unique and contiguous")
             previous = bar
 
-    def through(self, start: datetime) -> "ClosedBars":
-        """Select a historical prefix before computing any indicator or signal."""
+    def through(self, start: datetime, *, lookback: int | None = None) -> "ClosedBars":
+        """Select before calculation; bounded lookback avoids growing-prefix work."""
         require_utc(start)
-        return ClosedBars(
-            self.symbol, self.interval, tuple(b for b in self.bars if b.start <= start), self.as_of
+        if lookback is not None and (type(lookback) is not int or lookback < 1):
+            raise ValueError("lookback must be a positive integer")
+        # Contiguity was validated at construction, so no linear search is needed.
+        end = (
+            min(len(self.bars), max(0, (start - self.bars[0].start) // self.interval.duration + 1))
+            if self.bars
+            else 0
         )
+        begin = max(0, end - lookback) if lookback is not None else 0
+        return ClosedBars(self.symbol, self.interval, self.bars[begin:end], self.as_of)
 
-    def before_last(self) -> "ClosedBars":
-        return ClosedBars(self.symbol, self.interval, self.bars[:-1], self.as_of)
+    def before_last(self, *, lookback: int) -> "ClosedBars":
+        if type(lookback) is not int or lookback < 1:
+            raise ValueError("lookback must be a positive integer")
+        return ClosedBars(self.symbol, self.interval, self.bars[-lookback - 1 : -1], self.as_of)

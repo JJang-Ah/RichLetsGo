@@ -368,3 +368,63 @@ def test_rsi_threshold_equality_counts_return_but_not_previous_extreme(monkeypat
 
         monkeypatch.setattr(c, "rsi", values)
         assert (c.s2_b(h, s1, None, B2).signal is not None) == expected
+
+
+@pytest.mark.parametrize("n", [1, 2, 14, 30])
+def test_wilder_fixed_window_exact_equality_after_history_prepend(n):
+    h = history([100 + (i * 7) % 19 for i in range(1000)])
+    window = replace(h, bars=h.bars[-10 * n :])
+    for indicator in (rsi, atr):
+        assert indicator(h, n) == indicator(window, n)
+        older = replace(h, bars=(replace(h.bars[0], close=D(999), high=D(1000)),) + h.bars[1:])
+        assert indicator(older, n) == indicator(window, n)
+
+
+@pytest.mark.parametrize("calc,params", [(c.s1_a, A1), (c.s1_b, B1), (c.s2_a, A2), (c.s2_b, B2)])
+def test_bounded_candidate_window_matches_full_history(calc, params):
+    daily = calc in (c.s1_a, c.s1_b)
+    h = history([100 + (i * 7) % 19 for i in range(1000)], Interval.DAY if daily else Interval.HOUR)
+    prev = state(Trend.LONG, 80)
+    args = (prev, params) if daily else (prev, None, params)
+    for index in (0, 1, 20, 50, 999):
+        prefix = h.through(h.bars[index].start)
+        bounded = h.through(h.bars[index].start, lookback=c.required_bars(params))
+        assert len(bounded.bars) <= c.required_bars(params)
+        assert calc(prefix, *args) == calc(bounded, *args)
+
+
+@pytest.mark.parametrize("short", [False, True])
+@pytest.mark.parametrize("equal", [False, True])
+def test_s1_b_breached_channel_exits_without_amending_target(short, equal):
+    # Prior five-day low=99, prior three-day low=104: no reversal on day 9,
+    # but the exit-channel candidate (104) is above/equal to today's close.
+    closes = [100, 102, 104, 106, 100, 105, 107, 106, 104 if equal else 102]
+    if short:
+        closes = [220 - v for v in closes]
+    h = history(closes, Interval.DAY)
+    trend = Trend.SHORT if short else Trend.LONG
+    prev = S1State(BTC, trend, Price(D(120 if short else 100)), h.bars[-2].start)
+    output = c.s1_b(h, prev, S1BParams(5, 3))
+    assert output.state.trend is trend
+    assert output.state.stop_price == prev.stop_price
+    assert output.signal.kind == "EXIT"
+    assert output.signal.entry_price.value == h.bars[-1].close
+    assert output.signal.stop_price == prev.stop_price
+    assert output.signal.direction is Direction(trend.value)
+    assert S1Result.from_dict(json.loads(json.dumps(output.to_dict()))) == output
+    # Once the channel is safe again, the following daily market signal resumes.
+    following = history(closes + [110 if not short else 110], Interval.DAY)
+    assert c.s1_b(following, output.state, S1BParams(5, 3)).signal.kind == "ENTRY"
+
+
+@pytest.mark.parametrize("short", [False, True])
+def test_s1_a_breached_channel_exit_and_missing_previous_target(short):
+    h = history([100, 110, 110, 105] if not short else [120, 110, 110, 115], Interval.DAY)
+    # SMA(3) remains above/below SMA(4), exit channel is already crossed.
+    params = S1AParams(3, 4, 2)
+    trend = Trend.SHORT if short else Trend.LONG
+    for previous in (state(), state(trend, 120 if short else 100)):
+        output = c.s1_a(h, previous, params)
+        assert output.state.trend is trend and output.signal.kind == "EXIT"
+        assert output.state.stop_price == previous.stop_price
+        assert S1Result.from_dict(json.loads(json.dumps(output.to_dict()))) == output

@@ -8,7 +8,7 @@ from richletsgo.portfolio.signals import MarketSignal
 from richletsgo.risk.records import Direction
 
 from .history import ClosedBars
-from .indicators import CALC, atr, bollinger, channel, rsi, sma
+from .indicators import CALC, atr, bollinger, channel, rsi, sma, wilder_window
 from .models import (
     S1AParams,
     S1BParams,
@@ -38,8 +38,23 @@ def _s1_result(history: ClosedBars, previous: S1State, trend: Trend, n: int) -> 
     desired = stops.low if trend is Trend.LONG else stops.high
     if previous.trend is trend and previous.stop_price is not None:
         desired = (max if trend is Trend.LONG else min)(desired, previous.stop_price.value)
-    state = S1State(history.symbol, trend, Price(desired), start)
     bar = history.bars[-1]
+    breached = desired >= bar.close if trend is Trend.LONG else desired <= bar.close
+    if breached:
+        state = S1State(history.symbol, trend, previous.stop_price, start)
+        return S1Result(
+            state,
+            MarketSignal(
+                StrategyId.S1,
+                bar.symbol,
+                bar.start,
+                "EXIT",
+                Direction(trend.value),
+                Price(bar.close),
+                previous.stop_price or Price(desired),
+            ),
+        )
+    state = S1State(history.symbol, trend, Price(desired), start)
     signal = MarketSignal(
         StrategyId.S1,
         bar.symbol,
@@ -151,7 +166,7 @@ def s2_a(
         return _exit(history, episode) if hit else S2Result(None)
     if s1.trend is Trend.FLAT:
         return S2Result(None)
-    previous = bollinger(history.before_last(), params.period, params.k)
+    previous = bollinger(history.before_last(lookback=params.period), params.period, params.k)
     if previous is None:
         return S2Result(None)
     old_close = history.bars[-2].close
@@ -186,7 +201,7 @@ def s2_b(
         return _exit(history, episode) if hit else S2Result(None)
     if s1.trend is Trend.FLAT:
         return S2Result(None)
-    previous = rsi(history.before_last(), params.period)
+    previous = rsi(history.before_last(lookback=wilder_window(params.period)), params.period)
     if previous is None:
         return S2Result(None)
     hit = (
@@ -197,3 +212,14 @@ def s2_b(
     return (
         _entry(history, s1.trend, params.atr_period, params.atr_multiple) if hit else S2Result(None)
     )
+
+
+def required_bars(params: S1AParams | S1BParams | S2AParams | S2BParams) -> int:
+    """Minimum steady-state input window, including the previous-bar indicator."""
+    if isinstance(params, S1AParams):
+        return max(params.slow, params.exit_channel + 1)
+    if isinstance(params, S1BParams):
+        return max(params.entry_channel, params.exit_channel) + 1
+    if isinstance(params, S2AParams):
+        return max(params.period + 1, wilder_window(params.atr_period))
+    return max(wilder_window(params.period) + 1, wilder_window(params.atr_period))
