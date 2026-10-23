@@ -76,8 +76,9 @@ class TrailRecovery:
         )
 
 
-def recoveries(uow: UnitOfWork) -> tuple[TrailRecovery, ...]:
-    return tuple(TrailRecovery.decode(v) for k, v in uow.recovery.items() if k.startswith("trail:"))
+def recoveries(uow: UnitOfWork, *, include_archived: bool = False) -> tuple[TrailRecovery, ...]:
+    records = uow.recovery.items() if include_archived else uow.recovery.active("trail:")
+    return tuple(TrailRecovery.decode(v) for k, v in records if k.startswith("trail:"))
 
 
 def recovery(uow: UnitOfWork, order_key: str, target: Price) -> TrailRecovery:
@@ -176,9 +177,17 @@ def settle_trails(
     query_started: datetime | None = None,
 ) -> None:
     for state in recoveries(uow):
-        if state.in_flight is None:
-            continue
         order = uow.orders.get(state.order_key)
+        if state.in_flight is None:
+            if order is not None:
+                book = uow.portfolio.book(order.strategy, order.symbol)
+                if (
+                    order.state.is_terminal
+                    or book.stop_price != state.target
+                    or order.trigger_price == state.target
+                ):
+                    uow.recovery.archive(state.key)
+            continue
         if order is None:
             continue
         outcome = None

@@ -23,6 +23,7 @@ from richletsgo.storage.contracts import UnitOfWork
 
 from .journal import JournalCorrupt, JournalRecord, ProtectiveJournal
 from .models import OrderRecord
+from .recovery_index import store_record
 
 
 def encode_order(order: OrderRecord) -> dict[str, Any]:
@@ -91,7 +92,7 @@ class OrderSender:
 
     async def _save(self, record: JournalRecord) -> None:
         async with self.uow_factory() as uow:
-            uow.recovery.put(record.key, record.encode())
+            store_record(uow, record)
             ingest_trail_record(uow, record)
             if record.action_key:
                 uow.portfolio.acknowledge(record.action_key)
