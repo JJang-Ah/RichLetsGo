@@ -107,11 +107,18 @@ class PortfolioRepository(Protocol):
 
 
 class RecoveryRepository(Protocol):
-    """Account-scoped serialized recovery records; participates in the same UoW."""
+    """Account-scoped recovery and retained audit records in the same UoW.
+
+    get/items include archives. active selects the exact first colon-delimited
+    namespace (e.g. "trail:") through an index, without scanning audit records.
+    archive preserves get and identical put replay must not reactivate it.
+    """
 
     def get(self, key: str) -> str | None: ...
     def put(self, key: str, value: str) -> None: ...
     def items(self) -> tuple[tuple[str, str], ...]: ...
+    def active(self, prefix: str) -> tuple[tuple[str, str], ...]: ...
+    def archive(self, key: str) -> None: ...
 
 
 class UnitOfWork(Protocol):

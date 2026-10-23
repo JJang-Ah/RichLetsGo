@@ -43,7 +43,7 @@ async def target(db, svc, value):
 
 async def attempts(db):
     async with db.unit_of_work() as u:
-        return recoveries(u)
+        return recoveries(u, include_archived=True)
 
 
 async def restart(db, clock, svc, router, ex, sync, tmp_path):

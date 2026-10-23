@@ -52,7 +52,7 @@ max_account_notional_usdt = "30000"
 liquidation_buffer_ratio = "0.5"
 slippage_buffer = "0.001"
 resume_equity_tolerance_ratio = "0.01"
-taker_fee_rate = "0.00055"  # verify against Bybit's fee schedule when implementing M2-03
+taker_fee_rate = "0.00055"  # Bybit standard VIP 0 futures rate checked 2026-10-23 (research only)
 maker_fee_rate = "0.0002"
 slippage_rate = "0.0002"
 
@@ -81,3 +81,16 @@ journal_dir = "data/live/journal"
 log_dir = "logs/live"
 backup_dir = "backups/live"
 backtest_results_dir = "backtest_results/live"
+
+
+[backtest.execution]
+# Research coordinator settings, separate from risk limits and M2-04 selection.
+max_close_attempts = 3
+max_protect_attempts = 3
+retry_after_seconds = 5
+trigger_by = "LastPrice"
+history_window_seconds = 604800
+overlap_seconds = 300
+unknown_alert_after_seconds = 20
+cancel_retry_after_seconds = 5
+max_sync_rounds = 3

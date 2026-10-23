@@ -52,6 +52,9 @@ class _State:
 
     recovery_data: dict[str, str] = field(default_factory=dict)
 
+    recovery_archive: dict[str, str] = field(default_factory=dict)
+    recovery_index: dict[str, dict[str, None]] = field(default_factory=dict)
+
     def clone(self) -> "_State":
         # Values are immutable, including nested raw event payloads.
         return _State(
@@ -73,6 +76,8 @@ class _State:
             self.recoveries.copy(),
             self.fill_times.copy(),
             self.recovery_data.copy(),
+            self.recovery_archive,  # copy on first archival write, not on every tick
+            self.recovery_index.copy(),
         )
 
 
@@ -320,13 +325,50 @@ class _Recovery:
         self.owner = owner
 
     def get(self, key: str) -> str | None:
-        return self.owner.state.recovery_data.get(key)
+        state = self.owner.state
+        return state.recovery_data.get(key, state.recovery_archive.get(key))
 
     def put(self, key: str, value: str) -> None:
-        self.owner.state.recovery_data[key] = value
+        state = self.owner.state
+        # Identical replay cannot resurrect completed work.
+        if key in state.recovery_archive and state.recovery_archive[key] == value:
+            return
+        if key in state.recovery_archive:
+            self._writable_archive().pop(key)
+        state.recovery_data[key] = value
+        self._writable_index(key)[key] = None
 
     def items(self) -> tuple[tuple[str, str], ...]:
-        return tuple(self.owner.state.recovery_data.items())
+        state = self.owner.state
+        return tuple(state.recovery_archive.items()) + tuple(state.recovery_data.items())
+
+    def active(self, prefix: str) -> tuple[tuple[str, str], ...]:
+        state = self.owner.state
+        return tuple((k, state.recovery_data[k]) for k in state.recovery_index.get(prefix, {}))
+
+    def archive(self, key: str) -> None:
+        state = self.owner.state
+        if key in state.recovery_data:
+            self._writable_archive()[key] = state.recovery_data.pop(key)
+            self._writable_index(key).pop(key, None)
+
+    def _writable_archive(self) -> dict[str, str]:
+        state = self.owner.state
+        if state.recovery_archive is self.owner.database._state.recovery_archive:
+            state.recovery_archive = state.recovery_archive.copy()
+        return state.recovery_archive
+
+    def _writable_index(self, key: str) -> dict[str, None]:
+        state = self.owner.state
+        prefix = key.partition(":")[0] + ":"
+        bucket = state.recovery_index.get(prefix)
+        if bucket is None:
+            bucket = {}
+            state.recovery_index[prefix] = bucket
+        elif bucket is self.owner.database._state.recovery_index.get(prefix):
+            bucket = bucket.copy()
+            state.recovery_index[prefix] = bucket
+        return bucket
 
 
 class InMemoryUnitOfWork:

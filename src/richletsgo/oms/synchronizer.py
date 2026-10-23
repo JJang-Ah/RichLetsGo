@@ -48,6 +48,7 @@ from richletsgo.storage.contracts import FillStatus, UnitOfWork
 from .journal import JournalCorrupt, JournalRecord, ProtectiveJournal
 from .models import OrderRecord
 from .recovery import CancelResult, RecoveryAction, resolve_unknown
+from .recovery_index import compact_journal, store_record
 from .transmission import OrderSender, decode_order
 
 
@@ -198,12 +199,11 @@ class Synchronizer:
             # Include emergency records saved in DB even when fsync failed.
             combined = {
                 JournalRecord.decode(v).key: JournalRecord.decode(v)
-                for k, v in uow.recovery.items()
-                if k.startswith("journal:")
+                for k, v in uow.recovery.active("journal:")
             }
             combined.update({r.key: r for r in records})
             for record in combined.values():
-                uow.recovery.put(record.key, record.encode())
+                store_record(uow, record)
                 ingest_trail_record(uow, record)
                 if record.action_key:
                     uow.portfolio.acknowledge(record.action_key)
@@ -282,6 +282,7 @@ class Synchronizer:
                         else "SUPERSEDED"
                     )
                 uow.recovery.put("outcome:" + record.operation_id, outcome)
+            compact_journal(uow)
             await uow.commit()
         self.journal.archive({r.key for r in records})
 
@@ -335,7 +336,9 @@ class Synchronizer:
             await uow.commit()
         return opened
 
-    async def _query_stops(self, symbol: Symbol, since: datetime) -> bool:
+    async def _query_stops(
+        self, symbol: Symbol, since: datetime, *, require_new_revision: bool = False
+    ) -> bool:
         await self._drain()
         started = self.clock.now()
         generation = self._generation
@@ -349,7 +352,7 @@ class Synchronizer:
             if last is not None and started <= last:
                 return False
             if previous is not None and started <= previous:
-                return started == previous
+                return started == previous and not require_new_revision
             keys = []
             for event in opened:
                 order = uow.orders.find(event.order_link_id, event.exchange_order_id)
@@ -450,7 +453,7 @@ class Synchronizer:
             if action.kind in (ActionKind.ALERT, ActionKind.PAUSE):
                 self.alerts.append(action.detail)
             elif action.kind is ActionKind.QUERY_STOPS:
-                if not await self._query_stops(action.symbol, since):
+                if not await self._query_stops(action.symbol, since, require_new_revision=True):
                     continue
             else:
                 async with self.uow_factory() as uow:
@@ -508,8 +511,7 @@ class Synchronizer:
                         owned = any(
                             order.key in ((state := json.loads(v)).get("target"), state.get("new"))
                             and (not state.get("done") or state.get("exhausted"))
-                            for k, v in uow.recovery.items()
-                            if k.startswith("replacement:")
+                            for k, v in uow.recovery.active("replacement:")
                         )
                     if owned:
                         async with self.uow_factory() as uow:
@@ -561,21 +563,13 @@ class Synchronizer:
 
     async def _resume_replacements(self, since: datetime) -> None:
         async with self.uow_factory() as uow:
-            records = {
-                k: JournalRecord.decode(v)
-                for k, v in uow.recovery.items()
-                if k.startswith("journal:")
-            }
-        for record in records.values():
-            if (
-                record.phase != "result"
-                or json.loads(record.result).get("code") != ErrorCode.UNSUPPORTED.value
-            ):
-                continue
-            request = records.get(f"journal:{record.operation_id}:requested")
-            if request is None or request.op_type != "amend" or not request.action_key:
-                continue
+            requests = tuple(v for _, v in uow.recovery.active("d90:"))
+        for request_key in requests:
             async with self.uow_factory() as uow:
+                raw = uow.recovery.get(request_key)
+                assert raw is not None
+                request = JournalRecord.decode(raw)
+                assert request.action_key is not None
                 order = uow.orders.find(request.target, None) or uow.orders.find(
                     None, request.target
                 )
@@ -618,7 +612,7 @@ class Synchronizer:
             own = uow.portfolio.book(order.strategy, order.symbol)
             new = uow.orders.get(state["new"]) if state["new"] else None
             # Recover a new request even if its DB progress commit was lost.
-            for k, v in uow.recovery.items():
+            for k, v in uow.recovery.active("journal:"):
                 if k.startswith("journal:"):
                     record = JournalRecord.decode(v)
                     if record.group_id == key and record.step == 3 and record.phase == "requested":
@@ -841,6 +835,9 @@ class Synchronizer:
                 await self._unknowns()
                 await self._actions(since)
                 await self._resume_replacements(since)
+                async with self.uow_factory() as uow:
+                    compact_journal(uow)
+                    await uow.commit()
                 if not self.gateway.connected:
                     self.sender.pause("stream")
                 await self._persist_pauses()
