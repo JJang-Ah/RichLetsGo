@@ -206,7 +206,7 @@ def test_d88_loader_paths_and_no_risk_defaults(tmp_path):
     config = load_research_config(path)
     assert config.results_dir == tmp_path / "backtest_results/backtest"
     assert config.profile.taker_fee == D(".00055") and config.profile.maker_fee == D(".0002")
-    assert config.selection["max_grid_points"] == 200
+    assert config.selection["max_grid_points"] == 24  # D91
     path.write_text(
         source.read_text(encoding="utf-8").replace('risk_per_trade = "0.01"', ""), encoding="utf-8"
     )
