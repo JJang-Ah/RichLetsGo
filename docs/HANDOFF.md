@@ -354,3 +354,15 @@
 - P2-2: S1 목표 후보가 종가와 같거나 넘어섰으면 EXIT만 내고 추세·직전 목표를 유지한다. 최초 판단에 이전 목표가 없으면 None 유지, EXIT의 필수 stop_price에만 후보를 넣는다. 실행기는 EXIT를 라우터로 보내고 trail_stop 호출을 건너뛴다. 다음 날 유효한 채널이면 ENTRY가 재개된다.
 - 회귀 14개 추가: Wilder 4기간 앞쪽 이력 추가 정확한 불변, 후보 4개 전체/유계 입력 동일, S1-B 롱·숏 및 동가/이탈, S1-A 초기 목표 없음·기존 목표 유지. Python 3.12·3.14 각각 **621 passed**, ruff check/format, mypy strict(59 소스), diff check 통과.
 - 다음: Claude 재검토. 병합하지 않음. P3 반복 EXIT의 결정 기록 증가는 기존 동작 유지.
+
+
+## 2026-10-23 — Codex (M2-03 백테스트 실행기)
+
+- PR #22 병합 main(0aaeb4c)에서 `task/M2-03-backtest-runner` 구현. 두 계약의 워밍업·일봉/시간봉·펀딩·1단계 정보를 사전 검사하고, 누락 시 전체 INVALID_DATA로 끝낸다. 실제 RiskGate/SignalRouter/PortfolioService/Synchronizer/SimulatedExchange를 연결하며 AI는 disabled다.
+- D76 체결→펀딩→자정 지갑 기준값/정지 재검사→S1 BTC/ETH→S2 BTC/ETH→다음 봉 체결 순서, D78 마지막 봉 시가 청산을 연결했다. 거래별 수수료·펀딩·순손익·R과 계좌 평가액을 대조하며 SQLite에 주문/체결/결정/정지/처리 순서/해시/수집 시점 메타를 남긴다.
+- 위험 게이트 같은 UoW에 계약 1단계 상한 검사를 추가했다. 보유·예약·UNKNOWN·미반영·귀속 보류는 기존 exposure 합계를 사용하며 진입 승인 예약과 원자적이다. 기존 호출자는 선택 입력을 생략할 수 있고 백테스트는 항상 저장된 상한을 전달한다.
+- 공통 동기화기 QUERY_STOPS outbox가 같은 시각의 기존 스냅샷을 성공으로 acknowledge하여 VERIFYING에 갇히던 문제를 수정했다. 새 revision을 요구하고 다음 tick까지 작업을 남긴다. 손절 후 재진입 S1-A/B 회귀를 추가했다.
+- D88 research_risk/selection 구조 유지, 필수 재시도·동기화 입력은 backtest.execution에 분리했다. 수수료 예시 0.055%/0.020%는 확인일의 Bybit 공식 기본 VIP 0 선물 표와 일치한다. 실거래 요율로 자동 전용하지 않는다. 설정/결과/저널 경로는 호출자가 주입한다.
+- 새 테스트 27개: 손계산 거래, 수수료·슬리피지·펀딩, 자정 보유/새 진입/손실 정지, 누락, 원자적 tier 예약, 미래 데이터 불변, 후보 4조합, 재진입, 결과 파일·재현성. Python 3.12·3.14 각각 **648 passed**, ruff check/format, mypy strict(65 소스) 통과.
+- 3년 부하 측정은 tools/benchmark_backtest.py의 합성 데이터다. 실제 시장 3년 성과 검증과 구분한다. 최신 상품/MMR 스냅샷을 쓰므로 과거 단계별 강제청산을 재현하지 않으며, intrahour 펀딩은 INVALID_DATA다. 실행 시각은 결과 해시에서 제외하고 최초 동일 해시 파일을 보존한다.
+- 다음: Claude 구현 검토. M2-04에서 격자/구간 이동/보고서 연결 및 실제 수집 데이터 검증. 병합은 사용자 담당.

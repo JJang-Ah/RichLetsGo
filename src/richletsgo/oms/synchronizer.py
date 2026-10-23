@@ -335,7 +335,9 @@ class Synchronizer:
             await uow.commit()
         return opened
 
-    async def _query_stops(self, symbol: Symbol, since: datetime) -> bool:
+    async def _query_stops(
+        self, symbol: Symbol, since: datetime, *, require_new_revision: bool = False
+    ) -> bool:
         await self._drain()
         started = self.clock.now()
         generation = self._generation
@@ -349,7 +351,7 @@ class Synchronizer:
             if last is not None and started <= last:
                 return False
             if previous is not None and started <= previous:
-                return started == previous
+                return started == previous and not require_new_revision
             keys = []
             for event in opened:
                 order = uow.orders.find(event.order_link_id, event.exchange_order_id)
@@ -450,7 +452,7 @@ class Synchronizer:
             if action.kind in (ActionKind.ALERT, ActionKind.PAUSE):
                 self.alerts.append(action.detail)
             elif action.kind is ActionKind.QUERY_STOPS:
-                if not await self._query_stops(action.symbol, since):
+                if not await self._query_stops(action.symbol, since, require_new_revision=True):
                     continue
             else:
                 async with self.uow_factory() as uow:

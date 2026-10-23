@@ -72,6 +72,12 @@ class MarketInputs:
     mmr: Decimal
     fee_rate: Decimal
     slippage: Decimal
+    tier_notional_limit: Decimal | None = None
+
+    def __post_init__(self) -> None:
+        if self.tier_notional_limit is not None:
+            if finite_decimal(self.tier_notional_limit, "tier_notional_limit") <= 0:
+                raise ValueError("tier notional limit must be positive")
 
 
 @dataclass(frozen=True, slots=True)
@@ -283,6 +289,20 @@ class RiskGate:
             leverage=market.leverage,
         )
         basis = sizing.basis + (("account_notional_before", str(view.total_notional)),)
+        if market.tier_notional_limit is not None:
+            symbol_now = sum(
+                (row.total_notional for row in view.symbols if row.symbol is request.symbol),
+                Decimal(0),
+            )
+            basis += (("tier_notional_limit", str(market.tier_notional_limit)),)
+            if symbol_now + abs(sizing.qty.value) * notional_price > market.tier_notional_limit:
+                rejection = Rejection(RejectionCode.TIER_NOTIONAL, "contract tier-1 notional cap")
+                return Admission(
+                    record(DecisionKind.REJECTED, rejections=(rejection,), basis=basis),
+                    None,
+                    None,
+                    False,
+                )
         if not check.allowed:
             decision = record(DecisionKind.REJECTED, rejections=check.rejections, basis=basis)
             return Admission(decision, None, None, False)
