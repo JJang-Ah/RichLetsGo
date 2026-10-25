@@ -61,13 +61,23 @@ class MarketDataStore:
     """One SQLite file inside an injected directory (03 3.1). Batches are atomic:
     if any key conflicts with a stored different value, nothing in the batch is written."""
 
-    def __init__(self, directory: Path) -> None:
+    def __init__(
+        self,
+        directory: Path,
+        *,
+        readonly: bool = False,
+        captured_at: dict[Symbol, tuple[datetime, datetime]] | None = None,
+    ) -> None:
         if not isinstance(directory, Path):
             raise TypeError("directory must be a pathlib.Path")
-        directory.mkdir(parents=True, exist_ok=True)
+        self._captured_at = captured_at
         self.path = directory / DB_FILE
-        self._db = sqlite3.connect(self.path)
-        self._db.executescript(_SCHEMA)
+        if readonly:
+            self._db = sqlite3.connect(self.path.resolve().as_uri() + "?mode=ro", uri=True)
+        else:
+            directory.mkdir(parents=True, exist_ok=True)
+            self._db = sqlite3.connect(self.path)
+            self._db.executescript(_SCHEMA)
 
     def close(self) -> None:
         self._db.close()
@@ -226,8 +236,11 @@ class MarketDataStore:
     def latest_instrument(self, symbol: Symbol) -> InstrumentSnapshot | None:
         row = self._db.execute(
             "SELECT captured_ms, qty_step, min_qty, tick_size, max_leverage, funding_interval_min "
-            "FROM instruments WHERE symbol=? ORDER BY captured_ms DESC LIMIT 1",
-            (symbol.value,),
+            "FROM instruments WHERE symbol=? AND (? IS NULL OR captured_ms=?) ORDER BY captured_ms DESC LIMIT 1",
+            (
+                symbol.value,
+                *([to_ms(self._captured_at[symbol][0])] * 2 if self._captured_at else [None, None]),
+            ),
         ).fetchone()
         if row is None:
             return None
@@ -243,7 +256,11 @@ class MarketDataStore:
 
     def latest_risk_tiers(self, symbol: Symbol) -> list[RiskLimitTier]:
         latest = self._db.execute(
-            "SELECT MAX(captured_ms) FROM risk_limit_tiers WHERE symbol=?", (symbol.value,)
+            "SELECT MAX(captured_ms) FROM risk_limit_tiers WHERE symbol=? AND (? IS NULL OR captured_ms=?)",
+            (
+                symbol.value,
+                *([to_ms(self._captured_at[symbol][1])] * 2 if self._captured_at else [None, None]),
+            ),
         ).fetchone()[0]
         if latest is None:
             return []

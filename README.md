@@ -166,3 +166,24 @@ py -3.14 -m venv .venv
 ```powershell
 .\.venv\Scripts\python.exe tools/benchmark_backtest.py --config config.example.toml --output <측정결과폴더>
 ```
+
+## 구간 이동 검증과 보고서 (M2-04)
+
+`config.example.toml`의 `[backtest.walkforward]`, `[backtest.grid]`, `[backtest.selection]`, 선택적인 `[backtest.pass_criteria]`를 사용합니다. 격자는 S1/S2 후보의 곱이며 조합당 최대 24개입니다. 예시는 각 후보군 2개, 조합당 4개이며 실제 운용 권고가 아닙니다. 기간·작업자 수·병렬 효율·계산 시간 상한에는 코드 기본값이 없습니다.
+
+수집을 끝낸 다음 실행합니다. 예시 2023-10-01~2026-10-01에는 41일의 선행 워밍업이 필요하므로 아래 수집 시작일은 여유를 둡니다.
+
+```powershell
+python -m richletsgo.marketdata.ingest --config config.example.toml --symbols BTCUSDT ETHUSDT --intervals D 60 --since 2023-07-01T00:00:00Z --commit <수집 코드 커밋>
+python -m richletsgo.backtest.walkforward --config config.example.toml --prepare-only
+python -m richletsgo.backtest.walkforward --config config.example.toml
+```
+
+- 출력: 설정의 `backtest_results_dir/campaigns/<identity hash>/` 아래 `manifest.json`, 고정 설정, 읽기 전용 입력 스냅샷, `report.md`, `report-data.json`, 실행별 산출물. `--commit`은 Git을 쓸 수 없는 배포 환경에서 코드 식별자를 명시할 때 사용합니다.
+- 원본 데이터와 스냅샷을 다시 해시하여 도중 수집·변경을 감지하면 새 결과 게시와 보고서 생성을 거절합니다. 같은 출력 디렉터리에는 OS 파일 잠금으로 작성자를 하나만 허용합니다. 잠금은 프로세스 종료 시 해제됩니다.
+- 같은 설정·코드·입력으로 명령을 다시 실행하면 해시와 완료 상태를 검증한 산출물만 재사용합니다. 작업자 수·계산 예산 변경은 기존 캠페인에 적용할 수 있습니다. 성과에 영향을 주는 설정 또는 데이터가 바뀌면 별도 캠페인입니다.
+- `SUMMARY`는 동일 계산 후 통계·거래 해시만 저장하며 전체 SQLite를 쓰지 않습니다. `FULL`은 기존 상세 SQLite도 저장하고 재사용 시 그 파일 해시도 검사합니다. 입력 캐시와 결과 SQLite는 Git에 올리지 않습니다.
+- `--max-new-runs N`은 중단/재개 검증용으로 한 실행 단계의 신규 실행을 N개까지 게시한 뒤 중단합니다. 실패·INCOMPLETE·임시 파일은 재사용하지 않습니다.
+- 계산량은 남은 학습 실행과 가능한 확인 실행의 상한으로 먼저 추정합니다. 확인 후보가 결정되면 실제 확인 실행만 재추정합니다. 최초 설정 횟수 이후 배치마다 실측으로 갱신하며 예산 초과 시 완료된 결과를 보존합니다.
+- 충돌 기록에는 별도 해결 표시가 없으므로 충돌 수집 배치의 요청 범위를 보수적으로 미해결로 취급합니다. 그런 범위는 INVALID_DATA입니다. 원본 수집 기록을 삭제하여 결과를 통과시키지 않습니다.
+- 보고서는 시간별 합성 평가액으로 낙폭을 계산하고 월말 표를 표시합니다. 보고서 본문 해시는 실행 메타(작업자 수·시간·재사용 횟수)를 제외합니다. 판정 기준 표가 없으면 UNSET, 무효/후보 없음 비율을 넘으면 INDETERMINATE입니다.
