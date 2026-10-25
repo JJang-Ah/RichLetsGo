@@ -268,6 +268,13 @@ def test_resume_parallel_report_and_cache_integrity(tmp_path):
     assert cached(root, manifest, fulljob) is not None
     (root / full["files"][0]["path"]).write_text("corrupt sqlite")
     assert cached(root, manifest, fulljob) is None
+    # Retrying must replace the corrupt FULL database, not merely re-hash it.
+    from richletsgo.backtest.walkforward import worker
+
+    manifest["artifacts"][fulljob.key] = worker(fulljob)
+    assert cached(root, manifest, fulljob) is not None
+    with sqlite3.connect(root / manifest["artifacts"][fulljob.key]["files"][0]["path"]) as db:
+        assert db.execute("SELECT count(*) FROM equity").fetchone()[0] > 0
 
 
 def test_conflicts_invalidate_and_summary_has_no_sqlite(tmp_path):

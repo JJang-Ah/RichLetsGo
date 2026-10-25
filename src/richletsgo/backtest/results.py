@@ -102,31 +102,52 @@ class TradeLedger:
                     raise ValueError("overlapping episodes")
                 trade.entry_qty += qty
                 trade.entry_notional += qty * event.price.value
+                trade.fees += event.fee
             else:
-                trade = self.active[key]
-                if qty > trade.remaining:
-                    raise ValueError("exit exceeds attributed trade")
-                sign = 1 if trade.direction == "LONG" else -1
-                trade.gross_pnl += (
-                    qty * (event.price.value - trade.entry_notional / trade.entry_qty) * sign
-                )
-                trade.exit_qty += qty
-                trade.exit_notional += qty * event.price.value
-                if order.purpose in (OrderPurpose.ATTACHED_SL, OrderPurpose.PROTECT):
-                    reason = (
-                        "trailing_stop"
-                        if order.trigger_price is not None
-                        and order.trigger_price.value != trade.initial_stop
-                        else "stop_loss"
+                # Match PortfolioService.book_execution: an owner's reduction can
+                # overflow after its stop fills, consuming S2 then S1 holdings.
+                strategies = dict.fromkeys((fill.strategy, StrategyId.S2, StrategyId.S1))
+                left, fee_left = qty, event.fee
+                allocations: list[tuple[Trade, Decimal]] = []
+                for strategy in strategies:
+                    candidate = self.active.get((strategy, event.symbol))
+                    if candidate is None:
+                        continue
+                    sign = 1 if candidate.direction == "LONG" else -1
+                    if sign * event.qty.value >= 0:
+                        continue
+                    amount = min(left, candidate.remaining)
+                    if amount:
+                        allocations.append((candidate, amount))
+                        left -= amount
+                if left:
+                    raise ValueError("exit exceeds attributed holdings")
+                for index, (trade, amount) in enumerate(allocations):
+                    sign = 1 if trade.direction == "LONG" else -1
+                    trade.gross_pnl += (
+                        amount * (event.price.value - trade.entry_notional / trade.entry_qty) * sign
                     )
-                else:
-                    reason = self.exit_reasons.get(trade.episode_id, "protective_close")
-                if reason not in trade.reasons:
-                    trade.reasons.append(reason)
-                if trade.remaining == 0:
-                    trade.closed_at = event.exec_time
-                    del self.active[key]
-            trade.fees += event.fee
+                    trade.exit_qty += amount
+                    trade.exit_notional += amount * event.price.value
+                    fee = fee_left if index == len(allocations) - 1 else event.fee * amount / qty
+                    trade.fees += fee
+                    fee_left -= fee
+                    if trade.strategy is not fill.strategy:
+                        reason = "overflow_reduction"
+                    elif order.purpose in (OrderPurpose.ATTACHED_SL, OrderPurpose.PROTECT):
+                        reason = (
+                            "trailing_stop"
+                            if order.trigger_price is not None
+                            and order.trigger_price.value != trade.initial_stop
+                            else "stop_loss"
+                        )
+                    else:
+                        reason = self.exit_reasons.get(trade.episode_id, "protective_close")
+                    if reason not in trade.reasons:
+                        trade.reasons.append(reason)
+                    if trade.remaining == 0:
+                        trade.closed_at = event.exec_time
+                        del self.active[(trade.strategy, event.symbol)]
             self.seen.add(event.exec_id)
 
     def funding(self, symbol: Symbol, cost: Decimal) -> None:
@@ -164,8 +185,6 @@ class BacktestResult:
     def save(self, directory: Path) -> Path:
         directory.mkdir(parents=True, exist_ok=True)
         target = directory / (self.result_hash + ".sqlite3")
-        if target.exists():
-            return target
         fd, temporary = tempfile.mkstemp(prefix="result-", suffix=".sqlite3", dir=directory)
         os.close(fd)
         temp = Path(temporary)
