@@ -437,3 +437,64 @@ def test_candidate_combinations_close_and_reconcile(tmp_path, s1_kind, s2_kind):
     assert result.trades
     net = sum((D(t["net_pnl"]) for t in result.trades), D(0))
     assert abs(result.equity[-1]["equity"] - conf.profile.start_equity - net) < D("1e-18")
+
+
+@pytest.mark.parametrize("stopped", ["0.5", "1"])
+def test_trade_ledger_matches_portfolio_overflow_reduction(stopped):
+    from test_portfolio import RISK_INPUT, fill, market, setup, signal
+
+    from richletsgo.backtest.results import TradeLedger
+    from richletsgo.domain import OrderPurpose, OrderState, Qty, StrategyId
+
+    async def scenario():
+        db, _, svc, router = setup()
+        admissions = [
+            await router.handle(signal(strategy=s), market(), RISK_INPUT) for s in StrategyId
+        ]
+        ledger = TradeLedger()
+        for i, admission in enumerate(admissions):
+            await svc.on_execution(fill(admission.order, "1", key=f"entry-{i}"))
+            async with db.unit_of_work() as uow:
+                ledger.ingest(uow)
+        owner = admissions[1].order
+        stop = replace(
+            owner,
+            order_link_id=None,
+            exchange_order_id="stop-s2",
+            parent_order_link_id=owner.order_link_id,
+            purpose=OrderPurpose.ATTACHED_SL,
+            qty=Qty(D(-1)),
+            state=OrderState.OPEN,
+            attached_stop=None,
+        )
+        closing = replace(
+            owner,
+            order_link_id="d-S2-X-close",
+            exchange_order_id="close-s2",
+            parent_order_link_id=None,
+            purpose=OrderPurpose.CLOSE,
+            qty=Qty(D(-1)),
+            state=OrderState.OPEN,
+            attached_stop=None,
+        )
+        async with db.unit_of_work() as uow:
+            uow.orders.put(stop)
+            uow.orders.put(closing)
+            await uow.commit()
+        await svc.on_execution(fill(stop, str(-D(stopped)), key="stop", price="90", fee="0.03"))
+        # Pending owner close still fills against the shared one-way position.
+        await svc.on_execution(fill(closing, "-1", key="close", price="95", fee="0.07"))
+        async with db.unit_of_work() as uow:
+            ledger.ingest(uow)
+            ledger.ingest(uow)  # execution deduplication
+            for book in uow.portfolio.books():
+                trade = next(t for t in ledger.trades if t.strategy is book.strategy)
+                assert trade.remaining == abs(book.qty)
+                assert trade.fees == book.fees
+                assert trade.gross_pnl == book.realized_pnl
+            other = next(t for t in ledger.trades if t.strategy is StrategyId.S1)
+            assert "overflow_reduction" in other.reasons
+            assert other.exit_qty == D(stopped)
+            assert sum((t.fees for t in ledger.trades), D(0)) == D("0.3")
+
+    asyncio.run(scenario())

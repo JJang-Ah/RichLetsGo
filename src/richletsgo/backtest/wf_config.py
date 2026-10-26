@@ -1,0 +1,185 @@
+"""Explicit walk-forward inputs; no implicit parameter grids or compute budget."""
+
+import calendar
+import tomllib
+from dataclasses import dataclass, fields
+from datetime import datetime, timedelta
+from decimal import Decimal
+from itertools import product
+from pathlib import Path
+from typing import Any
+
+from richletsgo.domain.clock import require_utc
+from richletsgo.marketdata.models import Interval
+from richletsgo.strategy.candidates import required_bars
+from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams
+
+from .codec import digest
+from .config import ResearchConfig, load_research_config
+
+S1 = S1AParams | S1BParams
+S2 = S2AParams | S2BParams
+
+
+def utc(value: str) -> datetime:
+    return require_utc(datetime.fromisoformat(value.replace("Z", "+00:00")))
+
+
+def months(at: datetime, count: int) -> datetime:
+    year, month = divmod(at.year * 12 + at.month - 1 + count, 12)
+    return at.replace(
+        year=year, month=month + 1, day=min(at.day, calendar.monthrange(year, month + 1)[1])
+    )
+
+
+def parameter_key(param: S1 | S2) -> tuple[Decimal, ...]:
+    return tuple(Decimal(getattr(param, f.name)) for f in fields(param))
+
+
+@dataclass(frozen=True)
+class Window:
+    index: int
+    train_start: datetime
+    train_end: datetime
+    end: datetime
+
+
+@dataclass(frozen=True)
+class WalkConfig:
+    research: ResearchConfig
+    start: datetime
+    end: datetime
+    train_months: int
+    test_months: int
+    workers: int
+    parallel_efficiency: Decimal
+    per_run_seconds_12m: Decimal
+    max_compute_hours: Decimal
+    reestimate_after: int
+    measurement_source: str
+    grids: dict[str, tuple[tuple[S1, S2], ...]]
+    drawdown_floor: Decimal
+    minimum_trades: dict[str, int]
+    max_invalid_ratio: Decimal
+    pass_criteria: dict[str, Decimal] | None
+
+    @property
+    def windows(self) -> tuple[Window, ...]:
+        result = []
+        i = 0
+        while True:
+            start = months(self.start, i * self.test_months)
+            training_end = months(self.start, i * self.test_months + self.train_months)
+            end = months(self.start, i * self.test_months + self.train_months + self.test_months)
+            if end > self.end:
+                break
+            result.append(Window(i, start, training_end, end))
+            i += 1
+        return tuple(result)
+
+    @property
+    def warmup_start(self) -> datetime:
+        span = max(
+            max(timedelta(days=required_bars(a)), timedelta(hours=required_bars(b)))
+            for pairs in self.grids.values()
+            for a, b in pairs
+        )
+        return Interval.DAY.floor(self.start - span)
+
+
+def load_walk_config(path: Path) -> WalkConfig:
+    research = load_research_config(path)
+    data = tomllib.loads(path.read_text(encoding="utf-8"))["backtest"]
+    raw = data["walkforward"]
+
+    def integer(key: str) -> int:
+        v = raw[key]
+        if type(v) is not int or v <= 0:
+            raise ValueError(f"{key} must be positive int")
+        return v
+
+    def decimal(key: str) -> Decimal:
+        if not isinstance(raw[key], str):
+            raise TypeError(f"{key} must be a Decimal string")
+        v = Decimal(raw[key])
+        if not v.is_finite() or v <= 0:
+            raise ValueError(f"invalid {key}")
+        return v
+
+    classes = {"S1A": S1AParams, "S1B": S1BParams, "S2A": S2AParams, "S2B": S2BParams}
+    parsed: dict[str, list[Any]] = {}
+    for name, cls in classes.items():
+        candidates = []
+        for row in data["grid"][name]:
+            if set(row) != {f.name for f in fields(cls)}:
+                raise ValueError(f"invalid {name} fields")
+            values = {}
+            for f in fields(cls):
+                v = row[f.name]
+                if f.type is Decimal:
+                    if not isinstance(v, str):
+                        raise TypeError(f"{f.name} must be a Decimal string")
+                    v = Decimal(v)
+                elif type(v) is not int:
+                    raise TypeError(f"{f.name} must be int")
+                values[f.name] = v
+            candidates.append(cls(**values))
+        if not candidates or len({digest(p) for p in candidates}) != len(candidates):
+            raise ValueError("grids must be nonempty and unique")
+        parsed[name] = sorted(candidates, key=parameter_key)
+    selection = research.selection
+    cap = selection["max_grid_points"]
+    if type(cap) is not int or not 1 <= cap <= 24:
+        raise ValueError("D91 max_grid_points must be 1..24")
+    grids = {}
+    for a, b in product(("S1A", "S1B"), ("S2A", "S2B")):
+        pairs = tuple(product(parsed[a], parsed[b]))
+        if len(pairs) > cap:
+            raise ValueError("D91 joint grid exceeds cap")
+        grids[a + "-" + b] = pairs
+    start, end = utc(raw["start"]), utc(raw["end"])
+    if not Interval.HOUR.aligned(start) or not Interval.HOUR.aligned(end) or end <= start:
+        raise ValueError("hour aligned nonempty range required")
+    if any(
+        not isinstance(selection[k], str)
+        for k in ("drawdown_floor_usdt", "max_invalid_window_ratio")
+    ):
+        raise TypeError("selection ratios and money must be Decimal strings")
+    floor = Decimal(selection["drawdown_floor_usdt"])
+    ratio = Decimal(selection["max_invalid_window_ratio"])
+    minimum = dict(selection["min_training_trades"])
+    if not floor.is_finite() or floor <= 0 or not ratio.is_finite() or not 0 <= ratio <= 1:
+        raise ValueError("invalid selection limits")
+    if set(minimum) != {"S1", "S2"} or any(type(v) is not int or v < 0 for v in minimum.values()):
+        raise ValueError("minimum trades require S1 and S2 nonnegative ints")
+    criteria = data.get("pass_criteria")
+    if criteria is not None and any(not isinstance(v, str) for v in criteria.values()):
+        raise TypeError("pass criteria must be Decimal strings")
+    criteria = {k: Decimal(v) for k, v in criteria.items()} if criteria is not None else None
+    if criteria is not None and (
+        set(criteria) != {"min_net_pnl_usdt", "max_drawdown_ratio"}
+        or any(not v.is_finite() for v in criteria.values())
+        or not 0 < criteria["max_drawdown_ratio"] < 1
+    ):
+        raise ValueError("invalid pass criteria")
+    config = WalkConfig(
+        research,
+        start,
+        end,
+        integer("train_months"),
+        integer("test_months"),
+        integer("workers"),
+        decimal("parallel_efficiency"),
+        decimal("per_run_seconds_12m"),
+        decimal("max_compute_hours"),
+        integer("reestimate_after"),
+        str(raw["measurement_source"]),
+        grids,
+        floor,
+        minimum,
+        ratio,
+        criteria,
+    )
+    if config.parallel_efficiency > 1 or not config.windows or not config.measurement_source:
+        raise ValueError("invalid efficiency/windows/measurement source")
+    return config
