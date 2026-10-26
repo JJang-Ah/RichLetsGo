@@ -81,8 +81,16 @@ class BacktestRun:
             raise ValueError("OHLC backtest models LastPrice stops only")
 
     async def execute(
-        self, store: MarketDataStore, *, results_dir: Path, journal_dir: Path
+        self,
+        store: MarketDataStore,
+        *,
+        results_dir: Path,
+        journal_dir: Path,
+        storage_policy: str = "FULL",
+        input_key: str | None = None,
     ) -> BacktestResult:
+        if storage_policy not in ("FULL", "SUMMARY"):
+            raise ValueError("unknown storage policy")
         data = load_data(store, self.start, self.end, self.symbols, self.s1, self.s2)
         config = primitive(self)
         config.pop("executed_at")
@@ -107,7 +115,16 @@ class BacktestRun:
             with tempfile.TemporaryDirectory(prefix="run-", dir=journal_dir) as directory:
                 engine = _Engine(self, data, Path(directory))
                 result = await engine.execute(metadata)
-        result.save(results_dir)
+        if storage_policy == "FULL":
+            result.save(results_dir)
+        else:
+            from .campaign import atomic_json
+            from .statistics import summarize
+
+            atomic_json(
+                results_dir / (result.result_hash + ".summary.json"),
+                summarize(result, input_key or result.metadata["config_hash"]),
+            )
         return result
 
 

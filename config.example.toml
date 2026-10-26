@@ -94,3 +94,40 @@ overlap_seconds = 300
 unknown_alert_after_seconds = 20
 cancel_retry_after_seconds = 5
 max_sync_rounds = 3
+
+[backtest.walkforward]
+# Research example: fixed closed UTC range, never a moving "now" boundary.
+start = "2023-10-01T00:00:00Z"
+end = "2026-10-01T00:00:00Z"
+train_months = 12
+test_months = 3
+workers = 4
+parallel_efficiency = "0.8"
+per_run_seconds_12m = "84"
+measurement_source = "M2-03 synthetic S1A(5,20,10)/S2A(20,2,14,2,24), 2026-10-23, one process"
+max_compute_hours = "6"
+reestimate_after = 4
+
+[backtest.pass_criteria]
+# D88 V1 research thresholds; omit this table for UNSET.
+min_net_pnl_usdt = "0"
+max_drawdown_ratio = "0.15"
+
+[backtest.grid]
+# Explicit small joint grids: two candidates per family, four pairs per combination.
+S1A = [
+  { fast = 5, slow = 20, exit_channel = 10 },
+  { fast = 10, slow = 40, exit_channel = 20 },
+]
+S1B = [
+  { entry_channel = 20, exit_channel = 10 },
+  { entry_channel = 40, exit_channel = 20 },
+]
+S2A = [
+  { period = 20, k = "2", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 },
+  { period = 20, k = "1.5", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 },
+]
+S2B = [
+  { period = 14, low = "30", high = "70", neutral = "50", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 },
+  { period = 14, low = "35", high = "65", neutral = "50", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 },
+]
