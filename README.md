@@ -4,7 +4,7 @@
 
 ## 현재 상태
 
-**M2-02 지표·전략 후보 4개가 병합됐고, M2-03 백테스트 실행기를 검토합니다.** 가상 거래소로 주문·복구 경로를 검증하며 실제 Bybit 어댑터와 운영 서비스는 M3에서 연결합니다. 초기 `trading_lab`은 새 도메인·위험·OMS 구현으로 대체했습니다(D39).
+**M2-04 실제 데이터 검증은 네 조합 모두 FAIL이며 전략 재설계는 Claude·사용자가 진행합니다. Codex는 M3 인프라를 병행 구현합니다(D94).** 가상 거래소로 주문·복구 경로를 검증하며 실제 Bybit 어댑터와 운영 서비스는 M3에서 연결합니다. 초기 `trading_lab`은 새 도메인·위험·OMS 구현으로 대체했습니다(D39).
 
 ## 설계 문서
 
@@ -35,9 +35,9 @@
 
 ## 다음 순서
 
-1. Claude: M2-03 백테스트 실행기 검토
-2. 병합 후 M2-04 구간 이동 검증·매개변수 격자·보고서
-3. M2 백테스트 → M3 Bybit 데모 연결 → M4 AI → M5 대시보드
+1. Claude·사용자: 전략 재설계와 새 V1 검증
+2. Codex: M3-01 설정·자격 증명·로그, M3-03 Bybit 오프라인 단위 테스트
+3. Oracle 설치 뒤 M3-02, 새 전략 검증 통과 뒤 M3-07 데모 운영
 
 ## 개발 환경 (M0-01)
 
@@ -57,7 +57,7 @@ py -3.14 -m venv .venv
 - CI는 모든 PR과 `main` push에서 Windows / Python 3.12·3.14 검사를 각각 실행합니다.
 - `src/richletsgo/domain`에 공통 타입과 검증 함수, `oms/`에 주문·체결·노출 정책, `storage/`에 저장소 계약과 메모리 구현이 있습니다. 실행 서비스는 아직 없습니다.
 - `config.example.toml`은 비밀 값 없는 설정 예시입니다. 로컬 설정은 `config.local.toml`에 두며 Git에서 제외합니다. 실거래 위험 수치는 아직 미정이며, backtest.research_risk의 수치는 연구용입니다.
-- 개발 도구는 테스트(`pytest`), 린트·포맷(`ruff`), 타입 검사(`mypy`)에만 사용합니다. 런타임 의존성은 없습니다.
+- 개발 도구는 테스트(`pytest`), 린트·포맷(`ruff`), 타입 검사(`mypy`)에만 사용합니다. M3-01부터 `keyring`을 Windows 자격 증명 관리자 접근에 사용합니다.
 
 ## 키 보관
 
@@ -80,7 +80,7 @@ py -3.14 -m venv .venv
 
 ## 파일 경로 설정 원칙
 
-운영 폴더는 코드에 고정하지 않고 config.local.toml의 paths.<environment>에서 지정합니다. 상대 경로는 **설정 파일이 있는 폴더** 기준이며, 외부 위치를 절대 경로로 설정할 수도 있습니다. config.example.toml에 환경별 예시가 있습니다. 백테스트 설정 로더는 M2-03에 있으며, 운영 설정 로더는 M3에서 구현합니다. M1-06 저널은 호출자가 전달한 폴더를 사용합니다.
+운영 폴더는 코드에 고정하지 않고 config.local.toml의 paths.<environment>에서 지정합니다. 상대 경로는 **설정 파일이 있는 폴더** 기준이며, 외부 위치를 절대 경로로 설정할 수도 있습니다. config.example.toml에 환경별 예시가 있습니다. 백테스트 설정 로더는 M2-03에 있으며, 운영 설정 로더는 M3-01의 load_config입니다. M1-06 저널은 호출자가 전달한 폴더를 사용합니다.
 
 ## 주문 상태와 체결 (M1-02)
 
@@ -189,3 +189,24 @@ python -m richletsgo.backtest.walkforward --config config.example.toml
 - 보고서는 시간별 합성 평가액으로 낙폭을 계산하고 월말 표를 표시합니다. 보고서 본문 해시는 실행 메타(작업자 수·시간·재사용 횟수)를 제외합니다. 판정 기준 표가 없으면 UNSET, 무효/후보 없음 비율을 넘으면 INDETERMINATE입니다.
 
 실제 3년 첫 검증 결과는 [M2-04 보고서](docs/reports/M2-04-2023-10-01-to-2026-10-01.md)에 있습니다. 네 조합 모두 V1 기준 미달이며, 설정을 결과에 맞춰 다시 조정하지 않았습니다.
+
+
+## 서비스 설정·자격 증명·로그 (M3-01)
+
+`richletsgo.config.load_config(Path(...))`는 불변 AppConfig와 비밀 없는 `public_dict()`/`config_hash`를 제공합니다. 경로는 설정 파일 기준으로 해석하며 환경 간 동일/상하위 폴더 중첩을 거부합니다. demo는 `[risk]` 필수 값을 사용하고 backtest만 `[backtest.research_risk]`를 사용합니다. 예시는 연구 수치를 demo에 명시한 것이며 live는 로더에서 거부합니다.
+
+`config.example.toml`을 `config.local.toml`로 복사하고 환경, 사용자 ID, 발급 시각, 경로, Oracle DSN을 직접 맞춥니다. 현재 `strategy.*.source="manual"`은 개발용이며 새 전략 V1 통과 또는 M3-07 승인으로 취급하지 않습니다. PR #26에서 새 보고서 출처/운영 조건을 명세와 맞추도록 검토 의견을 남겼습니다.
+
+서비스를 실행할 Windows 계정으로 다음 명령을 **직접** 실행합니다. 값은 숨김 입력이며 채팅이나 설정 파일에 넣지 않습니다.
+
+```powershell
+python -m richletsgo.keystore set richletsgo/bybit-demo --api
+python -m richletsgo.keystore set richletsgo/telegram-bot
+python -m richletsgo.keystore set richletsgo/oracle-demo
+```
+
+키 저장은 keyring의 Windows WinVault 백엔드만 사용합니다(평문·대체 백엔드로 자동 전환하지 않음). 저장 규약은 service=설정의 항목 이름, username=`credential`; API 값은 key/secret JSON 묶음입니다. 읽을 때는 `KeyStore(windows_backend()).api(item, config.api_created_at)`를 씁니다. 아직 실제 키를 등록하거나 읽지 않았으며 서비스 계정 접근 확인은 키 준비 후 수동 검증합니다.
+
+`configure_logging(config.paths.log_dir, environment=config.environment, service="Trader", retention_days=config.log_retention_days, secrets=[credential.key, credential.secret])`는 UTC 일별 JSONL 회전과 기간 보관을 설정합니다. API 키·서명·토큰/비밀번호 필드, 등록된 비밀 문자열과 예외 본문을 마스킹합니다. 추가로 읽은 봇 토큰·DB 비밀번호도 secrets 목록에 넣어야 임의의 문장 안에서도 마스킹됩니다. 부모 로거로 전파하지 않습니다.
+
+Oracle 접속은 M3-02이며 사용자 설치 뒤 시작합니다. M3-01 로더는 DB에 연결하지 않습니다. Data Pump DIRECTORY 등록 요구는 03 6.3절에 이미 명시돼 있습니다.
