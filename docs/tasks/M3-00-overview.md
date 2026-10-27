@@ -1,7 +1,7 @@
 # M3 데모 연결 — 작업 개요
 
 - 근거: [05_DEVELOPMENT_PROCESS.md](../design/05_DEVELOPMENT_PROCESS.md) 3장 M3, [03_SYSTEM_ARCHITECTURE.md](../design/03_SYSTEM_ARCHITECTURE.md), [02_RISK_MANAGEMENT.md](../design/02_RISK_MANAGEMENT.md) 6장, [04_VALIDATION_AND_OPERATIONS.md](../design/04_VALIDATION_AND_OPERATIONS.md) 5·7장
-- 선행 조건: 인프라 작업(M3-01~03·05·06)은 해당 M1 작업 뒤 바로 시작 가능. Trader 조립(M3-04)은 M1 전체·M2-02 뒤. **데모 1주 운영(M3-07)은 재설계 전략이 사전 등록 V1에서 PASS한 뒤**(D93·D94, 05의 M2 → M3 순서). 첫 M2-04 보고서(PR #25)는 4개 조합 모두 FAIL이라 운영 근거로 쓰지 않는다
+- 선행 조건: 인프라 작업(M3-01~03·05·06)은 해당 M1 작업 뒤 바로 시작 가능. Trader 조립(M3-04)은 M1 전체·M2-02 뒤. **데모 1주 운영(M3-07)은 재설계 전략이 사전 등록 V1에서 PASS한 뒤**(D93·D94, 05의 M2 → M3 순서). D96은 INDETERMINATE(PR #31), 다음 근거는 D97 M2-06 주 판정(S1-B 단독). 첫 M2-04 보고서(PR #25)는 4개 조합 모두 FAIL이라 운영 근거로 쓰지 않는다
 - 구현: Codex / 검토: Claude Code (D37, D86)
 
 ## 목표
