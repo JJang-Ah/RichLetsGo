@@ -127,6 +127,7 @@ def prepare(config: WalkConfig, commit: str, executed_at: datetime) -> tuple[Pat
         "grids": config.grids,
         "selection": config.research.selection,
         "pass_criteria": config.pass_criteria,
+        "preregistration": config.preregistration,
         "train_months": config.train_months,
         "test_months": config.test_months,
     }

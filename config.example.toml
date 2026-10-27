@@ -183,6 +183,8 @@ schema = "RLG_DEMO"
 retention_days = 14
 
 # Old candidates are for offline/connection development only, NOT D94 demo approval.
+# V1: set both sources to the same v1:<body digest> and provide [strategy] report_path.
+# report_path is relative to this configuration file and points to canonical report JSON.
 [strategy.S1]
 candidate = "S1-A"
 source = "manual"

@@ -195,7 +195,7 @@ python -m richletsgo.backtest.walkforward --config config.example.toml
 
 `richletsgo.config.load_config(Path(...))`는 불변 AppConfig와 비밀 없는 `public_dict()`/`config_hash`를 제공합니다. 경로는 설정 파일 기준으로 해석하며 환경 간 동일/상하위 폴더 중첩을 거부합니다. demo는 `[risk]` 필수 값을 사용하고 backtest만 `[backtest.research_risk]`를 사용합니다. 예시는 연구 수치를 demo에 명시한 것이며 live는 로더에서 거부합니다.
 
-`config.example.toml`을 `config.local.toml`로 복사하고 환경, 사용자 ID, 발급 시각, 경로, Oracle DSN을 직접 맞춥니다. 현재 `strategy.*.source="manual"`은 개발용이며 새 전략 V1 통과 또는 M3-07 승인으로 취급하지 않습니다. PR #26에서 새 보고서 출처/운영 조건을 명세와 맞추도록 검토 의견을 남겼습니다.
+`config.example.toml`을 `config.local.toml`로 복사하고 환경, 사용자 ID, 발급 시각, 경로, Oracle DSN을 직접 맞춥니다. 현재 `strategy.*.source="manual"`은 개발용이며 새 전략 V1 통과 또는 M3-07 승인으로 취급하지 않습니다. 운영 출처는 두 전략 모두 같은 `v1:<보고서 본문 해시>`로 지정합니다. `[strategy] report_path`는 설정 파일 기준 JSON 경로이며, 로더가 본문 해시·manifest/사전등록 연결·조합 PASS·같은 확인 구간의 S1×S2 매개변수 쌍을 검증합니다. 이전 `m2-04:` 출처는 거절합니다.
 
 서비스를 실행할 Windows 계정으로 다음 명령을 **직접** 실행합니다. 값은 숨김 입력이며 채팅이나 설정 파일에 넣지 않습니다.
 

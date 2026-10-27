@@ -162,6 +162,8 @@ def signal_dict(signal: MarketSignal | None) -> dict[str, Any] | None:
         "entry_price": str(signal.entry_price.value),
         "stop_price": str(signal.stop_price.value),
         "limit_price": str(signal.limit_price.value) if signal.limit_price else None,
+        "expires_at": signal.expires_at.isoformat() if signal.expires_at else None,
+        "post_only": signal.post_only,
     }
 
 
@@ -177,6 +179,8 @@ def restore_signal(data: dict[str, Any] | None) -> MarketSignal | None:
         Price(Decimal(data["entry_price"])),
         Price(Decimal(data["stop_price"])),
         Price(Decimal(data["limit_price"])) if data["limit_price"] else None,
+        datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+        data.get("post_only", False),
     )
 
 
@@ -203,3 +207,72 @@ class S2Result:
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "S2Result":
         return cls(restore_signal(data["signal"]))
+
+
+@dataclass(frozen=True, slots=True)
+class S2PParams:
+    rsi_period: int
+    lower: Decimal
+    atr_period: int
+    stop_atr: Decimal
+    target_r: Decimal
+    max_hold_bars: int
+
+    def __post_init__(self) -> None:
+        for n in (self.rsi_period, self.atr_period, self.max_hold_bars):
+            period(n)
+        if not 0 < finite_decimal(self.lower, "lower") < 50:
+            raise ValueError("lower must be between 0 and 50")
+        positive(self.stop_atr, "stop_atr")
+        positive(self.target_r, "target_r")
+
+
+class S2PState(StrEnum):
+    PENDING = "PENDING"
+    OPEN = "OPEN"
+
+
+@dataclass(frozen=True, slots=True)
+class S2PEpisode:
+    symbol: Symbol
+    direction: Direction
+    state: S2PState
+    average_price: Price | None
+    stop_price: Price
+    entry_bar_start: datetime | None
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.symbol, Symbol) or not isinstance(self.direction, Direction):
+            raise TypeError("invalid episode symbol/direction")
+        if not isinstance(self.state, S2PState) or not isinstance(self.stop_price, Price):
+            raise TypeError("invalid episode state/stop")
+        if self.state is S2PState.PENDING:
+            if self.average_price is not None or self.entry_bar_start is not None:
+                raise ValueError("pending episode cannot have fills")
+        elif not isinstance(self.average_price, Price) or self.entry_bar_start is None:
+            raise ValueError("open episode needs fill price/time")
+        if self.entry_bar_start is not None and not Interval.FOUR_HOUR.aligned(
+            self.entry_bar_start
+        ):
+            raise ValueError("entry bar must be four-hour aligned")
+
+    def to_dict(self) -> dict[str, Any]:
+        return dict(
+            symbol=self.symbol.value,
+            direction=self.direction.value,
+            state=self.state.value,
+            average_price=str(self.average_price.value) if self.average_price else None,
+            stop_price=str(self.stop_price.value),
+            entry_bar_start=self.entry_bar_start.isoformat() if self.entry_bar_start else None,
+        )
+
+    @classmethod
+    def from_dict(cls, data: dict[str, Any]) -> "S2PEpisode":
+        return cls(
+            Symbol(data["symbol"]),
+            Direction(data["direction"]),
+            S2PState(data["state"]),
+            Price(Decimal(data["average_price"])) if data["average_price"] else None,
+            Price(Decimal(data["stop_price"])),
+            datetime.fromisoformat(data["entry_bar_start"]) if data["entry_bar_start"] else None,
+        )

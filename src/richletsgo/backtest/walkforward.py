@@ -310,6 +310,13 @@ def run_campaign(
     max_new_runs: int | None = None,
 ) -> Path:
     config = load_walk_config(config_path)
+    if (
+        "S1B-S2P" in config.grids
+        and config.start < utc("2023-09-01T00:00:00Z")
+        and config.end > utc("2021-06-01T00:00:00Z")
+        and config.preregistration is None
+    ):
+        raise ValueError("D96 requires published preregistration before accessing holdout inputs")
     with campaign_lock(config.research.results_dir):
         return _run_campaign(
             config_path,
@@ -379,7 +386,13 @@ def _run_campaign(
                 )
                 for j in jobs
             ]
-            winner = choose(rows, config.drawdown_floor, config.minimum_trades)
+            winner = choose(
+                [r for r in rows if Decimal(r[1]["net_pnl"]) > 0]
+                if config.research.selection.get("require_positive_score", False)
+                else rows,
+                config.drawdown_floor,
+                config.minimum_trades,
+            )
             invalid = any(r["status"] == "INVALID_DATA" for _, r in rows)
             row: dict[str, Any] = {
                 "index": window.index,
@@ -442,6 +455,7 @@ def _run_campaign(
     }
     body = {
         "identity": manifest["identity"],
+        "manifest_hash": digest(manifest["identity"]),
         "ingest_runs": manifest["ingest_runs"],
         "validation": manifest["validation"],
         "conflicts": manifest["conflicts"],

@@ -1,5 +1,6 @@
 """Validated, immutable service configuration. No credentials and no implicit risk values."""
 
+import json
 import re
 import tomllib
 from collections.abc import Mapping
@@ -13,7 +14,7 @@ from typing import Any
 from richletsgo.backtest.codec import digest, primitive
 from richletsgo.domain import Environment, StrategyId, Symbol
 from richletsgo.risk.limits import RiskLimits
-from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams
+from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams, S2PParams
 
 
 class ConfigError(ValueError):
@@ -81,7 +82,7 @@ class OracleConfig:
 @dataclass(frozen=True)
 class StrategyConfig:
     candidate: str
-    params: S1AParams | S1BParams | S2AParams | S2BParams
+    params: S1AParams | S1BParams | S2AParams | S2BParams | S2PParams
     source: str
 
 
@@ -99,6 +100,7 @@ class AppConfig:
     telegram_users: tuple[int, ...]
     strategies: Mapping[StrategyId, StrategyConfig]
     log_retention_days: int
+    report_path: Path | None
 
     def public_dict(self) -> dict[str, Any]:
         return dict(primitive(self))
@@ -130,10 +132,16 @@ def risk_limits(row: Mapping[str, Any]) -> RiskLimits:
 
 def strategy(row: Mapping[str, Any], owner: StrategyId) -> StrategyConfig:
     candidate, source = text(row, "candidate"), text(row, "source")
-    classes = {"S1-A": S1AParams, "S1-B": S1BParams, "S2-A": S2AParams, "S2-B": S2BParams}
+    classes = {
+        "S1-A": S1AParams,
+        "S1-B": S1BParams,
+        "S2-A": S2AParams,
+        "S2-B": S2BParams,
+        "S2-P": S2PParams,
+    }
     if candidate not in classes or not candidate.startswith(owner.value + "-"):
         raise ConfigError("unknown strategy candidate")
-    if source != "manual" and re.fullmatch(r"m2-04:[0-9a-f]{64}", source) is None:
+    if source != "manual" and re.fullmatch(r"v1:[0-9a-f]{64}", source) is None:
         raise ConfigError("invalid strategy source")
     cls = classes[candidate]
     raw = row["params"]
@@ -144,6 +152,44 @@ def strategy(row: Mapping[str, Any], owner: StrategyId) -> StrategyConfig:
         for f in fields(cls)
     }
     return StrategyConfig(candidate, cls(**values), source)
+
+
+def validate_report(
+    raw: Mapping[str, Any], strategies: Mapping[StrategyId, StrategyConfig], parent: Path
+) -> Path | None:
+    sources = {s.source for s in strategies.values()}
+    if len(sources) != 1:
+        raise ConfigError("S1 and S2 must use the same source")
+    source = next(iter(sources))
+    if source == "manual":
+        return None  # Development only; M3-07 separately requires V1 PASS.
+    target = Path(text(raw, "report_path")).expanduser()
+    target = (target if target.is_absolute() else parent / target).resolve()
+    body = json.loads(target.read_text(encoding="utf-8"))
+    if not isinstance(body, dict) or digest(body) != source.removeprefix("v1:"):
+        raise ConfigError("V1 body digest mismatch")
+    identity = body["identity"]
+    if not isinstance(identity, dict) or body["manifest_hash"] != digest(identity):
+        raise ConfigError("V1 manifest link mismatch")
+    registration = identity["preregistration"]
+    if (
+        not isinstance(registration, dict)
+        or not isinstance(registration.get("id"), str)
+        or not registration["id"].strip()
+        or not isinstance(registration.get("sha256"), str)
+        or re.fullmatch(r"[0-9a-f]{64}", registration["sha256"]) is None
+    ):
+        raise ConfigError("V1 preregistration link required")
+    ordered = [strategies[s] for s in (StrategyId.S1, StrategyId.S2)]
+    combo = "-".join(s.candidate.replace("-", "") for s in ordered)
+    if body["aggregates"][combo]["verdict"] != "PASS":
+        raise ConfigError("V1 combination must PASS")
+    pair = primitive([s.params for s in ordered])
+    if not any(
+        w["status"] == "COMPLETED" and w["selected"] == pair for w in body["windows"][combo]
+    ):
+        raise ConfigError("V1 pair must match one completed confirmation window")
+    return target
 
 
 def _load(path: Path) -> AppConfig:
@@ -295,6 +341,7 @@ def _load(path: Path) -> AppConfig:
     if bybit.leverage > risk.max_leverage:
         raise ConfigError("configured leverage exceeds risk limit")
     strategies = {s: strategy(data["strategy"][s.value], s) for s in StrategyId}
+    report = validate_report(data["strategy"], strategies, path.parent)
     return AppConfig(
         env,
         bybit,
@@ -308,6 +355,7 @@ def _load(path: Path) -> AppConfig:
         tuple(users),
         MappingProxyType(strategies),
         integer(data["logging"], "retention_days"),
+        report,
     )
 
 

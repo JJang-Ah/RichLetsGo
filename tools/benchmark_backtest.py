@@ -24,7 +24,7 @@ from richletsgo.marketdata.models import (
     RiskLimitTier,
 )
 from richletsgo.marketdata.store import MarketDataStore
-from richletsgo.strategy.models import S1AParams, S2AParams
+from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2PParams
 
 
 def peak_process_mib() -> float:
@@ -64,11 +64,15 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument("--redesign", action="store_true", help="D95 synthetic 12-month load")
     args = parser.parse_args()
     config = load_research_config(args.config)
     start = datetime(2023, 1, 1, tzinfo=UTC)
     end = datetime(2026, 1, 1, tzinfo=UTC)
-    first = start - timedelta(days=20)
+    if args.redesign:
+        start = datetime(2026, 1, 1, tzinfo=UTC)
+        end = datetime(2027, 1, 1, tzinfo=UTC)
+    first = start - timedelta(days=56 if args.redesign else 20)
     hour = timedelta(hours=1)
     with MarketDataStore(args.output / "synthetic-market") as store:
         for symbol in Symbol:
@@ -115,8 +119,10 @@ def main() -> None:
         run = BacktestRun(
             start,
             end,
-            S1AParams(5, 20, 10),
-            S2AParams(20, D(2), 14, D(2), 24),
+            S1BParams(55, 20) if args.redesign else S1AParams(5, 20, 10),
+            S2PParams(2, D(20), 14, D("1.5"), D(2), 30)
+            if args.redesign
+            else S2AParams(20, D(2), 14, D(2), 24),
             config.profile,
             config.close_policy,
             config.sync_policy,
@@ -132,7 +138,9 @@ def main() -> None:
         )
         elapsed = time.perf_counter() - started
         report = {
-            "kind": "synthetic_three_year_load_not_market_performance",
+            "kind": "synthetic_redesign_12m"
+            if args.redesign
+            else "synthetic_three_year_load_not_market_performance",
             "hours": (end - start) // hour,
             "elapsed_seconds": round(elapsed, 3),
             "peak_process_working_set_mib": round(peak_process_mib(), 2),

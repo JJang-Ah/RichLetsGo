@@ -26,7 +26,7 @@ from richletsgo.risk.pause import Pause, PauseKind, PauseState
 from richletsgo.risk.records import Direction, EpisodeState
 from richletsgo.storage.memory import InMemoryDatabase
 from richletsgo.strategy import candidates
-from richletsgo.strategy.history import ClosedBars
+from richletsgo.strategy.history import ClosedBars, four_hour_bars
 from richletsgo.strategy.models import (
     S1AParams,
     S1BParams,
@@ -34,6 +34,9 @@ from richletsgo.strategy.models import (
     S2AParams,
     S2BParams,
     S2Episode,
+    S2PEpisode,
+    S2PParams,
+    S2PState,
     Trend,
 )
 
@@ -51,7 +54,7 @@ class BacktestRun:
     start: datetime
     end: datetime
     s1: S1AParams | S1BParams
-    s2: S2AParams | S2BParams
+    s2: S2AParams | S2BParams | S2PParams
     profile: ResearchProfile
     close_policy: ClosePolicy
     sync_policy: SyncPolicy
@@ -72,7 +75,7 @@ class BacktestRun:
             raise ValueError("V1 requires BTCUSDT and ETHUSDT exactly once")
         object.__setattr__(self, "symbols", tuple(sorted(self.symbols, key=lambda s: s.value)))
         if not isinstance(self.s1, (S1AParams, S1BParams)) or not isinstance(
-            self.s2, (S2AParams, S2BParams)
+            self.s2, (S2AParams, S2BParams, S2PParams)
         ):
             raise TypeError("candidate parameter types required")
         if not self.code_commit:
@@ -337,12 +340,22 @@ class _Engine:
                     reason = "trend_change"
                 elif (
                     trade is not None
-                    and (self.clock.now() - Interval.HOUR.floor(trade.opened_at)) // HOUR
+                    and (
+                        self.clock.now()
+                        - (
+                            Interval.FOUR_HOUR
+                            if isinstance(self.run.s2, S2PParams)
+                            else Interval.HOUR
+                        ).floor(trade.opened_at)
+                    )
+                    // (4 * HOUR if isinstance(self.run.s2, S2PParams) else HOUR)
                     > self.run.s2.max_hold_bars
                 ):
                     reason = "max_holding"
                 else:
-                    reason = "mean_reversion"
+                    reason = (
+                        "price_target" if isinstance(self.run.s2, S2PParams) else "mean_reversion"
+                    )
             self.ledger.exit_reasons.setdefault(episode.episode_id, reason)
         admission = await self.router.handle(signal, market, await self._figures())
         if admission.order is not None and not admission.reused:
@@ -373,6 +386,38 @@ class _Engine:
                 if out.signal:
                     await self._signal(out.signal)
         for symbol in self.run.symbols:
+            if isinstance(self.run.s2, S2PParams):
+                if not Interval.FOUR_HOUR.aligned(at):
+                    continue
+                self._trace("signal:S2", symbol)
+                hourly = self._history(
+                    symbol, Interval.HOUR, at, candidates.required_bars(self.run.s2) * 4
+                )
+                h4 = ClosedBars(
+                    symbol, Interval.FOUR_HOUR, four_hour_bars(hourly.bars, as_of=at), at
+                )
+                pending = None
+                async with self.db.unit_of_work() as uow:
+                    active = uow.episodes.active_for(StrategyId.S2, symbol)
+                    book = uow.portfolio.book(StrategyId.S2, symbol)
+                    if active is not None:
+                        order = uow.orders.get(active.entry_order_keys[0])
+                        assert order is not None and order.attached_stop is not None
+                        trade = self.ledger.active.get((StrategyId.S2, symbol))
+                        pending = S2PEpisode(
+                            symbol,
+                            active.direction,
+                            S2PState.OPEN if book.qty else S2PState.PENDING,
+                            Price(book.avg_price) if book.avg_price is not None else None,
+                            order.attached_stop.stop_loss,
+                            Interval.FOUR_HOUR.floor(trade.opened_at)
+                            if trade and book.qty
+                            else None,
+                        )
+                out_p = candidates.s2_p(h4, self.states[symbol], pending, self.run.s2)
+                if out_p.signal:
+                    await self._signal(out_p.signal)
+                continue
             self._trace("signal:S2", symbol)
             h = self._history(symbol, Interval.HOUR, at, candidates.required_bars(self.run.s2))
             trade = self.ledger.active.get((StrategyId.S2, symbol))

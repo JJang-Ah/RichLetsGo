@@ -10,7 +10,7 @@ from richletsgo.marketdata.store import MarketDataStore
 from richletsgo.marketdata.validate import expected_starts, funding_gaps
 from richletsgo.strategy.candidates import required_bars
 from richletsgo.strategy.history import ClosedBars
-from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams
+from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams, S2PParams
 
 from .codec import encode
 
@@ -39,9 +39,12 @@ def load_data(
     end: datetime,
     symbols: tuple[Symbol, ...],
     s1: S1AParams | S1BParams,
-    s2: S2AParams | S2BParams,
+    s2: S2AParams | S2BParams | S2PParams,
 ) -> RunData:
-    warmup = max(timedelta(days=required_bars(s1)), timedelta(hours=required_bars(s2)))
+    warmup = max(
+        timedelta(days=required_bars(s1)),
+        timedelta(hours=required_bars(s2) * (4 if isinstance(s2, S2PParams) else 1)),
+    )
     first = Interval.DAY.floor(start - warmup)
     histories = {}
     funding = {}
