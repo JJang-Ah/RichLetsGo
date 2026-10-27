@@ -1,7 +1,7 @@
 # M3 데모 연결 — 작업 개요
 
 - 근거: [05_DEVELOPMENT_PROCESS.md](../design/05_DEVELOPMENT_PROCESS.md) 3장 M3, [03_SYSTEM_ARCHITECTURE.md](../design/03_SYSTEM_ARCHITECTURE.md), [02_RISK_MANAGEMENT.md](../design/02_RISK_MANAGEMENT.md) 6장, [04_VALIDATION_AND_OPERATIONS.md](../design/04_VALIDATION_AND_OPERATIONS.md) 5·7장
-- 선행 조건: 인프라 작업(M3-01~03·05·06)은 해당 M1 작업 뒤 바로 시작 가능. Trader 조립(M3-04)은 M1 전체·M2-02 뒤. **데모 1주 운영(M3-07)은 M2-04 보고서를 보고 사용자가 전략 값을 정한 뒤**(05의 M2 → M3 순서)
+- 선행 조건: 인프라 작업(M3-01~03·05·06)은 해당 M1 작업 뒤 바로 시작 가능. Trader 조립(M3-04)은 M1 전체·M2-02 뒤. **데모 1주 운영(M3-07)은 재설계 전략이 사전 등록 V1에서 PASS한 뒤**(D93·D94, 05의 M2 → M3 순서). 첫 M2-04 보고서(PR #25)는 4개 조합 모두 FAIL이라 운영 근거로 쓰지 않는다
 - 구현: Codex / 검토: Claude Code (D37, D86)
 
 ## 목표
@@ -29,7 +29,7 @@ M1·M2의 순수 로직에 실제 외부 연결(Bybit 데모, Oracle, 텔레그�
 | [M3-04](M3-04-trader-assembly.md) | Trader 조립: 경계별 입력 장벽·체크포인트, 전략 설정, 실행 루프, 상태 확인 주소 | M1 전체, M2-02, M3-01~03 |
 | [M3-05](M3-05-telegram.md) | 텔레그램 알림·명령(`/status` `/pause` `/resume` `/cancel` `/resolve`), 키 만료 알림 | M3-04 |
 | [M3-06](M3-06-watchdog-and-services.md) | Watchdog, Windows 서비스 등록·자동 재시작, 운영 체크 | M3-04, M3-05 |
-| [M3-07](M3-07-demo-run.md) | 데모 1주 운영, Bybit 실제 동작 확인 기록, M3 완료 판정 | M3-01~06, M2-04 + 사용자 전략 선택 |
+| [M3-07](M3-07-demo-run.md) | 데모 1주 운영, Bybit 실제 동작 확인 기록, M3 완료 판정 | M3-01~06, PASS한 V1 보고서 + 사용자 전략 선택 |
 
 ## M3 공통 규칙
 
