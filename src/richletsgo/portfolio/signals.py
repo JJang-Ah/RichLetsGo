@@ -7,6 +7,7 @@ from decimal import Decimal
 from enum import StrEnum
 
 from richletsgo.domain import Price, StrategyId, Symbol
+from richletsgo.domain.clock import require_utc
 from richletsgo.domain.values import finite_decimal
 from richletsgo.risk.checks import StrategyRiskInput
 from richletsgo.risk.gate import Admission, EntryRequest, MarketInputs, RiskGate
@@ -69,8 +70,14 @@ class MarketSignal:
     entry_price: Price
     stop_price: Price
     limit_price: Price | None = None
+    expires_at: datetime | None = None
+    post_only: bool = False
 
     def __post_init__(self) -> None:
+        if self.expires_at is not None:
+            require_utc(self.expires_at)
+        if type(self.post_only) is not bool or (self.post_only and self.limit_price is None):
+            raise ValueError("post_only requires a limit price")
         signal_key(self.strategy, self.symbol, self.bar_start, self.kind)
         if self.kind not in ("ENTRY", "EXIT"):
             raise ValueError("signal kind must be ENTRY or EXIT")
@@ -141,6 +148,8 @@ class SignalRouter:
             ai_status=score.status.value if score else "MISSING",
             entry_rejection=rejection,
             is_exit=signal.kind == "EXIT",
+            expires_at=signal.expires_at,
+            post_only=signal.post_only,
         )
 
         def after(uow: UnitOfWork, admission: Admission) -> None:

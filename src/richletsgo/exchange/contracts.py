@@ -33,6 +33,7 @@ class OrderRequest:
     stop: StopParameters | None = None
     trigger_price: Price | None = None
     expires_at: datetime | None = None
+    post_only: bool = False
 
     @classmethod
     def from_record(
@@ -49,7 +50,8 @@ class OrderRequest:
             record.limit_price,
             record.attached_stop,
             record.trigger_price,
-            expires_at,
+            record.expires_at if expires_at is None else expires_at,
+            record.post_only,
         )
 
     def __post_init__(self) -> None:
@@ -66,6 +68,8 @@ class OrderRequest:
                 raise TypeError("optional prices must be Price")
         if self.stop is not None and not isinstance(self.stop, StopParameters):
             raise TypeError("stop must be StopParameters")
+        if type(self.post_only) is not bool or (self.post_only and self.limit_price is None):
+            raise ValueError("post_only requires a limit order")
         if self.expires_at is not None:
             require_utc(self.expires_at)
 

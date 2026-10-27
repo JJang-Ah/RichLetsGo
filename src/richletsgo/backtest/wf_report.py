@@ -42,7 +42,7 @@ def render(body: dict[str, Any], manifest: dict[str, Any]) -> str:
                 "conflicts": body["conflicts"],
             }
         ),
-        "## Four-combination comparison",
+        "## Combination comparison",
         table(
             [
                 "Combination",
@@ -75,6 +75,20 @@ def render(body: dict[str, Any], manifest: dict[str, Any]) -> str:
             ],
         ),
     ]
+    if identity.get("preregistration") is not None:
+        sections[1:1] = [
+            "Preregistered conditions (D96); unchanged after observing results.",
+            block(
+                {
+                    "preregistration": identity["preregistration"],
+                    "manifest_hash": body["manifest_hash"],
+                }
+            ),
+            "D96 limitations: overlapping training windows are not independent replications; "
+            "15 months of confirmation; joint PASS does not guarantee S2 standalone advantage "
+            "or a minimum confirmation trade count. PostOnly rejection is not modeled: "
+            "strict crossing fills at the limit, including gaps.",
+        ]
     for name, result in sorted(body["aggregates"].items()):
         windows = body["windows"][name]
         sections += [

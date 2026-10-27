@@ -3,6 +3,7 @@
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
+from datetime import datetime
 from decimal import Decimal
 
 from richletsgo.domain import (
@@ -17,6 +18,7 @@ from richletsgo.domain import (
     Symbol,
     make_order_link_id,
 )
+from richletsgo.domain.clock import require_utc
 from richletsgo.domain.values import finite_decimal
 from richletsgo.oms.exposure import exposure
 from richletsgo.oms.models import OrderRecord
@@ -57,9 +59,15 @@ class EntryRequest:
     ai_status: str = "DISABLED"
     entry_rejection: Rejection | None = None
     is_exit: bool = False
+    expires_at: datetime | None = None
+    post_only: bool = False
 
     def __post_init__(self) -> None:
         StopParameters(self.stop_price, self.stop_trigger_by)
+        if self.expires_at is not None:
+            require_utc(self.expires_at)
+        if type(self.post_only) is not bool or (self.post_only and self.limit_price is None):
+            raise ValueError("post_only requires a limit order")
 
 
 @dataclass(frozen=True, slots=True)
@@ -330,6 +338,8 @@ class RiskGate:
         order = replace(
             order,
             attached_stop=StopParameters(Price(sizing.aligned_stop), request.stop_trigger_by),
+            expires_at=request.expires_at,
+            post_only=request.post_only,
             qty=entry_delta(
                 sizing.qty,
                 uow.positions.get(request.strategy, request.symbol),
