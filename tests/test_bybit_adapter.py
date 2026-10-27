@@ -823,3 +823,124 @@ def test_actual_m106_synchronizer_accepts_flat_bybit_snapshots(setup, tmp_path):
         await sync.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "failure", [TimeoutError(), (503, b""), response(code=10006), (200, b"broken")]
+)
+def test_amend_ambiguous_is_single_attempt(setup, failure):
+    async def run():
+        g, t, sleeps, _ = setup([failure, response(code=10001)])
+        g._requests["stop"] = request(
+            OrderPurpose.PROTECT, qty="-0.02", order_link_id="stop", trigger_price=Price(D(59000))
+        )
+        result = await g.amend_stop("stop", Price(D(59500)))
+        assert result.code is ErrorCode.TIMEOUT
+        assert len(t.calls) == 1 and not sleeps
+        assert len(t.responses) == 1  # response to a duplicate amend must never be consumed
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("local_shift", [3, -6])
+def test_measured_offset_signs_protection_without_enabling_entries(setup, local_shift):
+    async def run():
+        g, t, _, _ = setup(
+            [response({"timeNano": str(to_ms(NOW) * 1_000_000)}), response({"orderId": "close"})]
+        )
+        ready(g)
+        g.clock.advance(timedelta(seconds=local_shift))
+        assert not await g.check_clock()
+        assert g.clock_offset_ms == -local_shift * 1000
+        assert (await g.place_order(request())).code is ErrorCode.REJECTED
+        assert isinstance(await g.place_order(request(OrderPurpose.CLOSE)), Accepted)
+        headers = t.calls[-1][2]
+        timestamp = int(headers["X-BAPI-TIMESTAMP"])
+        assert to_ms(NOW) - g.config.recv_window_ms <= timestamp < to_ms(NOW) + 1000
+        assert timestamp == to_ms(NOW)
+        wire = t.calls[-1][3]
+        assert headers["X-BAPI-SIGN"] == signature(
+            "unit-api-secret", str(timestamp) + "unit-api-key" + str(g.config.recv_window_ms) + wire
+        )
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("post_only,expected", [(True, "PostOnly"), (False, "GTC")])
+def test_post_only_wire_policy(setup, post_only, expected):
+    async def run():
+        g, t, _, _ = setup([response({"orderId": "id"})])
+        ready(g)
+        result = await g.place_order(request(limit_price=Price(D(60000)), post_only=post_only))
+        assert isinstance(result, Accepted)
+        body = json.loads(t.calls[0][3])
+        assert body["timeInForce"] == expected and body["tpslMode"] == "Partial"
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize("asynchronous", [False, True])
+def test_post_only_refusal_ends_episode_without_reentry(setup, tmp_path, asynchronous):
+    from test_portfolio import RISK_INPUT, signal
+    from test_portfolio import setup as portfolio_setup
+    from test_risk import counter, market
+
+    from richletsgo.oms.journal import ProtectiveJournal
+    from richletsgo.oms.transmission import OrderSender
+    from richletsgo.risk.records import EpisodeState
+
+    async def run():
+        db, clock, portfolio, router = portfolio_setup()
+        g, t, _, _ = setup([response({"orderId": "id"}) if asynchronous else response(code=10001)])
+        clock.set(NOW)
+        g.clock = g.rest.clock = clock
+        ready(g)
+        # Independent adapter startup pauses are not part of this already-ready fixture.
+        sig = replace(
+            signal(), limit_price=Price(D(100)), post_only=True, expires_at=NOW + timedelta(hours=4)
+        )
+        admitted = await router.handle(sig, market(), RISK_INPUT)
+        assert admitted.order is not None
+        sender = OrderSender(
+            db.unit_of_work,
+            g,
+            ProtectiveJournal(tmp_path),
+            clock,
+            router.gate.pauses,
+            counter(),
+            [],
+        )
+        result = await sender.send(admitted.order)
+        if asynchronous:
+            event = mapping.order(
+                order_row(
+                    orderId="id",
+                    orderLinkId=admitted.order.order_link_id,
+                    orderType="Limit",
+                    price="100",
+                    timeInForce="PostOnly",
+                    orderStatus="Cancelled",
+                    cumExecQty="0",
+                ),
+            )
+            async with db.unit_of_work() as u:
+                # Use the same monotonic OMS transition as WS ingestion.
+                from richletsgo.oms.models import apply_order_event
+
+                current = u.orders.get(admitted.order.key)
+                updated, _ = apply_order_event(current, event)
+                u.orders.put(updated)
+                portfolio.reconcile(u)
+                await u.commit()
+        else:
+            assert result.code is ErrorCode.REJECTED
+            async with db.unit_of_work() as u:
+                portfolio.reconcile(u)
+                await u.commit()
+        async with db.unit_of_work() as u:
+            assert u.episodes.get(admitted.episode.episode_id).state is EpisodeState.CLOSED
+            assert u.portfolio.book(sig.strategy, BTC).qty == 0
+        assert (await router.handle(sig, market(), RISK_INPUT)).reused
+        assert len(t.calls) == 1
+
+    asyncio.run(run())

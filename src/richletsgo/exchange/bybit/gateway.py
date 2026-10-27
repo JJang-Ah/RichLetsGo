@@ -89,6 +89,7 @@ class BybitGateway:
             server = int(response["result"]["timeNano"]) // 1_000_000
             end = to_ms(self.clock.now())
             self.clock_offset_ms = server - (start + end) // 2
+            self.rest.clock_offset_ms = self.clock_offset_ms
             # Include half RTT as uncertainty; do not certify a very slow time request.
             self._clock_ok = (
                 abs(self.clock_offset_ms) + (end - start) // 2 <= self.config.clock_limit_ms
@@ -197,7 +198,11 @@ class BybitGateway:
             "qty": str(abs(request.qty.value)),
             "positionIdx": 0,
             "orderType": "Limit" if request.limit_price else "Market",
-            "timeInForce": "GTC" if request.limit_price else "IOC",
+            "timeInForce": "PostOnly"
+            if request.post_only
+            else "GTC"
+            if request.limit_price
+            else "IOC",
         }
         if request.limit_price:
             body["price"] = str(request.limit_price.value)

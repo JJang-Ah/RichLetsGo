@@ -28,6 +28,7 @@ class Interval(StrEnum):
 
     DAY = "D"
     HOUR = "60"
+    FOUR_HOUR = "240"
     MINUTE = "1"
 
     @property
@@ -35,6 +36,7 @@ class Interval(StrEnum):
         return {
             Interval.DAY: timedelta(days=1),
             Interval.HOUR: timedelta(hours=1),
+            Interval.FOUR_HOUR: timedelta(hours=4),
             Interval.MINUTE: timedelta(minutes=1),
         }[self]
 

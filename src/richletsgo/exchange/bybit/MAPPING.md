@@ -18,11 +18,12 @@
 |---|---|
 | 부호 Qty | Buy/Sell + abs(qty), `positionIdx=0` |
 | ENTRY | 필수 `stopLoss`, `tpslMode=Partial`, `slOrderType=Market`, `slTriggerBy=LastPrice`; reduceOnly 생략 |
+| post_only=True | 지정가에 `timeInForce=PostOnly`; REST 확정 거절 또는 WS Cancelled/Rejected는 기존 OMS 종결·미체결 에피소드 종료. 응답 불명은 그대로 UNKNOWN |
 | CLOSE | reduceOnly=true, 시장가 기본; 조건부 close 거절 |
 | PROTECT | reduceOnly=true, triggerPrice + triggerDirection(매수 1/매도 2) + triggerBy |
 | D90 amend_stop(qty) | 부호/보호 주문 식별 검증 뒤 **abs(전체 수량)**. 누적 체결을 빼지 않는다. trigger만 전달하면 qty 생략, qty만 전달하면 trigger 생략 |
 | cancel/amend 식별 | 캐시의 거래소 ID 우선. 신규/UNKNOWN은 제출 때 보관한 symbol+orderLinkId. 재시작 캐시가 없으면 완전한 미체결 조회로 namespace와 symbol을 찾고, 추측한 ID/계약으로 쓰지 않는다 |
-| HTTP timeout/network/5xx/속도 제한 | 조회·취소·정정만 제한 횟수 재시도. create는 **항상 1회**. 쓰기 결과 불명은 TIMEOUT → 기존 OMS UNKNOWN |
+| HTTP timeout/network/5xx/속도 제한 | 조회·취소만 제한 횟수 재시도. create·amend는 **항상 1회**. 쓰기 결과 불명은 TIMEOUT → 기존 OMS UNKNOWN |
 | 10014 / 110072 중복 ID | TIMEOUT. 이미 수락된 주문일 수 있으므로 확정 거절/새 ID 재전송으로 취급하지 않음 |
 | 110001 / 110008·110010 | 명령 NOT_FOUND / TOO_LATE; 조회 실패는 QUERY_FAILED |
 | amend 110059 / 110060 | 해당 TP/SL 변경 금지 → UNSUPPORTED. D90 수량 변경이면 기존 교체 보호 절차가 처리 |
@@ -54,6 +55,8 @@ retMsg/요청/인증 원문을 오류에 넣지 않는다. 시각 오차는 왕�
 중복/역순 이벤트를 제거하거나 정렬하지 않는다. 주문 원문은 불변 `OrderEvent.raw`, 체결은 execId로 기존 OMS가 멱등 처리한다. private wallet 알림은 `wallet_events` 별도 큐이며 `PrivateEvent` 계약을 바꾸지 않는다. WS 지갑 알림만으로 매 시세의 미실현 손익을 갱신할 수 없으므로 서비스의 REST 계좌 조회가 여전히 필요하다.
 
 미체결은 Order/StopOrder 두 필터의 모든 페이지를 조회한다. 조회 결과 누락/모르는 enum/커서 반복을 빈 정상 결과로 반환하지 않는다. 이력·체결·입출금에는 고정 startTime/endTime과 모든 페이지를 사용하며 요청 범위가 현재 기준 7일을 넘으면 정지/알림한다. M3-04에서 SyncPolicy.history_window는 네트워크 처리 시간을 고려해 7일보다 작은 값을 명시해야 한다. 정확히 now-7일로 시작하면 다음 REST 호출 시 이미 보존 범위를 벗어날 수 있다. 실제 7일 초과 복구는 허용 폭으로 덮지 않는다.
+
+서명 timestamp는 로컬 시각 + 마지막 성공 서버 시각 표본 offset이다(미측정은 0). 시각 차이·RTT가 한도를 넘으면 신규 진입 정지는 유지하며 보호 요청은 보정된 시각으로 전송한다. 측정 실패 시 마지막 offset을 보존하고 진입 정지는 유지한다. NTP/서비스 시각 관리와 주기적 검사(M3-04)는 여전히 필요하다.
 
 ## 남은 수동 확인
 

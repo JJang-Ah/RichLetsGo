@@ -174,3 +174,111 @@ def test_retention_removes_only_expired_service_files(tmp_path):
     for handler in tuple(logger.handlers):
         handler.close()
         logger.removeHandler(handler)
+
+
+def v1_fixture(tmp_path, mutate=None):
+    import tomllib
+
+    from richletsgo.backtest.codec import digest
+
+    path = config_file(tmp_path)
+    config = tomllib.loads(path.read_text(encoding="utf-8"))
+    pair = [config["strategy"][s]["params"] for s in ("S1", "S2")]
+    identity = {"preregistration": {"id": "synthetic", "sha256": "a" * 64}}
+    body = {
+        "identity": identity,
+        "manifest_hash": digest(identity),
+        "aggregates": {"S1A-S2A": {"verdict": "PASS"}},
+        "windows": {"S1A-S2A": [{"status": "COMPLETED", "selected": pair}]},
+    }
+    if mutate:
+        mutate(body)
+    report = path.parent / "보고서.json"
+    report.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(
+            'source = "manual"', f'source = "v1:{digest(body)}"'
+        )
+        + '\n[strategy]\nreport_path = "보고서.json"\n',
+        encoding="utf-8",
+    )
+    return path, report
+
+
+def test_v1_report_digest_pair_and_relative_path(tmp_path, monkeypatch):
+    path, report = v1_fixture(tmp_path)
+    monkeypatch.chdir(tmp_path.parent)
+    cfg = load_config(path)
+    assert cfg.report_path == report
+    # Whitespace is irrelevant to canonical body hashing.
+    report.write_text(json.dumps(json.loads(report.read_text(encoding="utf-8"))), encoding="utf-8")
+    assert load_config(path) == cfg
+    body = json.loads(report.read_text(encoding="utf-8"))
+    body["aggregates"]["S1A-S2A"]["verdict"] = "FAIL"
+    report.write_text(json.dumps(body), encoding="utf-8")
+    with pytest.raises(ConfigError, match="digest"):
+        load_config(path)
+
+
+@pytest.mark.parametrize(
+    "kind",
+    [
+        "fail",
+        "mixed_windows",
+        "incomplete",
+        "manifest",
+        "registration",
+        "missing_file",
+        "mixed_source",
+        "legacy",
+    ],
+)
+def test_v1_fail_closed(tmp_path, kind):
+    def mutate(body):
+        if kind == "fail":
+            body["aggregates"]["S1A-S2A"]["verdict"] = "FAIL"
+        elif kind == "mixed_windows":
+            import copy
+
+            first = body["windows"]["S1A-S2A"][0]
+            second = copy.deepcopy(first)
+            first["selected"][0]["fast"] = 6
+            second["selected"][1]["period"] = 30
+            body["windows"]["S1A-S2A"].append(second)
+        elif kind == "incomplete":
+            body["windows"]["S1A-S2A"][0]["status"] = "NO_CANDIDATE"
+        elif kind == "manifest":
+            body["manifest_hash"] = "f" * 64
+        elif kind == "registration":
+            body["identity"]["preregistration"] = None
+            from richletsgo.backtest.codec import digest
+
+            body["manifest_hash"] = digest(body["identity"])
+
+    path, report = v1_fixture(tmp_path, mutate)
+    if kind == "missing_file":
+        report.unlink()
+    if kind in ("mixed_source", "legacy"):
+        import re
+
+        source = path.read_text(encoding="utf-8")
+        source = re.sub(
+            r'source = "v1:[0-9a-f]{64}"',
+            'source = "manual"' if kind == "mixed_source" else 'source = "m2-04:' + "a" * 64 + '"',
+            source,
+            count=1,
+        )
+        path.write_text(source, encoding="utf-8")
+    with pytest.raises(ConfigError):
+        load_config(path)
+
+
+def test_s2p_config_validates_parameters(tmp_path):
+    path = config_file(tmp_path)
+    source = path.read_text(encoding="utf-8").replace('candidate = "S2-A"', 'candidate = "S2-P"')
+    source = source.replace(
+        'params = { period = 20, k = "2", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 }',
+        'params = { rsi_period = 2, lower = "20", atr_period = 14, stop_atr = "1.5", target_r = "2", max_hold_bars = 30 }',
+    )
+    path.write_text(source, encoding="utf-8")
+    assert load_config(path).strategies[StrategyId.S2].candidate == "S2-P"

@@ -1,4 +1,4 @@
-"""Signed REST transport. Never repeat a create request after an ambiguous outcome."""
+"""Signed REST transport. Never repeat a create or amend request after an ambiguous outcome."""
 
 import hashlib
 import hmac
@@ -81,18 +81,19 @@ class RestClient:
             raise ValueError("mainnet public endpoint required")
         self.config, self.credential, self.clock = config, credential, clock
         self.transport, self.sleep = transport, sleep
+        self.clock_offset_ms: int = 0
 
     async def call(
         self, method: str, path: str, params: Mapping[str, Any], *, public: bool = False
     ) -> dict[str, Any] | ExchangeError:
-        create = path == "/v5/order/create"
+        single_attempt = path in ("/v5/order/create", "/v5/order/amend")
         query = method == "GET"
         serialized = (
             urlencode(sorted(params.items()))
             if query
             else json.dumps(params, separators=(",", ":"), ensure_ascii=True, sort_keys=True)
         )
-        attempts = 1 if create else self.config.retry_attempts
+        attempts = 1 if single_attempt else self.config.retry_attempts
         failure = ExchangeError(
             ErrorCode.QUERY_FAILED if query else ErrorCode.TIMEOUT, "Bybit response unavailable"
         )
@@ -101,7 +102,7 @@ class RestClient:
                 await self.sleep(self.config.retry_delay_seconds * 2 ** (attempt - 1))
             headers = {"Content-Type": "application/json"}
             if not public:
-                timestamp = str(to_ms(self.clock.now()))
+                timestamp = str(to_ms(self.clock.now()) + self.clock_offset_ms)
                 key = self.credential.key.reveal()
                 window = str(self.config.recv_window_ms)
                 headers.update(

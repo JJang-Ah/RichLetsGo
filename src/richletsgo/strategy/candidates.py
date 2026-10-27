@@ -17,6 +17,9 @@ from .models import (
     S2AParams,
     S2BParams,
     S2Episode,
+    S2PEpisode,
+    S2PParams,
+    S2PState,
     S2Result,
     Trend,
 )
@@ -214,12 +217,89 @@ def s2_b(
     )
 
 
-def required_bars(params: S1AParams | S1BParams | S2AParams | S2BParams) -> int:
+def required_bars(params: S1AParams | S1BParams | S2AParams | S2BParams | S2PParams) -> int:
     """Minimum steady-state input window, including the previous-bar indicator."""
     if isinstance(params, S1AParams):
         return max(params.slow, params.exit_channel + 1)
     if isinstance(params, S1BParams):
         return max(params.entry_channel, params.exit_channel) + 1
+    if isinstance(params, S2PParams):
+        return max(wilder_window(params.rsi_period) + 1, wilder_window(params.atr_period))
     if isinstance(params, S2AParams):
         return max(params.period + 1, wilder_window(params.atr_period))
     return max(wilder_window(params.period) + 1, wilder_window(params.atr_period))
+
+
+def s2_p(
+    history: ClosedBars, s1: S1State, episode: S2PEpisode | None, params: S2PParams
+) -> S2Result:
+    """D95: four-hour RSI return, fixed attached protection and VWAP price target."""
+    if history.interval is not Interval.FOUR_HOUR or history.symbol is not s1.symbol:
+        raise ValueError("S2-P requires matching four-hour history")
+    if episode is not None and episode.symbol is not history.symbol:
+        raise ValueError("episode symbol mismatch")
+    if not history.bars:
+        return S2Result(None)
+    bar = history.bars[-1]
+    if s1.bar_start is not None and s1.bar_start + Interval.DAY.duration > bar.end:
+        raise ValueError("future S1 state")
+    if episode is not None:
+        if episode.entry_bar_start is not None and episode.entry_bar_start > bar.start:
+            raise ValueError("future episode")
+        hit = s1.trend.value != episode.direction.value
+        if episode.state is S2PState.OPEN:
+            assert episode.average_price is not None and episode.entry_bar_start is not None
+            with localcontext(CALC):
+                price = episode.average_price.value
+                distance = abs(price - episode.stop_price.value)
+                target = price + episode.direction.sign * params.target_r * distance
+            hit |= (
+                bar.close >= target if episode.direction is Direction.LONG else bar.close <= target
+            )
+            hit |= (
+                bar.end - episode.entry_bar_start
+            ) // Interval.FOUR_HOUR.duration > params.max_hold_bars
+        return (
+            S2Result(
+                MarketSignal(
+                    StrategyId.S2,
+                    bar.symbol,
+                    bar.start,
+                    "EXIT",
+                    episode.direction,
+                    Price(bar.close),
+                    episode.stop_price,
+                )
+            )
+            if hit
+            else S2Result(None)
+        )
+    if s1.trend is Trend.FLAT:
+        return S2Result(None)
+    current = rsi(history, params.rsi_period)
+    previous = rsi(
+        history.before_last(lookback=wilder_window(params.rsi_period)), params.rsi_period
+    )
+    if current is None or previous is None:
+        return S2Result(None)
+    upper = Decimal(100) - params.lower
+    hit = (
+        previous < params.lower <= current
+        if s1.trend is Trend.LONG
+        else previous > upper >= current
+    )
+    if not hit:
+        return S2Result(None)
+    result = _entry(history, s1.trend, params.atr_period, params.stop_atr)
+    if result.signal is None:
+        return result
+    from dataclasses import replace
+
+    return S2Result(
+        replace(
+            result.signal,
+            limit_price=Price(bar.close),
+            expires_at=bar.end + Interval.FOUR_HOUR.duration,
+            post_only=True,
+        )
+    )

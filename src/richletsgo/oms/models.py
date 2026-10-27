@@ -40,6 +40,8 @@ class OrderRecord:
     attached_stop: StopParameters | None = None
     trigger_price: Price | None = None
     trigger_by: str | None = None
+    expires_at: datetime | None = None
+    post_only: bool = False
 
     def __post_init__(self) -> None:
         if self.order_link_id is None and self.exchange_order_id is None:
@@ -63,6 +65,10 @@ class OrderRecord:
             raise TypeError("limit_price must be Price or None")
         if finite_decimal(self.exchange_cum_exec_qty, "cumulative quantity") < 0:
             raise ValueError("cumulative quantity must be nonnegative")
+        if self.expires_at is not None:
+            require_utc(self.expires_at)
+        if type(self.post_only) is not bool or (self.post_only and self.limit_price is None):
+            raise ValueError("post_only requires a limit order")
         require_utc(self.created_at)
         require_utc(self.updated_at)
         if self.updated_at < self.created_at:
@@ -83,7 +89,7 @@ class OrderRecord:
             "side": "Buy" if self.qty.value > 0 else "Sell",
             "qty": str(abs(self.qty.value)),
             "orderType": "Limit" if self.limit_price else "Market",
-            "timeInForce": "GTC" if self.limit_price else "IOC",
+            "timeInForce": "PostOnly" if self.post_only else "GTC" if self.limit_price else "IOC",
             "reduceOnly": self.purpose is not OrderPurpose.ENTRY,
         }
         if self.order_link_id:
