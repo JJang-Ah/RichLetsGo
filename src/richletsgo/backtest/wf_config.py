@@ -12,13 +12,13 @@ from typing import Any
 from richletsgo.domain.clock import require_utc
 from richletsgo.marketdata.models import Interval
 from richletsgo.strategy.candidates import required_bars
-from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams
+from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams, S2PParams
 
 from .codec import digest
 from .config import ResearchConfig, load_research_config
 
 S1 = S1AParams | S1BParams
-S2 = S2AParams | S2BParams
+S2 = S2AParams | S2BParams | S2PParams
 
 
 def utc(value: str) -> datetime:
@@ -62,6 +62,7 @@ class WalkConfig:
     minimum_trades: dict[str, int]
     max_invalid_ratio: Decimal
     pass_criteria: dict[str, Decimal] | None
+    preregistration: dict[str, str] | None = None
 
     @property
     def windows(self) -> tuple[Window, ...]:
@@ -80,7 +81,10 @@ class WalkConfig:
     @property
     def warmup_start(self) -> datetime:
         span = max(
-            max(timedelta(days=required_bars(a)), timedelta(hours=required_bars(b)))
+            max(
+                timedelta(days=required_bars(a)),
+                timedelta(hours=required_bars(b) * (4 if isinstance(b, S2PParams) else 1)),
+            )
             for pairs in self.grids.values()
             for a, b in pairs
         )
@@ -106,9 +110,19 @@ def load_walk_config(path: Path) -> WalkConfig:
             raise ValueError(f"invalid {key}")
         return v
 
-    classes = {"S1A": S1AParams, "S1B": S1BParams, "S2A": S2AParams, "S2B": S2BParams}
+    classes = {
+        "S1A": S1AParams,
+        "S1B": S1BParams,
+        "S2A": S2AParams,
+        "S2B": S2BParams,
+        "S2P": S2PParams,
+    }
     parsed: dict[str, list[Any]] = {}
+    if not data["grid"] or set(data["grid"]) - set(classes):
+        raise ValueError("unknown/empty candidate grid")
     for name, cls in classes.items():
+        if name not in data["grid"]:
+            continue
         candidates = []
         for row in data["grid"][name]:
             if set(row) != {f.name for f in fields(cls)}:
@@ -132,11 +146,18 @@ def load_walk_config(path: Path) -> WalkConfig:
     if type(cap) is not int or not 1 <= cap <= 24:
         raise ValueError("D91 max_grid_points must be 1..24")
     grids = {}
-    for a, b in product(("S1A", "S1B"), ("S2A", "S2B")):
+    for a, b in product(
+        (n for n in parsed if n.startswith("S1")), (n for n in parsed if n.startswith("S2"))
+    ):
         pairs = tuple(product(parsed[a], parsed[b]))
         if len(pairs) > cap:
             raise ValueError("D91 joint grid exceeds cap")
         grids[a + "-" + b] = pairs
+    if not grids:
+        raise ValueError("both strategy grids required")
+    positive_score = selection.get("require_positive_score", False)
+    if type(positive_score) is not bool:
+        raise TypeError("require_positive_score must be bool")
     start, end = utc(raw["start"]), utc(raw["end"])
     if not Interval.HOUR.aligned(start) or not Interval.HOUR.aligned(end) or end <= start:
         raise ValueError("hour aligned nonempty range required")
@@ -179,7 +200,16 @@ def load_walk_config(path: Path) -> WalkConfig:
         minimum,
         ratio,
         criteria,
+        data.get("preregistration"),
     )
     if config.parallel_efficiency > 1 or not config.windows or not config.measurement_source:
         raise ValueError("invalid efficiency/windows/measurement source")
+    if config.preregistration is not None:
+        registration = config.preregistration
+        if set(registration) != {"id", "sha256"} or not registration["id"]:
+            raise ValueError("preregistration requires id and sha256")
+        if len(registration["sha256"]) != 64 or any(
+            c not in "0123456789abcdef" for c in registration["sha256"]
+        ):
+            raise ValueError("preregistration SHA-256 required")
     return config

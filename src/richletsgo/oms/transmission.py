@@ -40,6 +40,8 @@ def encode_order(order: OrderRecord) -> dict[str, Any]:
         "created": order.created_at.isoformat(),
         "trigger": str(order.trigger_price.value) if order.trigger_price else None,
         "trigger_by": order.trigger_by,
+        "expires_at": order.expires_at.isoformat() if order.expires_at else None,
+        "post_only": order.post_only,
         "stop": str(order.attached_stop.stop_loss.value) if order.attached_stop else None,
         "stop_by": order.attached_stop.trigger_by if order.attached_stop else None,
     }
@@ -65,6 +67,8 @@ def decode_order(data: dict[str, Any]) -> OrderRecord:
         StopParameters(Price(Decimal(data["stop"])), data["stop_by"]) if data["stop"] else None,
         Price(Decimal(data["trigger"])) if data["trigger"] else None,
         data["trigger_by"],
+        datetime.fromisoformat(data["expires_at"]) if data.get("expires_at") else None,
+        data.get("post_only", False),
     )
 
 
