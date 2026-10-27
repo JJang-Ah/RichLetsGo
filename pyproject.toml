@@ -8,7 +8,7 @@ version = "0.0.1"
 description = "Foundations for KIS stocks and Bybit futures automation"
 readme = "README.md"
 requires-python = ">=3.12"
-dependencies = []
+dependencies = ["keyring>=25,<26"]
 
 [project.optional-dependencies]
 dev = [
