@@ -1,1 +1,1 @@
-"""Adapt Bybit REST and public/private WebSocket interfaces."""
+"""Bybit demo V5 boundary; no network or credential access on import."""

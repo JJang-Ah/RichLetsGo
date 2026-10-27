@@ -210,3 +210,10 @@ python -m richletsgo.keystore set richletsgo/oracle-demo
 `configure_logging(config.paths.log_dir, environment=config.environment, service="Trader", retention_days=config.log_retention_days, secrets=[credential.key, credential.secret])`는 UTC 일별 JSONL 회전과 기간 보관을 설정합니다. API 키·서명·토큰/비밀번호 필드, 등록된 비밀 문자열과 예외 본문을 마스킹합니다. 추가로 읽은 봇 토큰·DB 비밀번호도 secrets 목록에 넣어야 임의의 문장 안에서도 마스킹됩니다. 부모 로거로 전파하지 않습니다.
 
 Oracle 접속은 M3-02이며 사용자 설치 뒤 시작합니다. M3-01 로더는 DB에 연결하지 않습니다. Data Pump DIRECTORY 등록 요구는 03 6.3절에 이미 명시돼 있습니다.
+
+
+## Bybit 데모 어댑터 (M3-03)
+
+`exchange.bybit`에 REST 서명/조회/주문과 개인·공개 WS를 구현했습니다. 생성 요청은 자동 재시도하지 않으며, 손절 정정은 D90의 부호 있는 전체 수량을 거래소 절대 수량으로 변환합니다. 연결 순서·오류/이벤트 매핑·서비스 수명과 남은 수동 검증은 [매핑 문서](src/richletsgo/exchange/bybit/MAPPING.md)를 참고합니다.
+
+현재 검증은 가짜 REST/WS 응답을 사용하는 오프라인 테스트까지입니다. 실제 키나 주문을 사용하지 않았으며, 서비스 조립·Oracle·새 전략 V1 통과와 M3-07은 별도 단계입니다. M3-03 PR은 M3-01 PR 위에 쌓아 설정 변경과 어댑터 변경을 따로 검토할 수 있게 했습니다.

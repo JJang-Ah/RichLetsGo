@@ -426,6 +426,17 @@
 - Python 3.12/3.14 각각 686 tests, ruff check/format, mypy strict 74 소스 통과. 실제 키 등록·읽기·서비스 계정 접근은 수행하지 않았으며 키 준비 후 수동 검증한다.
 - PR #26 d1d86e2 검토: P1 새 V1 통과 조건/출처를 M3-00·04·07에도 전파 필요, P2 D93 수집 시작과 워밍업 뒤 첫 학습 시작·배타적 종료를 구분할 필요. 리뷰 5647499956에 남겼다. 전략/기간 문서는 Claude·사용자가 수정한다.
 - 다음: Claude M3-01 검토, Codex M3-03 오프라인 구현. M3-01에 의존하는 별도 브랜치/PR로 진행한다.
+
+
+## 2026-10-26 Codex — M3-03 Bybit 오프라인 구현
+
+- M3-01 PR #28(531b2e0) 위 `task/M3-03-bybit-adapter`에서 구현. M3-01 두 Python 버전 CI 통과, Claude 검토 대기. 두 변경을 별도 PR로 검토하며 M3-01 병합 뒤 M3-03 base를 main으로 바꾼다.
+- demo REST HMAC/명시 주소·서명 redirect 금지, 생성 무재시도·UNKNOWN 연계, 일반/조건부 전 페이지 조회, 계좌/시각 확인, 7일 이력 제한, USDT 지갑/이체, 상품/tier1 갱신 구현. 자격 증명·retMsg를 오류에 노출하지 않는다.
+- D90 정정은 부호 있는 전체 수량을 abs로 보낸다. 명시적 TP/SL 변경 금지만 UNSUPPORTED로 매핑해 기존 보호 교체 절차를 사용한다. 인수/잔고 오류를 미지원으로 간주하지 않는다.
+- 개인 WS 인증·구독·ping/pong·재연결마다 기존 동기화기 호출, reader가 REST 동기화 중 계속 수집, 중복·역순 전달. 공개 WS 확정 봉만 전달. 기존 M2-01 공백/펀딩 수집은 서비스 조립 때 재사용한다.
+- `exchange/bybit/MAPPING.md`에 코드 필드·오류·서비스 수명·계좌 조회 출처와 수동 검증을 기록. 실제 보존 범위를 넘지 않도록 M3-04는 네트워크 여유를 둔 7일 미만 SyncPolicy.history_window를 명시해야 한다. 초과 복구를 조용히 잘라 성공시키지 않는다.
+- Python 3.12/3.14 각각 전체 730 tests, ruff check/format 및 mypy strict 78 소스 통과. 신규 오프라인 44개: 서명/생성 유실/계좌 설정/시각/페이지/전체 수량/재시작 손절 ID/WS handshake·pong 실패/실제 M1-06 연결 포함. 기존 재시작·재생·D90·추적 손절 테스트 유지.
+- 실제 키 읽기/등록·데모 주문·Oracle 작업 없음. 응답 fixture는 문서 기반 합성 예시이며 실제 녹화가 아니다. 실제 데모 fixture·Partial SL 동작/수량 변경·최소 진입/청산·재연결은 키 준비 후 별도 검증. 전략 재설계는 Claude·사용자, M3-02는 Oracle 설치 후, M3-07은 새 V1 통과 후.
 ## 2026-10-26 — Claude Code (계좌 분리 결정)
 
 - 사용자 질문(프로그램이 꺼진 사이 직접 거래하면?)에 답하며 계좌 분리를 정함.
@@ -462,3 +473,12 @@
 - 두 전략은 같은 source를 요구한다. v1은 설정 파일 기준 report_path의 JSON에 codec.digest를 재계산하고 manifest identity 해시·사전 등록 id/SHA-256·조합 PASS·동일 COMPLETED 확인 구간의 정확한 S1×S2 쌍을 검증한다. manual은 개발용이고 m2-04는 거절한다. 경로는 불변 AppConfig에도 남는다.
 - 신규 합성 보고서 회귀 10개: 상대/한글 경로·cwd·JSON 공백·본문 변조·FAIL·구간 혼합·미완료·manifest/등록 누락·출처 불일치·구형 출처·S2-P 설정. 실제 판정 보고서·키는 읽지 않았다.
 - Claude P3 메모: M3-04/06 서비스 조립에서 라이브러리와 루트 로거에도 같은 비밀 마스킹 필터/포매터를 연결한다(NSSM stdout/stderr 포함).
+
+
+## 2026-10-27 Codex — PR #29 PostOnly·Claude P2 보완
+
+- PR #28 최신 기반을 합쳤고 HANDOFF 충돌은 양쪽 기록을 보존했다. post_only=True를 V5 PostOnly로 보내고 기본 지정가는 GTC를 유지한다. REST 확정 거절과 비동기 Cancelled를 기존 OMS 종결/무체결 에피소드 종료로 연결하는 합성 테스트를 추가했다. 응답 불명은 거절로 바꾸지 않는다.
+- Claude P2-1: amend도 create처럼 전송 층에서 1회만 시도한다. 응답 유실/5xx/속도 제한은 TIMEOUT으로 기존 추적 손절·D90 조회 판정에 맡긴다. 취소/조회 재시도는 유지한다.
+- Claude P2-2: check_clock의 성공 표본 offset을 REST 서명 시각에 적용한다. 한도 초과 시 신규 진입 정지는 유지하고 보호 요청은 보정 시각을 사용한다. 표본 조회 실패는 마지막 보정값을 보존하며 진입 정지한다. 로컬 +3초/-6초·HMAC 검증을 추가했다.
+- 신규 오프라인 회귀 10개. 실제 데모 키/주문/판정 데이터 접근 없음. 실제 PostOnly 거절/Partial SL 동작은 M3-07 수동 검증, 데모 만료 취소 스케줄은 M3-04에서 연결한다.
+- 최종 검증: Python 3.14 전체 774 passed, ruff check/format, mypy strict 78 소스 통과. PR #30·#28 최신 커밋의 Python 3.12/3.14 CI도 통과했다.
