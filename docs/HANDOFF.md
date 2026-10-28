@@ -502,3 +502,4 @@
 - D97·Q26(데모 종목) 추가, `docs/tasks/M2-06-new-symbol-validation.md` 작성. 04 3장·M3-00·M3-04(S1 단독 `v1:` 계약)·M3-07 진입 조건 갱신.
 - Claude 기본값(사용자 변경 가능): 상장 < 2022-01-01, 24시간 거래대금 상위 4개, 판정 `[2022-04-01, 2026-10-01)` 14구간, 슬리피지 0.0005, 위험 프로필 D88 그대로(S2 배분 비움).
 - 다음: Codex 명세 검토 → M2-06 구현(선정 도구 1회 실행 포함) → Claude 검토 → 사전 등록 → 수집 → manifest → 계산.
+- 추가(PR #32 Codex 검토 P1·P2 2건·점검 3건): S2 활성화는 주·부 두 판정 PASS와 같은 사전 등록·data_hash·종목 확인(두 보고서 계약, M3-04 구현), `[strategy.S2] enabled=false` 스키마(다른 필드 거절, 생략=true), 데이터 문제 규칙(재시도/INVALID_INPUT/INVALID_DATA), 2종목 가정 목록 보완(walkforward `tuple(Symbol)`, 데모 설정 명시적 BTC·ETH 집합, invariants 전체 검사 유지), BTC·ETH 외 종목 수집·캠페인 사전 등록 차단, 두 manifest 같은 data_hash, 계산량은 4종목 두 모드 벤치마크·경과 시간 상한.
