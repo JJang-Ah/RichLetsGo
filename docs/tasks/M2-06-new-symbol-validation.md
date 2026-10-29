@@ -61,7 +61,7 @@ D96 판정(PR #31)에서 S1-B는 이익(+388.8 USDT), S2-P는 사실상 0(+2.26 
      ```toml
      [strategy]
      report_path = "docs/reports/D97-primary.json"          # 주 판정(S1B) 보고서, 항상 필수
-     secondary_report_path = "docs/reports/D97-secondary.json"  # S2를 켤 때만 필수, 끌 때는 금지
+     # secondary_report_path = "docs/reports/D97-secondary.json"  # S2를 켤 때만 필수, 끌 때는 금지(이 예시는 S2 끔)
 
      [strategy.S1]                    # 항상 필수, enabled 필드 없음(S1은 끌 수 없음)
      candidate = "S1-B"
