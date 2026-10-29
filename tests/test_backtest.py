@@ -28,7 +28,7 @@ from richletsgo.strategy.models import S1AParams, S2AParams
 
 START = datetime(2026, 1, 3, tzinfo=UTC)
 HOUR = timedelta(hours=1)
-SYMBOLS = tuple(Symbol)
+SYMBOLS = (Symbol.BTCUSDT, Symbol.ETHUSDT)
 
 
 def run_config(hours=12, **changes):
@@ -386,7 +386,7 @@ def test_final_one_hour_is_entry_disabled(tmp_path):
 
 def test_parameter_and_environment_validation(tmp_path):
     with pytest.raises(ValueError):
-        run_config(symbols=(SYMBOLS[0],))
+        run_config(symbols=(SYMBOLS[0], SYMBOLS[0]))
     with pytest.raises(ValueError):
         run_config(start=START + timedelta(minutes=1))
     with pytest.raises(ValueError):

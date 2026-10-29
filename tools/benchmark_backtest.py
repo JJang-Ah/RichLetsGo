@@ -65,7 +65,12 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--redesign", action="store_true", help="D95 synthetic 12-month load")
+    parser.add_argument("--s1-only", action="store_true")
+    parser.add_argument(
+        "--symbols", nargs="+", choices=[s.value for s in Symbol], default=["BTCUSDT", "ETHUSDT"]
+    )
     args = parser.parse_args()
+    symbols = tuple(Symbol(s) for s in args.symbols)
     config = load_research_config(args.config)
     start = datetime(2023, 1, 1, tzinfo=UTC)
     end = datetime(2026, 1, 1, tzinfo=UTC)
@@ -75,7 +80,7 @@ def main() -> None:
     first = start - timedelta(days=56 if args.redesign else 20)
     hour = timedelta(hours=1)
     with MarketDataStore(args.output / "synthetic-market") as store:
-        for symbol in Symbol:
+        for symbol in symbols:
             store.put_instrument(
                 InstrumentSnapshot(
                     symbol, D(".001"), D(".001"), D(".01"), D(100), timedelta(hours=8), end
@@ -120,13 +125,15 @@ def main() -> None:
             start,
             end,
             S1BParams(55, 20) if args.redesign else S1AParams(5, 20, 10),
-            S2PParams(2, D(20), 14, D("1.5"), D(2), 30)
+            None
+            if args.s1_only
+            else S2PParams(2, D(20), 14, D("1.5"), D(2), 30)
             if args.redesign
             else S2AParams(20, D(2), 14, D(2), 24),
             config.profile,
             config.close_policy,
             config.sync_policy,
-            tuple(Symbol),
+            symbols,
             end,
             "synthetic-benchmark",
         )
@@ -142,6 +149,8 @@ def main() -> None:
             if args.redesign
             else "synthetic_three_year_load_not_market_performance",
             "hours": (end - start) // hour,
+            "symbols": args.symbols,
+            "s1_only": args.s1_only,
             "elapsed_seconds": round(elapsed, 3),
             "peak_process_working_set_mib": round(peak_process_mib(), 2),
             "status": result.status,

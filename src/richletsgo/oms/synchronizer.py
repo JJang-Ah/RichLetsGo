@@ -777,7 +777,11 @@ class Synchronizer:
                     if (
                         unsettled
                         or pending
-                        or invariants(books, {p.symbol: p.qty for p in positions})
+                        or invariants(
+                            books,
+                            {p.symbol: p.qty for p in positions},
+                            symbols=frozenset(self.symbols),
+                        )
                     ):
                         continue
                     try:

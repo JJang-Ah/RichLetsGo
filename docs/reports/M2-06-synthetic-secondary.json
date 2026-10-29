@@ -1,0 +1,17 @@
+{
+  "kind": "synthetic_redesign_12m",
+  "hours": 8760,
+  "symbols": [
+    "SOLUSDT",
+    "ZECUSDT",
+    "XRPUSDT",
+    "NEARUSDT"
+  ],
+  "s1_only": false,
+  "elapsed_seconds": 125.706,
+  "peak_process_working_set_mib": 173.68,
+  "status": "COMPLETED",
+  "trades": 32,
+  "orders": 64,
+  "result_hash": "72aa6aede9af14e60d73edb856edd4eddd78309444b7f15b981e056afb26602d"
+}

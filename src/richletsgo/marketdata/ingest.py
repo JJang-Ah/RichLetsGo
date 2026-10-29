@@ -171,9 +171,11 @@ def run_ingest(
     now: datetime,
     minute_range: tuple[datetime, datetime] | None,
     with_funding: bool,
+    end: datetime | None = None,
 ) -> IngestResult:
     require_utc(since)
     require_utc(now)
+    end = now if end is None else min(end, now)
     reports: list[SeriesReport] = []
     for symbol in symbols:
         snapshot_report = SeriesReport(f"snapshots {symbol.value}")
@@ -192,15 +194,15 @@ def run_ingest(
                 if minute_range is None:
                     raise ValueError("1-minute bars require an explicit --from/--to range")
                 lo, hi = minute_range
-                reports.append(ingest_bars(client, store, symbol, interval, lo, min(hi, now)))
+                reports.append(ingest_bars(client, store, symbol, interval, lo, min(hi, end)))
             else:
-                reports.append(ingest_bars(client, store, symbol, interval, since, now))
+                reports.append(ingest_bars(client, store, symbol, interval, since, end))
         if with_funding:
             if snapshot is None:
                 reports.append(SeriesReport(f"funding {symbol.value}", error="no instrument"))
             else:
                 reports.append(
-                    ingest_funding(client, store, symbol, since, now, snapshot.funding_interval)
+                    ingest_funding(client, store, symbol, since, end, snapshot.funding_interval)
                 )
     return IngestResult(reports)
 
@@ -245,6 +247,10 @@ def main(
     parser.add_argument("--since", type=_utc, help="UTC start; default now - 3 years (D70)")
     parser.add_argument("--from", dest="minute_from", type=_utc)
     parser.add_argument("--to", dest="minute_to", type=_utc, help="exclusive UTC end for 1m bars")
+    parser.add_argument(
+        "--until", type=_utc, help="exclusive UTC data end; snapshots retain actual capture time"
+    )
+    parser.add_argument("--preregistration", type=Path)
     parser.add_argument("--skip-funding", action="store_true")
     parser.add_argument("--pause", type=float, default=0.2)
     parser.add_argument("--max-attempts", type=int, default=5)
@@ -260,6 +266,10 @@ def main(
         if args.minute_from is None or args.minute_to is None:
             parser.error("1-minute bars require --from and --to")
         minute_range = (args.minute_from, args.minute_to)
+    from richletsgo.backtest.registration import check_collection
+
+    end = min(args.until, started) if args.until is not None else started
+    check_collection(args.preregistration, tuple(Symbol(s) for s in args.symbols), since, end)
     directory, base_url = load_settings(args.config)
     client = BybitPublicClient(
         base_url,
@@ -277,6 +287,7 @@ def main(
             now=started,
             minute_range=minute_range,
             with_funding=not args.skip_funding,
+            end=end,
         )
         summary: dict[str, object] = {
             "request": {
@@ -284,11 +295,14 @@ def main(
                 "intervals": args.intervals,
                 "since": _iso(since),
                 "now": _iso(started),
+                **({"end": _iso(end)} if args.until is not None else {}),
                 "minute_range": [_iso(t) for t in minute_range] if minute_range else None,
                 "with_funding": not args.skip_funding,
             },
             "series": {r.name: _as_dict(r) for r in result.reports},
         }
+        if args.preregistration is not None:
+            summary["request_attempts"] = client.attempts
         store.record_run(
             started=started,
             finished=now(),

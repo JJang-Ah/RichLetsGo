@@ -260,7 +260,11 @@ def _load(path: Path) -> AppConfig:
     ):
         raise ConfigError("mainnet public endpoints required")
     symbols = tuple(Symbol(s) for s in raw["symbols"])
-    if len(symbols) != 2 or set(symbols) != set(Symbol) or text(raw, "category") != "linear":
+    if (
+        len(symbols) != 2
+        or set(symbols) != {Symbol.BTCUSDT, Symbol.ETHUSDT}
+        or text(raw, "category") != "linear"
+    ):
         raise ConfigError("linear BTCUSDT and ETHUSDT required")
     leverage = decimal(raw, "leverage")
     if (
