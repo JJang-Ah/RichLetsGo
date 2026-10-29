@@ -6,7 +6,7 @@ import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from dataclasses import dataclass
-from datetime import datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from typing import Any, Protocol
 
@@ -73,6 +73,7 @@ class BybitPublicClient:
         self._transport = transport
         self._policy = policy
         self._sleep = sleep
+        self.attempts: list[dict[str, Any]] = []
         self.requests: list[str] = []  # observed request URLs (tests and run summary)
 
     def _get(self, path: str, params: dict[str, str]) -> dict[str, Any]:
@@ -82,6 +83,9 @@ class BybitPublicClient:
             if attempt > 1:
                 self._sleep(self._policy.backoff_seconds * 2 ** (attempt - 2))
             self.requests.append(url)
+            self.attempts.append(
+                {"url": url, "attempt": attempt, "at": datetime.now(UTC).isoformat()}
+            )
             try:
                 status, body = self._transport.get(url, self._policy.timeout_seconds)
             except TransportError as exc:

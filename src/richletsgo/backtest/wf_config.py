@@ -32,8 +32,8 @@ def months(at: datetime, count: int) -> datetime:
     )
 
 
-def parameter_key(param: S1 | S2) -> tuple[Decimal, ...]:
-    return tuple(Decimal(getattr(param, f.name)) for f in fields(param))
+def parameter_key(param: S1 | S2 | None) -> tuple[Decimal, ...]:
+    return () if param is None else tuple(Decimal(getattr(param, f.name)) for f in fields(param))
 
 
 @dataclass(frozen=True)
@@ -57,12 +57,13 @@ class WalkConfig:
     max_compute_hours: Decimal
     reestimate_after: int
     measurement_source: str
-    grids: dict[str, tuple[tuple[S1, S2], ...]]
+    grids: dict[str, tuple[tuple[S1, S2 | None], ...]]
     drawdown_floor: Decimal
     minimum_trades: dict[str, int]
     max_invalid_ratio: Decimal
     pass_criteria: dict[str, Decimal] | None
     preregistration: dict[str, str] | None = None
+    strategy_minimum: dict[str, Decimal] | None = None
 
     @property
     def windows(self) -> tuple[Window, ...]:
@@ -83,7 +84,9 @@ class WalkConfig:
         span = max(
             max(
                 timedelta(days=required_bars(a)),
-                timedelta(hours=required_bars(b) * (4 if isinstance(b, S2PParams) else 1)),
+                timedelta(hours=required_bars(b) * (4 if isinstance(b, S2PParams) else 1))
+                if b is not None
+                else timedelta(0),
             )
             for pairs in self.grids.values()
             for a, b in pairs
@@ -145,7 +148,7 @@ def load_walk_config(path: Path) -> WalkConfig:
     cap = selection["max_grid_points"]
     if type(cap) is not int or not 1 <= cap <= 24:
         raise ValueError("D91 max_grid_points must be 1..24")
-    grids = {}
+    grids: dict[str, tuple[tuple[S1, S2 | None], ...]] = {}
     for a, b in product(
         (n for n in parsed if n.startswith("S1")), (n for n in parsed if n.startswith("S2"))
     ):
@@ -153,8 +156,12 @@ def load_walk_config(path: Path) -> WalkConfig:
         if len(pairs) > cap:
             raise ValueError("D91 joint grid exceeds cap")
         grids[a + "-" + b] = pairs
+    if not any(n.startswith("S2") for n in parsed) and set(parsed) == {"S1B"}:
+        if len(parsed["S1B"]) > cap:
+            raise ValueError("D91 grid exceeds cap")
+        grids["S1B"] = tuple((a, None) for a in parsed["S1B"])
     if not grids:
-        raise ValueError("both strategy grids required")
+        raise ValueError("both strategy grids required, or S1B only")
     positive_score = selection.get("require_positive_score", False)
     if type(positive_score) is not bool:
         raise TypeError("require_positive_score must be bool")
@@ -171,9 +178,25 @@ def load_walk_config(path: Path) -> WalkConfig:
     minimum = dict(selection["min_training_trades"])
     if not floor.is_finite() or floor <= 0 or not ratio.is_finite() or not 0 <= ratio <= 1:
         raise ValueError("invalid selection limits")
-    if set(minimum) != {"S1", "S2"} or any(type(v) is not int or v < 0 for v in minimum.values()):
+    if set(minimum) != ({"S1"} if set(grids) == {"S1B"} else {"S1", "S2"}) or any(
+        type(v) is not int or v < 0 for v in minimum.values()
+    ):
         raise ValueError("minimum trades require S1 and S2 nonnegative ints")
-    criteria = data.get("pass_criteria")
+    criteria = dict(data["pass_criteria"]) if "pass_criteria" in data else None
+    strategy_minimum = (
+        criteria.pop("min_strategy_net_pnl_usdt", None) if criteria is not None else None
+    )
+    if strategy_minimum is not None:
+        if (
+            not isinstance(strategy_minimum, dict)
+            or not strategy_minimum
+            or set(strategy_minimum) - set(minimum)
+            or any(not isinstance(v, str) for v in strategy_minimum.values())
+        ):
+            raise ValueError("invalid strategy pass criteria")
+        strategy_minimum = {k: Decimal(v) for k, v in strategy_minimum.items()}
+        if any(not v.is_finite() for v in strategy_minimum.values()):
+            raise ValueError("nonfinite strategy pass criteria")
     if criteria is not None and any(not isinstance(v, str) for v in criteria.values()):
         raise TypeError("pass criteria must be Decimal strings")
     criteria = {k: Decimal(v) for k, v in criteria.items()} if criteria is not None else None
@@ -201,6 +224,7 @@ def load_walk_config(path: Path) -> WalkConfig:
         ratio,
         criteria,
         data.get("preregistration"),
+        strategy_minimum,
     )
     if config.parallel_efficiency > 1 or not config.windows or not config.measurement_source:
         raise ValueError("invalid efficiency/windows/measurement source")

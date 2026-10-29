@@ -123,6 +123,10 @@ def aggregate(
     initial: Decimal,
     invalid_ratio: Decimal,
     criteria: dict[str, Decimal] | None,
+    *,
+    symbols: tuple[str, ...] = ("BTCUSDT", "ETHUSDT"),
+    strategies: tuple[str, ...] = ("S1", "S2"),
+    strategy_minimum: dict[str, Decimal] | None = None,
 ) -> dict[str, Any]:
     value = initial
     curve: list[dict[str, str]] = []
@@ -165,6 +169,12 @@ def aggregate(
             else "FAIL"
         )
     )
+    if status == "PASS" and strategy_minimum is not None:
+        if any(
+            sum((Decimal(t["net_pnl"]) for t in trades if t["strategy"] == name), ZERO) <= threshold
+            for name, threshold in strategy_minimum.items()
+        ):
+            status = "FAIL"
     result = trade_stats(trades)
     result.update(
         primitive(
@@ -178,11 +188,13 @@ def aggregate(
                 "equity": curve,
                 "trade_records": trades,
                 "by_strategy": {
-                    s: trade_stats([t for t in trades if t["strategy"] == s]) for s in ("S1", "S2")
+                    s: trade_stats([t for t in trades if t["strategy"] == s])
+                    if s in strategies
+                    else {}
+                    for s in ("S1", "S2")
                 },
                 "by_symbol": {
-                    s: trade_stats([t for t in trades if t["symbol"] == s])
-                    for s in ("BTCUSDT", "ETHUSDT")
+                    s: trade_stats([t for t in trades if t["symbol"] == s]) for s in symbols
                 },
             }
         )

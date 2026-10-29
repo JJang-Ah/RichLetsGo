@@ -39,11 +39,13 @@ def load_data(
     end: datetime,
     symbols: tuple[Symbol, ...],
     s1: S1AParams | S1BParams,
-    s2: S2AParams | S2BParams | S2PParams,
+    s2: S2AParams | S2BParams | S2PParams | None,
 ) -> RunData:
     warmup = max(
         timedelta(days=required_bars(s1)),
-        timedelta(hours=required_bars(s2) * (4 if isinstance(s2, S2PParams) else 1)),
+        timedelta(hours=required_bars(s2) * (4 if isinstance(s2, S2PParams) else 1))
+        if s2 is not None
+        else timedelta(0),
     )
     first = Interval.DAY.floor(start - warmup)
     histories = {}

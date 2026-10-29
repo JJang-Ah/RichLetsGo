@@ -6,6 +6,10 @@ from enum import StrEnum
 class Symbol(StrEnum):
     BTCUSDT = "BTCUSDT"
     ETHUSDT = "ETHUSDT"
+    SOLUSDT = "SOLUSDT"
+    ZECUSDT = "ZECUSDT"
+    XRPUSDT = "XRPUSDT"
+    NEARUSDT = "NEARUSDT"
 
 
 class StrategyId(StrEnum):

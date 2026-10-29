@@ -120,6 +120,11 @@ def render(body: dict[str, Any], manifest: dict[str, Any]) -> str:
                 ],
             ),
         ]
+        if "descriptive_periods" in result:
+            sections += [
+                "### Descriptive split at 2023-10-01 (not pass criteria)",
+                block(result["descriptive_periods"]),
+            ]
         sections += [
             "### Training candidate diagnostics",
             table(

@@ -7,7 +7,7 @@ from decimal import Decimal
 from pathlib import Path
 from typing import Any
 
-from richletsgo.domain import StrategyId
+from richletsgo.domain import StrategyId, Symbol
 from richletsgo.domain.values import finite_decimal
 from richletsgo.oms.synchronizer import SyncPolicy
 from richletsgo.portfolio.models import ClosePolicy
@@ -38,6 +38,7 @@ class ResearchConfig:
     market_data_dir: Path
     results_dir: Path
     journal_dir: Path
+    symbols: tuple[Symbol, ...]
     selection: dict[str, Any]  # M2-04 owns interpretation; preserve it, never use live risk.
 
 
@@ -104,6 +105,11 @@ def load_research_config(path: Path) -> ResearchConfig:
         target = Path(paths[key]).expanduser()
         return target.resolve() if target.is_absolute() else (path.parent / target).resolve()
 
+    names = data["backtest"].get("symbols", ["BTCUSDT", "ETHUSDT"])
+    symbols = tuple(Symbol(n) for n in names)
+    if not symbols or len(set(symbols)) != len(symbols):
+        raise ValueError("nonempty unique research symbols required")
+    symbols = tuple(sorted(symbols, key=lambda s: s.value))
     return ResearchConfig(
         ResearchProfile(
             limits,
@@ -117,5 +123,6 @@ def load_research_config(path: Path) -> ResearchConfig:
         directory("market_data_dir"),
         directory("backtest_results_dir"),
         directory("journal_dir"),
+        symbols,
         dict(data["backtest"]["selection"]),
     )

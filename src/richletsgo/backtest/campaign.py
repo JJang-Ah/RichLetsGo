@@ -23,6 +23,12 @@ from .wf_config import WalkConfig, utc
 SCHEMA_VERSION = 1
 
 
+class InputUnavailable(ValueError):
+    def __init__(self, symbol: Symbol, item: str) -> None:
+        self.symbol, self.item = symbol, item
+        super().__init__(item)
+
+
 def atomic_json(path: Path, value: Any) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     fd, name = tempfile.mkstemp(prefix="pending-", dir=path.parent)
@@ -57,7 +63,7 @@ def fingerprint(
         sqlite3.connect((directory / DB_FILE).resolve().as_uri() + "?mode=ro", uri=True)
     ) as db:
         db.execute("BEGIN")
-        for symbol in Symbol:
+        for symbol in sorted(pinned, key=lambda s: s.value):
             for interval in (Interval.DAY, Interval.HOUR):
                 rows = db.execute(
                     "SELECT * FROM bars WHERE symbol=? AND interval=? AND start_ms>=? AND start_ms<=? ORDER BY start_ms",
@@ -92,23 +98,23 @@ def prepare(config: WalkConfig, commit: str, executed_at: datetime) -> tuple[Pat
         raise ValueError("campaign end must contain only closed bars")
     with MarketDataStore(source, readonly=True) as store:
         pinned = {}
-        for symbol in Symbol:
+        for symbol in config.research.symbols:
             instrument = store.latest_instrument(symbol)
             tiers = store.latest_risk_tiers(symbol)
             if instrument is None or not any(t.tier == 1 for t in tiers):
-                raise ValueError("instrument and tier-1 snapshots required")
+                raise InputUnavailable(symbol, "instrument and tier-1 snapshots required")
             pinned[symbol] = (instrument.captured_at, tiers[0].captured_at)
     first = config.warmup_start
     # Funding look-behind may exceed indicator warm-up for a very small grid.
     funding_bounds = []
     with MarketDataStore(source, readonly=True, captured_at=pinned) as store:
-        for symbol in Symbol:
+        for symbol in config.research.symbols:
             instrument = store.latest_instrument(symbol)
             assert instrument is not None
             funding_bounds.append(config.start - instrument.funding_interval)
             previous = store.load_funding(symbol, funding_bounds[-1], config.start)
             if not any(f.funding_time <= config.start for f in previous):
-                raise ValueError("insufficient funding look-behind")
+                raise InputUnavailable(symbol, "insufficient funding look-behind")
     funding_first = min(funding_bounds)
     hash_first = min(first, funding_first)
     data_hash = fingerprint(source, hash_first, config.end, pinned)
@@ -131,6 +137,10 @@ def prepare(config: WalkConfig, commit: str, executed_at: datetime) -> tuple[Pat
         "train_months": config.train_months,
         "test_months": config.test_months,
     }
+    if config.research.symbols != (Symbol.BTCUSDT, Symbol.ETHUSDT):
+        identity["symbols"] = primitive(config.research.symbols)
+    if config.strategy_minimum is not None:
+        identity["min_strategy_net_pnl_usdt"] = primitive(config.strategy_minimum)
     root = config.research.results_dir / "campaigns" / digest(identity)
     manifest_path = root / "manifest.json"
     if manifest_path.exists():
@@ -153,14 +163,14 @@ def prepare(config: WalkConfig, commit: str, executed_at: datetime) -> tuple[Pat
         raise ValueError("input changed while pinning campaign")
     issues: list[Any] = []
     with MarketDataStore(snapshot, readonly=True, captured_at=pinned) as store:
-        for symbol in Symbol:
+        for symbol in config.research.symbols:
             for interval in (Interval.DAY, Interval.HOUR):
                 last = interval.floor(config.end) - interval.duration
                 starts = set(store.bar_starts(symbol, interval, first, last))
                 for at in expected_starts(interval, first, last):
                     if at not in starts:
                         if at < config.start:
-                            raise ValueError("insufficient warm-up bars")
+                            raise InputUnavailable(symbol, "insufficient warm-up bars")
                         issues.append(
                             {
                                 "symbol": symbol.value,

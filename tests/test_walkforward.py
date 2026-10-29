@@ -355,7 +355,7 @@ def test_training_rank_never_reads_next_test_open(tmp_path):
             return rows, choose(rows, D(100), {"S1": 0, "S2": 0})
 
         before = rank()
-        for symbol in Symbol:
+        for symbol in (Symbol.BTCUSDT, Symbol.ETHUSDT):
             store.put_bars(
                 [
                     Bar(

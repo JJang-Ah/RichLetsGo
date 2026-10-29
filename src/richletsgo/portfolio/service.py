@@ -68,10 +68,17 @@ def invariants(
     exchange: Mapping[Symbol, Qty],
     *,
     closing: frozenset[Symbol] = frozenset(),
+    symbols: frozenset[Symbol] | None = None,
 ) -> tuple[str, ...]:
     errors: list[str] = []
-    for symbol in Symbol:
+    for symbol in sorted({b.symbol for b in books} | set(exchange), key=lambda s: s.value):
         rows = [b for b in books if b.symbol is symbol]
+        if (
+            symbols is not None
+            and symbol not in symbols
+            and (rows or exchange.get(symbol, Qty(ZERO)).value)
+        ):
+            errors.append(f"{symbol}: outside configured universe")
         held = sum((b.qty for b in rows), ZERO)
         if symbol in exchange and held != exchange[symbol].value:
             errors.append(f"{symbol}: book/exchange mismatch")

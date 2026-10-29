@@ -54,7 +54,7 @@ class BacktestRun:
     start: datetime
     end: datetime
     s1: S1AParams | S1BParams
-    s2: S2AParams | S2BParams | S2PParams
+    s2: S2AParams | S2BParams | S2PParams | None
     profile: ResearchProfile
     close_policy: ClosePolicy
     sync_policy: SyncPolicy
@@ -71,11 +71,15 @@ class BacktestRun:
             or self.end <= self.start
         ):
             raise ValueError("nonempty hour-aligned [start,end) required")
-        if set(self.symbols) != set(Symbol) or len(self.symbols) != len(Symbol):
-            raise ValueError("V1 requires BTCUSDT and ETHUSDT exactly once")
+        if (
+            not self.symbols
+            or len(set(self.symbols)) != len(self.symbols)
+            or any(not isinstance(s, Symbol) for s in self.symbols)
+        ):
+            raise ValueError("unique nonempty symbols required")
         object.__setattr__(self, "symbols", tuple(sorted(self.symbols, key=lambda s: s.value)))
-        if not isinstance(self.s1, (S1AParams, S1BParams)) or not isinstance(
-            self.s2, (S2AParams, S2BParams, S2PParams)
+        if not isinstance(self.s1, (S1AParams, S1BParams)) or (
+            self.s2 is not None and not isinstance(self.s2, (S2AParams, S2BParams, S2PParams))
         ):
             raise TypeError("candidate parameter types required")
         if not self.code_commit:
@@ -335,6 +339,7 @@ class _Engine:
             if signal.kind == "EXIT" and signal.strategy is StrategyId.S1:
                 reason = "channel_exit"
             elif signal.strategy is StrategyId.S2:
+                assert self.run.s2 is not None
                 trade = self.ledger.active.get((StrategyId.S2, symbol))
                 if self.states[symbol].trend.value != episode.direction.value:
                     reason = "trend_change"
@@ -385,6 +390,8 @@ class _Engine:
                 self.states[symbol] = out.state
                 if out.signal:
                     await self._signal(out.signal)
+        if self.run.s2 is None:
+            return
         for symbol in self.run.symbols:
             if isinstance(self.run.s2, S2PParams):
                 if not Interval.FOUR_HOUR.aligned(at):

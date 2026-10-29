@@ -17,6 +17,7 @@ from richletsgo.domain import Symbol
 from richletsgo.marketdata.models import Interval
 from richletsgo.marketdata.store import MarketDataStore
 from richletsgo.strategy.candidates import required_bars
+from richletsgo.strategy.models import S2PParams
 
 from .campaign import (
     SCHEMA_VERSION,
@@ -73,7 +74,7 @@ def run_for(
         config.research.profile,
         config.research.close_policy,
         config.research.sync_policy,
-        tuple(Symbol),
+        config.research.symbols,
         executed_at,
         commit,
     )
@@ -129,7 +130,12 @@ def worker(job: Job) -> dict[str, Any]:
         job.commit,
         utc(job.executed_at),
     )
-    before = max(timedelta(days=required_bars(run.s1)), timedelta(hours=required_bars(run.s2)))
+    before = max(
+        timedelta(days=required_bars(run.s1)),
+        timedelta(hours=required_bars(run.s2) * (4 if isinstance(run.s2, S2PParams) else 1))
+        if run.s2 is not None
+        else timedelta(0),
+    )
     conflicts = [
         c
         for c in job.conflicts
@@ -317,6 +323,11 @@ def run_campaign(
         and config.preregistration is None
     ):
         raise ValueError("D96 requires published preregistration before accessing holdout inputs")
+    if (
+        set(config.research.symbols) - {Symbol.BTCUSDT, Symbol.ETHUSDT}
+        and config.preregistration is None
+    ):
+        raise ValueError("new symbols require preregistration before data access")
     with campaign_lock(config.research.results_dir):
         return _run_campaign(
             config_path,
@@ -394,6 +405,14 @@ def _run_campaign(
                 config.minimum_trades,
             )
             invalid = any(r["status"] == "INVALID_DATA" for _, r in rows)
+            if set(config.research.symbols) - {Symbol.BTCUSDT, Symbol.ETHUSDT}:
+                # Apply the same full window input eligibility to both judgments,
+                # including confirmation gaps even when training has no candidate.
+                first = window.train_start - (config.start - config.warmup_start)
+                invalid = invalid or any(
+                    utc(issue["first"]) < window.end and utc(issue["last"]) >= first
+                    for issue in manifest["validation"] + manifest["conflicts"]
+                )
             row: dict[str, Any] = {
                 "index": window.index,
                 "start": window.train_end.isoformat(),
@@ -450,9 +469,43 @@ def _run_campaign(
             config.research.profile.start_equity,
             config.max_invalid_ratio,
             config.pass_criteria,
+            symbols=tuple(s.value for s in config.research.symbols),
+            strategies=("S1",) if c == "S1B" else ("S1", "S2"),
+            strategy_minimum=config.strategy_minimum,
         )
         for c, rows in windows.items()
     }
+    if config.research.symbols != (Symbol.BTCUSDT, Symbol.ETHUSDT):
+        for combo, period_rows in windows.items():
+            split = "2023-10-01T00:00:00+00:00"
+            groups = {
+                "before_2023_10": [w for w in period_rows if w["end"] <= split],
+                "from_2023_10": [w for w in period_rows if w["start"] >= split],
+            }
+            aggregates[combo]["descriptive_periods"] = {
+                name: {
+                    k: v
+                    for k, v in aggregate(
+                        group,
+                        config.research.profile.start_equity,
+                        config.max_invalid_ratio,
+                        None,
+                        symbols=tuple(s.value for s in config.research.symbols),
+                        strategies=("S1",) if combo == "S1B" else ("S1", "S2"),
+                    ).items()
+                    if k
+                    in {
+                        "net_pnl",
+                        "max_drawdown",
+                        "max_drawdown_ratio",
+                        "trades",
+                        "by_strategy",
+                        "by_symbol",
+                    }
+                }
+                for name, group in groups.items()
+                if group
+            }
     body = {
         "identity": manifest["identity"],
         "manifest_hash": digest(manifest["identity"]),
