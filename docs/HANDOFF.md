@@ -528,3 +528,10 @@
 - `paired --prepare-only` 완료. 두 data_hash `3d7ce8dc9827ebd939f6042c019e0b026eb97a4ba8de1100e1c8d40ba1cdb167`, 등록 연결 동일. 주 캠페인 `96a61ade…`, 부 `de7c9612…`. 두 validation/conflicts 비어 있음. 원본·두 스냅샷 fingerprint 및 manifest 바이트 일치, SQLite 무결성 검증.
 - docs/reports/D97-data-manifests.md, 주/부 manifest 원본, pair, 전체 ingest_runs·시도 기록을 담은 collection-audit JSON 게시. 소스/설정 변경 없음.
 - 성과 계산 0회(artifacts/operations 비어 있음). 다음은 Claude가 manifest·데이터 해시·수집 기록 검토 → 게시 PR 병합 확인 → 같은 manifest로 주/부 각 1회 계산이다. 원본과 스냅샷 재수집 금지.
+
+## 2026-10-30 Codex: D97 판정 실행 시작·주 판정 완료
+
+- PR #35 Claude 승인·병합 `cd6a703` 확인 후 고정 코드/설정/등록/게시 manifest 및 원본·스냅샷 해시 재검증. 기존 계산 0건 확인 뒤 paired 1회 실행, 주 → 부 순서 진행.
+- 주 S1B: 학습28+확인6회, 267.747초. NO_CANDIDATE 8/14로 INDETERMINATE. 순손익 +7877.9056703870588 USDT, 낙폭 17.8696241918%, 종료 거래104개. 낙폭 기준도 미충족, M3-07 진입 조건 불충족.
+- 주 본문 해시 `04421589868b6cec8aeca781a832fcab3d07e8c3ff2c2d912343f10aed40141d`. 원본 JSON·실행 후 manifest·D97용 Markdown 보존. 34 payload+6 상세 파일 해시와 잔여 포지션0 검증. 기본 렌더러의 잔여 D96/15개월 문구는 설명용 Markdown에서만 D97 조건으로 바로잡았고 계산 코드·본문은 수정하지 않았다.
+- 부 S1B-S2P 실행 중. 등록된 6시간 계산량 상한 유지, 완료 뒤 같은 결과 PR에 보고서와 최종 감사 기록을 추가한다. 재수집/재실행/조건 변경 없음.
