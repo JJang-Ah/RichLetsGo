@@ -1,5 +1,5 @@
 # D97 draft only; preregistration must be published after code review.
-# D96 DRAFT: do not collect or run before Claude review and published preregistration.
+# D97 DRAFT: do not collect or run before Claude review and published preregistration.
 # Compute measurement is synthetic only; actual elapsed time is reestimated by the runner.
 # Copy to config.local.toml for local settings. Never put secrets in TOML.
 # This is a schema-free example; configuration loading starts after M0.

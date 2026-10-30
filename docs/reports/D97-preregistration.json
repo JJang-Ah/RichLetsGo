@@ -1,0 +1,486 @@
+{
+  "body": {
+    "id": "D97-2026-10-29",
+    "schema_version": 1,
+    "code_commit": "0deebf3e5ec6ca7c1ec32f4720cfab110132eaec",
+    "implementation_review": "https://github.com/JJang-Ah/RichLetsGo/pull/33#issuecomment-6496282467",
+    "symbols": [
+      "SOLUSDT",
+      "ZECUSDT",
+      "XRPUSDT",
+      "NEARUSDT"
+    ],
+    "universe": {
+      "path": "docs/reports/D97-universe.json",
+      "body_sha256": "a60b6429fb9c580175d990a8fba68bc323ec106f789ece8b5a0822624086152d",
+      "selection_runs": 1
+    },
+    "collection": {
+      "start": "2022-01-01T00:00:00Z",
+      "end_exclusive": "2026-10-01T00:00:00Z",
+      "intervals": [
+        "D",
+        "60"
+      ],
+      "funding": true,
+      "minute_bars": false,
+      "pause_seconds": "0.2",
+      "max_attempts": 5,
+      "backoff_seconds": "1",
+      "timeout_seconds": "10",
+      "snapshot_policy": "Capture current instruments and tier 1 once during collection; preserve captured_at and ingest provenance."
+    },
+    "configurations": {
+      "primary": {
+        "environment": "backtest",
+        "bybit": {
+          "category": "linear",
+          "symbols": [
+            "BTCUSDT",
+            "ETHUSDT"
+          ]
+        },
+        "risk": {},
+        "keystore": {
+          "bybit_demo_api": "richletsgo/bybit-demo",
+          "bybit_live_api": "richletsgo/bybit-live",
+          "telegram_bot": "richletsgo/telegram-bot",
+          "oracle_demo": "richletsgo/oracle-demo",
+          "oracle_live": "richletsgo/oracle-live",
+          "oracle_read": "richletsgo/oracle-read"
+        },
+        "bybit_public": {
+          "base_url": "https://api.bybit.com"
+        },
+        "backtest": {
+          "symbols": [
+            "SOLUSDT",
+            "ZECUSDT",
+            "XRPUSDT",
+            "NEARUSDT"
+          ],
+          "research_risk": {
+            "start_equity_usdt": "10000",
+            "risk_per_trade": "0.01",
+            "daily_loss_limit_usdt": "300",
+            "max_drawdown_ratio": "0.15",
+            "strategy_allocations": {
+              "S1": "0.6",
+              "S2": "0.4"
+            },
+            "consecutive_loss_limit": 4,
+            "cooldown_hours": 12,
+            "max_leverage": "3",
+            "max_symbol_notional_usdt": "20000",
+            "max_account_notional_usdt": "30000",
+            "liquidation_buffer_ratio": "0.5",
+            "slippage_buffer": "0.001",
+            "resume_equity_tolerance_ratio": "0.01",
+            "taker_fee_rate": "0.00055",
+            "maker_fee_rate": "0.0002",
+            "slippage_rate": "0.0005"
+          },
+          "selection": {
+            "require_positive_score": true,
+            "drawdown_floor_usdt": "100",
+            "min_training_trades": {
+              "S1": 6
+            },
+            "max_invalid_window_ratio": "0.25",
+            "max_grid_points": 24
+          },
+          "execution": {
+            "max_close_attempts": 3,
+            "max_protect_attempts": 3,
+            "retry_after_seconds": 5,
+            "trigger_by": "LastPrice",
+            "history_window_seconds": 604800,
+            "overlap_seconds": 300,
+            "unknown_alert_after_seconds": 20,
+            "cancel_retry_after_seconds": 5,
+            "max_sync_rounds": 3
+          },
+          "walkforward": {
+            "start": "2022-04-01T00:00:00Z",
+            "end": "2026-10-01T00:00:00Z",
+            "train_months": 12,
+            "test_months": 3,
+            "workers": 4,
+            "parallel_efficiency": "0.8",
+            "per_run_seconds_12m": "22.556",
+            "measurement_source": "M2-06 synthetic four-contract 12m primary, 2026-10-29, one process; not market performance",
+            "max_compute_hours": "6",
+            "reestimate_after": 4
+          },
+          "pass_criteria": {
+            "min_net_pnl_usdt": "0",
+            "max_drawdown_ratio": "0.15"
+          },
+          "grid": {
+            "S1B": [
+              {
+                "entry_channel": 20,
+                "exit_channel": 10
+              },
+              {
+                "entry_channel": 55,
+                "exit_channel": 20
+              }
+            ]
+          }
+        },
+        "paths": {
+          "backtest": {
+            "market_data_dir": "data/d97/market_data",
+            "journal_dir": "data/backtest/journal",
+            "log_dir": "logs/backtest",
+            "backup_dir": "backups/backtest",
+            "backtest_results_dir": "backtest_results/d97"
+          },
+          "demo": {
+            "journal_dir": "data/demo/journal",
+            "log_dir": "logs/demo",
+            "backup_dir": "backups/demo",
+            "backtest_results_dir": "backtest_results/demo"
+          },
+          "live": {
+            "journal_dir": "data/live/journal",
+            "log_dir": "logs/live",
+            "backup_dir": "backups/live",
+            "backtest_results_dir": "backtest_results/live"
+          }
+        }
+      },
+      "secondary": {
+        "environment": "backtest",
+        "bybit": {
+          "category": "linear",
+          "symbols": [
+            "BTCUSDT",
+            "ETHUSDT"
+          ]
+        },
+        "risk": {},
+        "keystore": {
+          "bybit_demo_api": "richletsgo/bybit-demo",
+          "bybit_live_api": "richletsgo/bybit-live",
+          "telegram_bot": "richletsgo/telegram-bot",
+          "oracle_demo": "richletsgo/oracle-demo",
+          "oracle_live": "richletsgo/oracle-live",
+          "oracle_read": "richletsgo/oracle-read"
+        },
+        "bybit_public": {
+          "base_url": "https://api.bybit.com"
+        },
+        "backtest": {
+          "symbols": [
+            "SOLUSDT",
+            "ZECUSDT",
+            "XRPUSDT",
+            "NEARUSDT"
+          ],
+          "research_risk": {
+            "start_equity_usdt": "10000",
+            "risk_per_trade": "0.01",
+            "daily_loss_limit_usdt": "300",
+            "max_drawdown_ratio": "0.15",
+            "strategy_allocations": {
+              "S1": "0.6",
+              "S2": "0.4"
+            },
+            "consecutive_loss_limit": 4,
+            "cooldown_hours": 12,
+            "max_leverage": "3",
+            "max_symbol_notional_usdt": "20000",
+            "max_account_notional_usdt": "30000",
+            "liquidation_buffer_ratio": "0.5",
+            "slippage_buffer": "0.001",
+            "resume_equity_tolerance_ratio": "0.01",
+            "taker_fee_rate": "0.00055",
+            "maker_fee_rate": "0.0002",
+            "slippage_rate": "0.0005"
+          },
+          "selection": {
+            "require_positive_score": true,
+            "drawdown_floor_usdt": "100",
+            "min_training_trades": {
+              "S1": 6,
+              "S2": 20
+            },
+            "max_invalid_window_ratio": "0.25",
+            "max_grid_points": 24
+          },
+          "execution": {
+            "max_close_attempts": 3,
+            "max_protect_attempts": 3,
+            "retry_after_seconds": 5,
+            "trigger_by": "LastPrice",
+            "history_window_seconds": 604800,
+            "overlap_seconds": 300,
+            "unknown_alert_after_seconds": 20,
+            "cancel_retry_after_seconds": 5,
+            "max_sync_rounds": 3
+          },
+          "walkforward": {
+            "start": "2022-04-01T00:00:00Z",
+            "end": "2026-10-01T00:00:00Z",
+            "train_months": 12,
+            "test_months": 3,
+            "workers": 4,
+            "parallel_efficiency": "0.8",
+            "per_run_seconds_12m": "125.706",
+            "measurement_source": "M2-06 synthetic four-contract 12m secondary, 2026-10-29, one process; not market performance",
+            "max_compute_hours": "6",
+            "reestimate_after": 4
+          },
+          "pass_criteria": {
+            "min_strategy_net_pnl_usdt": {
+              "S2": "0"
+            },
+            "min_net_pnl_usdt": "0",
+            "max_drawdown_ratio": "0.15"
+          },
+          "grid": {
+            "S1B": [
+              {
+                "entry_channel": 20,
+                "exit_channel": 10
+              },
+              {
+                "entry_channel": 55,
+                "exit_channel": 20
+              }
+            ],
+            "S2P": [
+              {
+                "rsi_period": 2,
+                "lower": "10",
+                "atr_period": 14,
+                "stop_atr": "1.5",
+                "target_r": "2",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "10",
+                "atr_period": 14,
+                "stop_atr": "1.5",
+                "target_r": "3",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "10",
+                "atr_period": 14,
+                "stop_atr": "2.5",
+                "target_r": "2",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "10",
+                "atr_period": 14,
+                "stop_atr": "2.5",
+                "target_r": "3",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "20",
+                "atr_period": 14,
+                "stop_atr": "1.5",
+                "target_r": "2",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "20",
+                "atr_period": 14,
+                "stop_atr": "1.5",
+                "target_r": "3",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "20",
+                "atr_period": 14,
+                "stop_atr": "2.5",
+                "target_r": "2",
+                "max_hold_bars": 30
+              },
+              {
+                "rsi_period": 2,
+                "lower": "20",
+                "atr_period": 14,
+                "stop_atr": "2.5",
+                "target_r": "3",
+                "max_hold_bars": 30
+              }
+            ]
+          }
+        },
+        "paths": {
+          "backtest": {
+            "market_data_dir": "data/d97/market_data",
+            "journal_dir": "data/backtest/journal",
+            "log_dir": "logs/backtest",
+            "backup_dir": "backups/backtest",
+            "backtest_results_dir": "backtest_results/d97"
+          },
+          "demo": {
+            "journal_dir": "data/demo/journal",
+            "log_dir": "logs/demo",
+            "backup_dir": "backups/demo",
+            "backtest_results_dir": "backtest_results/demo"
+          },
+          "live": {
+            "journal_dir": "data/live/journal",
+            "log_dir": "logs/live",
+            "backup_dir": "backups/live",
+            "backtest_results_dir": "backtest_results/live"
+          }
+        }
+      }
+    },
+    "configuration_hash_rule": "codec.digest(parsed TOML excluding only backtest.preregistration); link omitted to avoid circular hash",
+    "configuration_sha256": {
+      "primary": "12581dbc27618a4b6f9f6841586e27cc282848b4ad9d9c617b3417feb2589669",
+      "secondary": "f760b731b99c73762bb8fc3a08f0c275befcc28f9bc2ac97f6d7163f705369d1"
+    },
+    "windows": [
+      {
+        "index": 0,
+        "train_start": "2022-04-01T00:00:00+00:00",
+        "train_end": "2023-04-01T00:00:00+00:00",
+        "end": "2023-07-01T00:00:00+00:00"
+      },
+      {
+        "index": 1,
+        "train_start": "2022-07-01T00:00:00+00:00",
+        "train_end": "2023-07-01T00:00:00+00:00",
+        "end": "2023-10-01T00:00:00+00:00"
+      },
+      {
+        "index": 2,
+        "train_start": "2022-10-01T00:00:00+00:00",
+        "train_end": "2023-10-01T00:00:00+00:00",
+        "end": "2024-01-01T00:00:00+00:00"
+      },
+      {
+        "index": 3,
+        "train_start": "2023-01-01T00:00:00+00:00",
+        "train_end": "2024-01-01T00:00:00+00:00",
+        "end": "2024-04-01T00:00:00+00:00"
+      },
+      {
+        "index": 4,
+        "train_start": "2023-04-01T00:00:00+00:00",
+        "train_end": "2024-04-01T00:00:00+00:00",
+        "end": "2024-07-01T00:00:00+00:00"
+      },
+      {
+        "index": 5,
+        "train_start": "2023-07-01T00:00:00+00:00",
+        "train_end": "2024-07-01T00:00:00+00:00",
+        "end": "2024-10-01T00:00:00+00:00"
+      },
+      {
+        "index": 6,
+        "train_start": "2023-10-01T00:00:00+00:00",
+        "train_end": "2024-10-01T00:00:00+00:00",
+        "end": "2025-01-01T00:00:00+00:00"
+      },
+      {
+        "index": 7,
+        "train_start": "2024-01-01T00:00:00+00:00",
+        "train_end": "2025-01-01T00:00:00+00:00",
+        "end": "2025-04-01T00:00:00+00:00"
+      },
+      {
+        "index": 8,
+        "train_start": "2024-04-01T00:00:00+00:00",
+        "train_end": "2025-04-01T00:00:00+00:00",
+        "end": "2025-07-01T00:00:00+00:00"
+      },
+      {
+        "index": 9,
+        "train_start": "2024-07-01T00:00:00+00:00",
+        "train_end": "2025-07-01T00:00:00+00:00",
+        "end": "2025-10-01T00:00:00+00:00"
+      },
+      {
+        "index": 10,
+        "train_start": "2024-10-01T00:00:00+00:00",
+        "train_end": "2025-10-01T00:00:00+00:00",
+        "end": "2026-01-01T00:00:00+00:00"
+      },
+      {
+        "index": 11,
+        "train_start": "2025-01-01T00:00:00+00:00",
+        "train_end": "2026-01-01T00:00:00+00:00",
+        "end": "2026-04-01T00:00:00+00:00"
+      },
+      {
+        "index": 12,
+        "train_start": "2025-04-01T00:00:00+00:00",
+        "train_end": "2026-04-01T00:00:00+00:00",
+        "end": "2026-07-01T00:00:00+00:00"
+      },
+      {
+        "index": 13,
+        "train_start": "2025-07-01T00:00:00+00:00",
+        "train_end": "2026-07-01T00:00:00+00:00",
+        "end": "2026-10-01T00:00:00+00:00"
+      }
+    ],
+    "warmup_start": "2022-02-04T00:00:00+00:00",
+    "selection_rule": "Positive net/max(drawdown_usdt,100); minimum closed trades S1=6, secondary S2=20 across four symbols; tie: more closed trades then numeric parameter order. No candidate => NO_CANDIDATE.",
+    "pass_rule": {
+      "primary": "OOS net > 0; max drawdown < 0.15; invalid plus NO_CANDIDATE <= 0.25 (at most 3/14).",
+      "secondary": "Same conditions AND aggregate OOS S2 net > 0.",
+      "demo": "Primary PASS required. S2 requires both PASS, identical registration/data/symbols/period and an S1 value selected in primary that belongs to a selected secondary pair. Q26 remains undecided."
+    },
+    "compute": {
+      "primary": {
+        "training_runs": 28,
+        "confirmation_runs_max": 14,
+        "twelve_month_units": "31.5",
+        "estimated_hours": "0.0616765625"
+      },
+      "secondary": {
+        "training_runs": 224,
+        "confirmation_runs_max": 14,
+        "twelve_month_units": "227.5",
+        "estimated_hours": "2.4824752604166667"
+      },
+      "total_runs_max": 280,
+      "estimated_sequential_hours": "2.5441518229166667",
+      "sequential_limit_hours": "12",
+      "budget_policy": "Each campaign elapsed limit 6 hours; reestimate after 4 runs; no automatic budget increase or strategy changes. Resume only unchanged manifests."
+    },
+    "failure_policy": {
+      "transient": "Retry within collection with identical symbols/bounds; preserve attempt numbers and times.",
+      "preparation": "Missing instrument/tier1, first funding look-behind or warmup first bar => both INVALID_INPUT; preserve hashed failure JSON and snapshot; no replacement or shortened range; new decision and registration required.",
+      "gaps": "Any required training/warmup/confirmation gap invalidates the same window for both campaigns; count in invalid ratio."
+    },
+    "publication_order": [
+      "Publish this preregistration PR before collecting prices/funding.",
+      "Collect fixed range once; integrity checks only.",
+      "Prepare both final manifests without computing; require same data_hash and registration. Publish manifests in PR and verify its merge before computation.",
+      "Compute primary then secondary once; resume only same manifests. Archive two JSON bodies and Markdown reports."
+    ],
+    "known_limits": [
+      "S1-B selected using observed BTC/ETH 2023-10 onward; correlated new coins are not fully independent holdout. Split at 2023-10 is descriptive only.",
+      "Current-turnover selection has survivorship and popularity bias. ZEC ranks second by turnover; no price history was inspected to explain this ranking.",
+      "Current instrument and margin tier snapshots do not reconstruct historical exchange rules.",
+      "PostOnly rejection is unmodeled; limit fills use strict crossing including gaps; 1h OHLC cannot establish intrabar ordering.",
+      "Training windows overlap; each window resets equity and force-closes at its end.",
+      "Synthetic compute sample is not representative order stress; estimates are not performance forecasts.",
+      "Secondary PASS does not establish S2 standalone profitability; both judgments share financial data.",
+      "Minute-range guard is incomplete in reviewed code; D97 forbids minute bars and uses only D/60 with explicit since/until.",
+      "Manifest publication is a procedural check, not remote-publication enforcement by code."
+    ],
+    "data_state_at_registration": "No D97 price/funding collection or performance computation; final data_hash and campaign manifests are deliberately not yet available."
+  },
+  "sha256": "6fd3465c0f0752bf7a2a0331d598f72eecbad0aacc3f0ae215ff31e1c9e9a84a"
+}
