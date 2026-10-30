@@ -521,3 +521,10 @@
 - `docs/reports/D97-preregistration.json`/요약과 `config.d97-primary.toml`, `config.d97-secondary.toml` 작성. 등록 ID `D97-2026-10-29`, 본문 해시 `6fd3465c0f0752bf7a2a0331d598f72eecbad0aacc3f0ae215ff31e1c9e9a84a`. 선정 종목·위험·격자·비용 유지. 예제의 D96 잔여 주석 수정.
 - 네트워크/시장 데이터 접근 없이 선정·등록·설정 해시, 전체 설정 일치, 로더 파싱, 격자 2/16·확인 14창·56일 워밍업·수집 범위 검증 통과. 실행 코드 변경 없음.
 - 예상 순차 2.5442시간, 캠페인별 상한 6시간. 다음은 등록 PR 검토·병합 확인 → 실제 수집 → 두 최종 manifest 게시·병합 확인 → 주/부 각 1회 계산이다. 실제 수집·성과 판정은 아직 실행하지 않았다.
+
+## 2026-10-30 Codex: D97 실제 수집·두 manifest 준비
+
+- PR #34 Claude 승인·병합(`477b0e5`) 확인 뒤 등록 코드·설정을 재검증하고 실제 수집 1회 실행. 18:05:52~18:08:05 KST, 공개 요청 293회·재시도 0회. 종목별 일봉 1,734·시간봉 41,616, 펀딩 SOL 5,563/나머지 각 5,203. 누락·충돌·거절 0.
+- `paired --prepare-only` 완료. 두 data_hash `3d7ce8dc9827ebd939f6042c019e0b026eb97a4ba8de1100e1c8d40ba1cdb167`, 등록 연결 동일. 주 캠페인 `96a61ade…`, 부 `de7c9612…`. 두 validation/conflicts 비어 있음. 원본·두 스냅샷 fingerprint 및 manifest 바이트 일치, SQLite 무결성 검증.
+- docs/reports/D97-data-manifests.md, 주/부 manifest 원본, pair, 전체 ingest_runs·시도 기록을 담은 collection-audit JSON 게시. 소스/설정 변경 없음.
+- 성과 계산 0회(artifacts/operations 비어 있음). 다음은 Claude가 manifest·데이터 해시·수집 기록 검토 → 게시 PR 병합 확인 → 같은 manifest로 주/부 각 1회 계산이다. 원본과 스냅샷 재수집 금지.
