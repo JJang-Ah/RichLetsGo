@@ -528,3 +528,18 @@
 - `paired --prepare-only` 완료. 두 data_hash `3d7ce8dc9827ebd939f6042c019e0b026eb97a4ba8de1100e1c8d40ba1cdb167`, 등록 연결 동일. 주 캠페인 `96a61ade…`, 부 `de7c9612…`. 두 validation/conflicts 비어 있음. 원본·두 스냅샷 fingerprint 및 manifest 바이트 일치, SQLite 무결성 검증.
 - docs/reports/D97-data-manifests.md, 주/부 manifest 원본, pair, 전체 ingest_runs·시도 기록을 담은 collection-audit JSON 게시. 소스/설정 변경 없음.
 - 성과 계산 0회(artifacts/operations 비어 있음). 다음은 Claude가 manifest·데이터 해시·수집 기록 검토 → 게시 PR 병합 확인 → 같은 manifest로 주/부 각 1회 계산이다. 원본과 스냅샷 재수집 금지.
+
+## 2026-10-30 Codex: D97 판정 실행 시작·주 판정 완료
+
+- PR #35 Claude 승인·병합 `cd6a703` 확인 후 고정 코드/설정/등록/게시 manifest 및 원본·스냅샷 해시 재검증. 기존 계산 0건 확인 뒤 paired 1회 실행, 주 → 부 순서 진행.
+- 주 S1B: 학습28+확인6회, 267.747초. NO_CANDIDATE 8/14로 INDETERMINATE. 순손익 +7877.9056703870588 USDT, 낙폭 17.8696241918%, 종료 거래104개. 낙폭 기준도 미충족, M3-07 진입 조건 불충족.
+- 주 본문 해시 `04421589868b6cec8aeca781a832fcab3d07e8c3ff2c2d912343f10aed40141d`. 원본 JSON·실행 후 manifest·D97용 Markdown 보존. 34 payload+6 상세 파일 해시와 잔여 포지션0 검증. 기본 렌더러의 잔여 D96/15개월 문구는 설명용 Markdown에서만 D97 조건으로 바로잡았고 계산 코드·본문은 수정하지 않았다.
+- 부 S1B-S2P 실행 중. 등록된 6시간 계산량 상한 유지, 완료 뒤 같은 결과 PR에 보고서와 최종 감사 기록을 추가한다. 재수집/재실행/조건 변경 없음.
+
+## 2026-10-31 Codex: D97 주·부 최종 결과·PR #36 갱신
+
+- 부 판정 완료: 학습224+확인11, reused0, 11159.1018587초(약3시간6분), FAIL. 순손익 +1259.8261179277662 USDT, 최대낙폭23.0267130064%, 374거래(S1 93/S2 281), NO_CANDIDATE3/14. S1 +1966.6316157039756, S2 -706.8054977762094 USDT. 낙폭15% 미만 및 S2 엄격 양수 조건 모두 미충족.
+- 주 INDETERMINATE 유지. M3-07 진입 조건 불충족. 결과를 본 뒤 재실행·재수집·코드/설정 변경 없음.
+- 부 본문 digest `708a91ccea0d243505fce8f24f451c529419612835e31eab5c2bdd8076b22598`. 원본 JSON·최종 manifest·D97 설명 보고서 추가. 최종 감사 `docs/reports/D97-final-audit.json` 본문 해시 `378db296839f0989c098cad8c00800cc8bc0441ebc7d02f5efb7f80790b7cb94`.
+- 원본/두 스냅샷 fingerprint, 전체 등록 설정, 게시 identity/수집 이력 불변 검증. 전체269 payload+17상세파일 해시·잔여포지션0 확인. 저장된14개 확인구간으로 통계만 재계산해 주/부 aggregate 일치(백테스트 재실행 아님).
+- 다음: Claude 최종 보고서·감사 검토 후 사용자 병합. 후속 가설/전략 변경은 Claude·사용자가 결정하며 D97 데이터는 이제 관측된 기간이다. 렌더러의 D96/15개월 잔여 문구 정리는 후속 P3로 유지한다.
