@@ -1,0 +1,125 @@
+{
+  "body": {
+    "preregistration": {
+      "id": "D97-2026-10-29",
+      "sha256": "6fd3465c0f0752bf7a2a0331d598f72eecbad0aacc3f0ae215ff31e1c9e9a84a"
+    },
+    "data_hash": "3d7ce8dc9827ebd939f6042c019e0b026eb97a4ba8de1100e1c8d40ba1cdb167",
+    "code_commit": "0deebf3e5ec6ca7c1ec32f4720cfab110132eaec",
+    "verified_at_date_kst": "2026-10-31",
+    "checks": [
+      "source and two snapshot fingerprints unchanged",
+      "registered full TOML unchanged",
+      "published identity and provenance unchanged",
+      "all payload/detail file hashes valid",
+      "all jobs completed with no remaining positions",
+      "aggregate recalculated from recorded windows without rerunning backtests",
+      "new 28+6 and 224+11; reused 0; two operations each"
+    ],
+    "campaigns": {
+      "primary": {
+        "body_sha256": "04421589868b6cec8aeca781a832fcab3d07e8c3ff2c2d912343f10aed40141d",
+        "report_file_sha256": "04421589868b6cec8aeca781a832fcab3d07e8c3ff2c2d912343f10aed40141d",
+        "final_manifest_file_sha256": "e4d976b86f20bcc89bb60876bf0e4eef53e7caaeeef7aafc9ace45904f7f571b",
+        "campaign_id": "96a61ade192fd1d1e9c6986ba8b21af61de78f0219643df57c53ab46872dff44",
+        "payloads_verified": 34,
+        "detail_files_verified": 6,
+        "operations": [
+          {
+            "new": 28,
+            "reused": 0
+          },
+          {
+            "new": 6,
+            "reused": 0
+          }
+        ],
+        "elapsed_seconds": "267.7472975000055",
+        "window_status_counts": {
+          "NO_CANDIDATE": 8,
+          "COMPLETED": 6
+        },
+        "verdict": "INDETERMINATE",
+        "net_pnl": "7877.9056703870588",
+        "max_drawdown_ratio": "0.1786962419180779584438501955",
+        "by_strategy": {
+          "S1": {
+            "average_r": "0.7886716815041928993020233736",
+            "average_win_loss_ratio": "7.072395517067520796101097719",
+            "max_consecutive_losses": 14,
+            "net_pnl": "7877.9056703870588",
+            "pnl_distribution": {
+              "0": "-150.0761738766465",
+              "100": "9787.956074361318",
+              "25": "-99.51711610499",
+              "50": "-81.3051147185925",
+              "75": "-11.1284313331072"
+            },
+            "trades": 104,
+            "win_rate": "0.2403846153846153846153846154"
+          },
+          "S2": {}
+        }
+      },
+      "secondary": {
+        "body_sha256": "708a91ccea0d243505fce8f24f451c529419612835e31eab5c2bdd8076b22598",
+        "report_file_sha256": "708a91ccea0d243505fce8f24f451c529419612835e31eab5c2bdd8076b22598",
+        "final_manifest_file_sha256": "9361d21dfcfbdb51dd2565728f3cce63dda230dae8d3ac59f491c775e09df5a8",
+        "campaign_id": "de7c9612f48185a2673b2deeb5d07797f9fa1eff4dd5034c17836fae46655f98",
+        "payloads_verified": 235,
+        "detail_files_verified": 11,
+        "operations": [
+          {
+            "new": 224,
+            "reused": 0
+          },
+          {
+            "new": 11,
+            "reused": 0
+          }
+        ],
+        "elapsed_seconds": "11159.1018587",
+        "window_status_counts": {
+          "COMPLETED": 11,
+          "NO_CANDIDATE": 3
+        },
+        "verdict": "FAIL",
+        "net_pnl": "1259.82611792776620000000002",
+        "max_drawdown_ratio": "0.2302671300641612286336045179",
+        "by_strategy": {
+          "S1": {
+            "average_r": "0.168256046034971470805801137",
+            "average_win_loss_ratio": "3.20041647780254924249438322",
+            "max_consecutive_losses": 10,
+            "net_pnl": "1966.6316157039756",
+            "pnl_distribution": {
+              "0": "-109.143004262838",
+              "100": "2298.10277340668",
+              "25": "-93.108721808",
+              "50": "-42.886367983719",
+              "75": "25.777336416725"
+            },
+            "trades": 93,
+            "win_rate": "0.3118279569892473118279569892"
+          },
+          "S2": {
+            "average_r": "-0.02418381000209804314971440127",
+            "average_win_loss_ratio": "1.783393448821221391380245147",
+            "max_consecutive_losses": 11,
+            "net_pnl": "-706.8054977762094",
+            "pnl_distribution": {
+              "0": "-142.624767600645",
+              "100": "454.73894500531",
+              "25": "-98.88858645375",
+              "50": "-88.566087745655",
+              "75": "67.7585461294256"
+            },
+            "trades": 281,
+            "win_rate": "0.3487544483985765124555160142"
+          }
+        }
+      }
+    }
+  },
+  "sha256": "378db296839f0989c098cad8c00800cc8bc0441ebc7d02f5efb7f80790b7cb94"
+}
