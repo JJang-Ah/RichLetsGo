@@ -205,7 +205,8 @@ def test_cli_review_one_shot_and_cwd(tmp_path, monkeypatch):
     assert len(fake.urls) == 2
 
 
-def test_formal_guard_before_network(tmp_path):
+def test_formal_guard_before_network(tmp_path, monkeypatch):
+    monkeypatch.setattr(tables, "TABLES_FROZEN", False)
     fake = Fake([])
     with pytest.raises(ValueError, match="await"):
         d98_pool.run(
@@ -255,3 +256,38 @@ def test_closed_endpoint_mixed_status_is_recorded_then_filtered():
     assert contracts["PENDINGUSDT"]["excluded_reason"] == "status"
     assert contracts["PENDINGUSDT"]["pool"] is None
     assert contracts["OLDUSDT"]["pool"] in {"DESIGN", "JUDGMENT"}
+
+
+def test_formal_publication_uses_only_metadata_and_never_overwrites(tmp_path):
+    fake = Fake([{"list": [row("ABC")]}, {"list": []}])
+    output = tmp_path / "pool.json"
+    with patch.object(d98_pool, "formal_guard"):
+        result = d98_pool.run(
+            output, review_mode=False, client=client(fake), captured_at=NOW, commit="c"
+        )
+        assert json.loads(output.read_text(encoding="utf-8")) == result
+        assert output.with_suffix(".md").exists()
+        with pytest.raises(ValueError):
+            d98_pool.run(
+                output, review_mode=False, client=client(fake), captured_at=NOW, commit="c"
+            )
+    assert len(fake.urls) == 2
+
+
+def test_metadata_rejects_malformed_lifetime_and_symbol():
+    with pytest.raises(ValueError, match="delist"):
+        build([row(status="Closed", deliveryTime="100")], NOW, "c")
+    with pytest.raises(ValueError, match="symbol"):
+        build([row(symbol="bad-name")], NOW, "c")
+    with pytest.raises(ValueError, match="fundingInterval"):
+        build([row(fundingInterval=True)], NOW, "c")
+
+
+def test_excluded_stablecoin_has_no_assignment():
+    artifact = build([row("RLUSD")], NOW, "c")
+    assert artifact["body"]["contracts"][0]["excluded_reason"] == "excluded_asset"
+
+
+def test_utc_required():
+    with pytest.raises(ValueError):
+        review([row()], datetime(2026, 1, 1), "c")

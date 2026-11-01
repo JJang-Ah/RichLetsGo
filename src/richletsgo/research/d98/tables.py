@@ -3,9 +3,9 @@
 from richletsgo.marketdata.universe import EXCLUDED_BASES
 
 TABLES_FROZEN = False
-NUMERIC_EXCEPTIONS: frozenset[str] = frozenset()
+NUMERIC_EXCEPTIONS = frozenset({"0G", "1CAT", "1INCH", "2Z", "4", "4STOCK"})
 ALIASES = {"MATIC": "POL", "RNDR": "RENDER", "FTM": "S"}
-EXCLUDED = EXCLUDED_BASES | {"USDD"}
+EXCLUDED = EXCLUDED_BASES | {"USDD", "RLUSD"}
 OBSERVED = frozenset({"BTC", "ETH", "SOL", "ZEC", "XRP", "NEAR", "NFT", "LADYS"})
 
 

@@ -160,6 +160,7 @@ def review(rows: list[dict[str, Any]], captured_at: datetime, commit: str) -> di
         "captured_at": captured_at.isoformat().replace("+00:00", "Z"),
         "code_commit": commit,
         "instruments": rows,
+        "input_sha256": digest(rows),
         "numeric_names": [
             r["symbol"]
             for r in eligible
@@ -216,6 +217,7 @@ def build(rows: list[dict[str, Any]], captured_at: datetime, commit: str) -> dic
         "captured_at": captured_at.isoformat().replace("+00:00", "Z"),
         "code_commit": commit,
         "instruments": rows,
+        "input_sha256": digest(rows),
         "tables": tables.snapshot(),
         "contracts": contracts,
         "keys": dict(sorted(keys.items())),
