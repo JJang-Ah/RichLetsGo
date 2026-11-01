@@ -566,3 +566,4 @@
 - 실제 --review 완료: 응답 1973개, 풀 배정 미계산. Closed 조회에 PendingOpen이 섞여 첫 실행 실패 → 메타데이터 진단 기록 보존 → 명세 필터 적용 회귀 → 성공 검토 v2. 총 공개 메타데이터 요청 7회·재시도 0, 가격/펀딩 이력/tickers 호출 없음.
 - 예외·별칭·제외 표 초안과 검토 목록은 docs/reports/M2-07a-implementation.md 및 D98-metadata-review-v2.json. TABLES_FROZEN=False로 정식 실행 차단 유지. Claude 표 검토 → 확정 커밋/병합 → 정식 풀 분리 1회 → 결과 게시·병합이 남았다. 이는 M2-07 07a의 표 확정 절차이며 아직 D98-pool.json을 생성하지 않았다.
 - 신규 합성 회귀 41개 통과. 전체 검사 결과는 PR에 기록한다. 07b 실제 수집은 풀 결과 병합 및 Q30 확정 뒤다.
+- 최종 검증: Python 3.14 전체 836 passed(101.75초), ruff check/format, mypy strict 85 소스 통과. PR #39 개설. 실제 메타데이터의 AAPL/NVDA/TSLA 무기한도 명세 필터를 통과하므로 암호자산 전용 여부를 풀 배정 전 Claude가 설계로 확인하도록 코멘트했다.
