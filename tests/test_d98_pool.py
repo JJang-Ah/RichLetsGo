@@ -236,3 +236,22 @@ def test_formal_table_gate(monkeypatch):
             d98_pool.formal_guard()
     with patch.object(d98_pool, "git", side_effect=["", "a", "a"]):
         d98_pool.formal_guard()
+
+
+def test_closed_endpoint_mixed_status_is_recorded_then_filtered():
+    fake = Fake(
+        [
+            {"list": []},
+            {
+                "list": [
+                    row("OLD", status="Closed", deliveryTime="9000"),
+                    row("PENDING", status="PendingOpen"),
+                ]
+            },
+        ]
+    )
+    result = build(collect(client(fake)), NOW, "c")
+    contracts = {c["symbol"]: c for c in result["body"]["contracts"]}
+    assert contracts["PENDINGUSDT"]["excluded_reason"] == "status"
+    assert contracts["PENDINGUSDT"]["pool"] is None
+    assert contracts["OLDUSDT"]["pool"] in {"DESIGN", "JUDGMENT"}

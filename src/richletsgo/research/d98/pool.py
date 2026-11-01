@@ -63,8 +63,8 @@ def collect(client: BybitPublicClient) -> list[dict[str, Any]]:
                 params["cursor"] = cursor
             result = client._get(ENDPOINT, params)
             page = result["list"]
-            if not isinstance(page, list) or any(r.get("status") != status for r in page):
-                raise ValueError("unexpected instruments page/status")
+            if not isinstance(page, list) or any(not isinstance(r, dict) for r in page):
+                raise ValueError("unexpected instruments page")
             rows.extend(page)
             cursor = result.get("nextPageCursor", "")
             if not isinstance(cursor, str):
