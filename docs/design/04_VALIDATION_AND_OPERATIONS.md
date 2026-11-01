@@ -141,7 +141,7 @@ BTC·ETH(2021~2026)와 D97 4종목(2022~2026)은 모두 관측된 데이터다. 
 
 #### 1. 계약 범위와 데이터 수명 (1단계)
 
-- **대상 계약**: `category=linear`, `contractType=LinearPerpetual`, `quoteCoin=USDT`, `settleCoin=USDT`, `status ∈ {Trading, Closed}`(PreLaunch·Delivering 제외). 공개 `instruments-info`를 페이지 끝까지 읽는다. 현재 메타데이터 목록이 과거 전체를 빠짐없이 담는지는 확인할 수 없으므로 한계로 적는다.
+- **대상 계약**: `category=linear`, `contractType=LinearPerpetual`, `quoteCoin=USDT`, `settleCoin=USDT`, `status ∈ {Trading, Closed}`(PreLaunch·Delivering 제외), **암호자산만**: `symbolType ∈ {"", "innovation"}`(`stock`·`ETF`·`commodity`·`forex` 제외, 그 밖의 값이 나오면 사람이 검토하기 전까지 도구가 멈춤). 공개 `instruments-info`를 페이지 끝까지 읽는다. 현재 메타데이터 목록이 과거 전체를 빠짐없이 담는지는 확인할 수 없으므로 한계로 적는다.
 - **계약 수명**: 상장 = `launchTime`, 폐지 = `status=Closed`일 때 `deliveryTime`(무기한 폐지 시각, 0이면 폐지 시각 모름 → 그 계약은 제외하고 목록에 사유 기록). 계약 활성 구간 `[launch, delist)`.
 - **정상 비활성과 누락의 구분**: 활성 구간 밖에는 데이터가 없는 것이 정상이다. 수집·검사는 활성 구간(워밍업 포함, 판정 범위로 자른 부분)에서만 연속성을 요구한다. 활성 구간 안의 1시간봉 공백은 누락이다.
 - **폐지 처리(미래 정보 금지)**: 폐지 예정 시각을 미리 알고 진입을 피하지 않는다(진입 자격에 `deliveryTime`을 쓰지 않음). 손실 종목을 조용히 빼지 않는다.
