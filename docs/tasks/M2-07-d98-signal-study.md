@@ -41,7 +41,7 @@ D97까지 S2 계열은 세 번 연속 우위가 없었다. D98은 S2를 "지금 
 
 - `research/d98/pool.py`, `research/d98/tables.py`(표 상수), `tools/d98_pool.py`.
 - **허용 엔드포인트**: `GET /v5/market/instruments-info`뿐(`category=linear`). `status=Trading`과 `status=Closed`를 각각 `cursor`로 끝까지 읽는다(`limit=1000`). 다른 경로 호출은 예외(테스트).
-- **필터**(04 3.3 1): `contractType=LinearPerpetual`, `quoteCoin=USDT`, `settleCoin=USDT`, `status ∈ {Trading, Closed}`. `Closed`인데 `deliveryTime = 0`이면 제외하고 사유 기록.
+- **필터**(04 3.3 1): `contractType=LinearPerpetual`, `quoteCoin=USDT`, `settleCoin=USDT`, `status ∈ {Trading, Closed}`, `symbolType ∈ {"", "innovation"}`(주식·ETF·원자재·외환은 사유 `non_crypto:<값>`으로 제외, 알 수 없는 값은 예외로 중단). `Closed`인데 `deliveryTime = 0`이면 제외하고 사유 기록.
 - **자산 키**(04 3.3 2, 순서 고정): NFKC·대문자 → 10의 거듭제곱 배수 하나 제거(prefix 최장 → 없으면 suffix 최장, 빈 이름이 되면 제거 안 함, 예외 표의 이름은 제거 안 함, 뗀 배수 값 보존) → 별칭 표 → 제외 자산 → 관측 예외(설계용 고정: `BTC`, `ETH`, `SOL`, `ZEC`, `XRP`, `NEAR`, `NFT`, `LADYS`) → `sha256("D98-pool-v1|" + 키)` 첫 바이트 짝수 = 설계용, 홀수 = 판정용.
 - **표**(`tables.py`, 모두 digest에 들어감)
   - 예외 표: 숫자로 시작하지만 배수가 아닌 실제 이름.
@@ -53,7 +53,7 @@ D97까지 S2 계열은 세 번 연속 우위가 없었다. D98은 S2를 "지금 
   3. 표가 병합된 뒤 정식 실행 1회.
 - **동시 활성 계약**(04 3.3 2): 같은 키에 활성 구간이 겹치는 계약이 여럿이면 보존한 배수가 가장 작은 것, 같으면 `launchTime`이 이른 것, 그다음 심볼 이름순. 시각마다 쓰는 계약을 정할 수 있도록 계약별 수명과 우선순위를 출력에 넣는다. 연구 도구가 이 규칙을 그대로 적용한다.
 - **출력** (`docs/reports/D98-pool.json`, 요약 `D98-pool.md`)
-  - 규칙 버전 `D98-pool-v1`, `captured_at`, 코드 커밋, 응답 정규화 사본(필드: `symbol`, `baseCoin`, `quoteCoin`, `settleCoin`, `contractType`, `status`, `launchTime`, `deliveryTime`, `fundingInterval`)
+  - 규칙 버전 `D98-pool-v1`, `captured_at`, 코드 커밋, 응답 정규화 사본(필드: `symbol`, `baseCoin`, `quoteCoin`, `settleCoin`, `contractType`, `status`, `launchTime`, `deliveryTime`, `fundingInterval`, `symbolType`, `fullName`)
   - 세 표 전체
   - 계약별 `symbol`·상태·`launch`·`delist`·키·배수·풀·제외 사유
   - 키별 요약(계약 목록, 풀), 개수 요약(설계용/판정용 키·계약 수, Closed 수, 제외 수)
