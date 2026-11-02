@@ -35,6 +35,8 @@ def row(base="ABC", **changes):
         launchTime="1000",
         deliveryTime="0",
         fundingInterval=480,
+        symbolType="",
+        fullName=base.lower(),
     )
     value.update(changes)
     return value
@@ -261,7 +263,7 @@ def test_closed_endpoint_mixed_status_is_recorded_then_filtered():
 def test_formal_publication_uses_only_metadata_and_never_overwrites(tmp_path):
     fake = Fake([{"list": [row("ABC")]}, {"list": []}])
     output = tmp_path / "pool.json"
-    with patch.object(d98_pool, "formal_guard"):
+    with patch.object(d98_pool, "formal_guard"), patch.object(d98_pool, "formal_output_guard"):
         result = d98_pool.run(
             output, review_mode=False, client=client(fake), captured_at=NOW, commit="c"
         )
@@ -291,3 +293,57 @@ def test_excluded_stablecoin_has_no_assignment():
 def test_utc_required():
     with pytest.raises(ValueError):
         review([row()], datetime(2026, 1, 1), "c")
+
+
+@pytest.mark.parametrize("kind", ["stock", "ETF", "commodity", "forex"])
+def test_non_crypto_excluded_by_field(kind):
+    c = build([row("BTC", symbolType=kind)], NOW, "c")["body"]["contracts"][0]
+    assert c["excluded_reason"] == "non_crypto:" + kind
+    assert c["pool"] is None
+
+
+@pytest.mark.parametrize("kind", ["", "innovation"])
+def test_crypto_spx_not_excluded_by_name(kind):
+    c = build([row("SPX", symbolType=kind, fullName="spx6900")], NOW, "c")["body"]["contracts"][0]
+    assert c["excluded_reason"] is None
+
+
+def test_unknown_symbol_type_stops_and_fullname_hashed():
+    with pytest.raises(ValueError, match="unknown symbolType"):
+        review([row(symbolType="new-type")], NOW, "c")
+    a = build([row(fullName="one")], NOW, "c")
+    b = build([row(fullName="two")], NOW, "c")
+    assert a["sha256"] != b["sha256"]
+    assert a["body"]["instruments"][0]["fullName"] == "one"
+    c = build([row("ETHBTC")], NOW, "c")["body"]["contracts"][0]
+    assert c["excluded_reason"] == "excluded_asset"
+
+
+def test_formal_output_cannot_bypass_marker_with_new_name(tmp_path):
+    with patch.object(d98_pool, "git", return_value=str(tmp_path)):
+        with pytest.raises(ValueError, match="formal output"):
+            d98_pool.formal_output_guard(tmp_path / "another.json")
+    output = tmp_path / d98_pool.FORMAL_OUTPUT
+    with patch.object(
+        d98_pool, "git", side_effect=[str(tmp_path), "docs/reports/D98-pool.started.json"]
+    ):
+        with pytest.raises(ValueError, match="already started"):
+            d98_pool.formal_output_guard(output)
+    with patch.object(d98_pool, "git", side_effect=[str(tmp_path), ""]):
+        d98_pool.formal_output_guard(output)
+    marker = tmp_path / d98_pool.FORMAL_MARKER
+    marker.parent.mkdir(parents=True)
+    marker.touch()
+    with patch.object(d98_pool, "git", return_value=str(tmp_path)):
+        with pytest.raises(ValueError, match="already started"):
+            d98_pool.formal_output_guard(output)
+
+
+def test_audit_write_failure_preserves_original_exception(tmp_path):
+    fake = Fake([{"list": [], "nextPageCursor": "repeat"}] * 2)
+    output = tmp_path / "review.json"
+    output.with_suffix(".requests.json").write_text("existing audit", encoding="utf-8")
+    with pytest.raises(ValueError, match="cursor loop") as caught:
+        d98_pool.run(output, review_mode=True, client=client(fake), captured_at=NOW, commit="c")
+    assert "audit write also failed" in caught.value.__notes__[0]
+    assert output.with_suffix(".requests.json").read_text(encoding="utf-8") == "existing audit"

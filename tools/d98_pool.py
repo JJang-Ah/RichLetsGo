@@ -13,6 +13,9 @@ from richletsgo.marketdata.bybit_public import BybitPublicClient, RetryPolicy, U
 from richletsgo.research.d98 import tables
 from richletsgo.research.d98.pool import MetadataTransport, build, collect, markdown, review
 
+FORMAL_OUTPUT = Path("docs/reports/D98-pool.json")
+FORMAL_MARKER = Path("docs/reports/D98-pool.started.json")
+
 TABLE_PATH = "src/richletsgo/research/d98/tables.py"
 
 
@@ -36,6 +39,16 @@ def formal_guard() -> None:
         raise ValueError("table version is not on origin/main; fetch after merge")
 
 
+def formal_output_guard(output: Path) -> None:
+    root = Path(git("rev-parse", "--show-toplevel")).resolve()
+    if output.resolve() != (root / FORMAL_OUTPUT).resolve():
+        raise ValueError("formal output must be checkout/docs/reports/D98-pool.json")
+    if (root / FORMAL_MARKER).exists() or git(
+        "ls-tree", "--name-only", "origin/main", "--", FORMAL_MARKER.as_posix()
+    ):
+        raise ValueError("formal split already started locally or on origin/main")
+
+
 def write_new(path: Path, content: str) -> None:
     with path.open("x", encoding="utf-8", newline="\n") as stream:
         stream.write(content)
@@ -51,6 +64,7 @@ def run(
 ) -> dict[str, Any]:
     if not review_mode:
         formal_guard()
+        formal_output_guard(output)
     output = output.resolve()
     summary = output.with_suffix(".md")
     if output == summary or output.exists() or (not review_mode and summary.exists()):
@@ -68,6 +82,7 @@ def run(
             }
         ),
     )
+    original_error: BaseException | None = None
     try:
         rows = collect(client)
         result = (
@@ -77,8 +92,16 @@ def run(
         if not review_mode:
             write_new(summary, markdown(result))
         return result
+    except BaseException as exc:
+        original_error = exc
+        raise
     finally:
-        write_new(output.with_suffix(".requests.json"), encode(client.attempts) + "\n")
+        try:
+            write_new(output.with_suffix(".requests.json"), encode(client.attempts) + "\n")
+        except OSError as audit_error:
+            if original_error is None:
+                raise
+            original_error.add_note(f"request audit write also failed: {audit_error}")
 
 
 def main() -> None:

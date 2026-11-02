@@ -27,6 +27,8 @@ FIELDS = (
     "launchTime",
     "deliveryTime",
     "fundingInterval",
+    "symbolType",
+    "fullName",
 )
 
 
@@ -58,10 +60,7 @@ def collect(client: BybitPublicClient) -> list[dict[str, Any]]:
         cursor = ""
         seen: set[str] = set()
         for _ in range(1000):
-            params = {"category": "linear", "status": status, "limit": "1000"}
-            if cursor:
-                params["cursor"] = cursor
-            result = client._get(ENDPOINT, params)
+            result = client.instruments_page(status, cursor=cursor)
             page = result["list"]
             if not isinstance(page, list) or any(not isinstance(r, dict) for r in page):
                 raise ValueError("unexpected instruments page")
@@ -84,7 +83,7 @@ def normalize(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     seen: set[str] = set()
     for row in rows:
         item = {k: row[k] for k in FIELDS}
-        if any(not isinstance(item[k], str) for k in FIELDS[:6]):
+        if any(not isinstance(item[k], str) for k in (*FIELDS[:6], "symbolType", "fullName")):
             raise ValueError("instrument fields must be strings")
         if item["symbol"] in seen:
             raise ValueError("duplicate instrument")
@@ -121,6 +120,11 @@ def asset_key(base: str, exceptions: frozenset[str] | None = None) -> tuple[str,
 
 
 def exclusion(row: dict[str, Any]) -> str | None:
+    symbol_type = row["symbolType"]
+    if symbol_type in {"stock", "ETF", "commodity", "forex"}:
+        return f"non_crypto:{symbol_type}"
+    if symbol_type not in {"", "innovation"}:
+        raise ValueError(f"unknown symbolType: {symbol_type}")
     for field, expected in (
         ("contractType", "LinearPerpetual"),
         ("quoteCoin", "USDT"),
