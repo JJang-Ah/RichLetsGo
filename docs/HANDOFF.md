@@ -588,3 +588,13 @@
 - Claude의 조건부 표 확정 승인 요건을 충족해 TABLES_FROZEN=True로 변경. 다음은 PR #39 병합 → 정식 1회 → 결과 게시/병합. 정식 실행은 아직 하지 않았다.
 
 - 최종 검증: Python 3.14 전체 872 passed(58.37초), D98 77 tests, ruff check/format 및 mypy strict 85 소스 통과.
+
+
+## 2026-11-02 Codex — M2-07a 정식 풀 1회 실행·결과 게시
+
+- PR #39 병합 e4edc742ea829605894304f8379becf39615d350 확인 후 깨끗한 task/M2-07a-pool-result에서 정식 실행 1회. 표 확정·origin/main blob 일치·기존 실행 표식 없음 검사를 통과했다.
+- 실행 시각 2026-11-02T01:57:00.152097Z(10:57 KST). instruments-info 3회·재시도 0, 정규화 응답 1973개. 가격·펀딩 이력·tickers 호출 없음.
+- 설계용 398키/405계약, 판정용 406키/418계약, 제외 1150계약. closed 1045는 제외 항목도 포함한 전체 응답 기준이다. 판정용 심볼 목록은 JSON에만 둔다.
+- docs/reports/D98-pool.json 및 도구가 생성한 md/started.json/requests.json을 원본 그대로 게시. 본문 digest 8e5e2d0c4dfa32e0269dd9c906203a97026f552fab739bbe90c68d5368e206fe. 입력 digest b14fdbf5b33776cf3b4d50b1b0fa4f9485312e41dd967b2b1ec2c901e3aa3625(v4와 동일).
+- 저장된 본문/입력 해시, 확정 표 일치, same_fullname_split 빈 목록, 시작 표식·코드·시각 연결, 허용 요청 경로, 개수·키/계약 일치, 관측 예외 8개 DESIGN, Markdown digest/개수 검증 통과. 합성 D98 테스트 77 passed. 정식 수집·배정 재실행 없이 저장 산출물만 검증했다. 소스 변경 없음.
+- 다음: Claude 결과 검토 → 사용자 병합. 병합 후 풀 파일은 변경하지 않는다. 07b 실제 설계용 데이터 수집 전 Q30 확정이 필요하며, 판정용 가격 접근은 여전히 금지다.
