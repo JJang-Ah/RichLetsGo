@@ -570,3 +570,13 @@
 - 신규 합성 회귀 41개 통과. 전체 검사 결과는 PR에 기록한다. 07b 실제 수집은 풀 결과 병합 및 Q30 확정 뒤다.
 - 최종 검증: Python 3.14 전체 836 passed(101.75초), ruff check/format, mypy strict 85 소스 통과. PR #39 개설. 실제 메타데이터의 AAPL/NVDA/TSLA 무기한도 명세 필터를 통과하므로 암호자산 전용 여부를 풀 배정 전 Claude가 설계로 확인하도록 코멘트했다.
 
+
+## 2026-11-02 Codex — PR #39 Claude 검토 반영
+
+- main db08877(PR #40) 병합, HANDOFF 충돌 양쪽 기록 보존. symbolType/fullName 메타데이터 및 암호자산 필터/미지 유형 중단, ETHBTC 제외 구현.
+- 메타데이터 --review v3 완료: 1973개 응답, 기존 대상 1130 중 비암호자산 298 제외 → 832(추가 제외 표 전). 이번 공개 instruments-info 3회·재시도 0. 풀 배정/가격/펀딩 이력 미조회.
+- 공식 자료를 확인한 별칭 13건 추가 및 근거 링크를 표 digest에 포함. D98-alias-evidence.md에 수명·근거·미확정 SKYAI 제외 이유 기록. MKR/SKY 겹침과 LUNA2 분리 회귀 포함.
+- 정식 출력은 checkout의 docs/reports/D98-pool.json, 로컬/원격 main started 표식으로 재실행 거절. 감사 파일 실패 시 원래 예외 보존. 공개 instruments_page로 D98의 _get 직접 사용 제거.
+- TABLES_FROZEN=False 유지. 다음은 Claude 표 재확인 → 확정 커밋/병합 → 정식 1회. 새 사용자 승인을 추가로 요구한 것이 아니라 기존 명세의 표 검토 단계다.
+
+- 2026-11-02 최종 검증: Python 3.14 전체 868 passed(58.07초), D98 회귀 73개, ruff check/format 및 mypy strict 85 소스 통과.

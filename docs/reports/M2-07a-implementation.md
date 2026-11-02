@@ -66,3 +66,20 @@ category/status/limit 및 중복 파라미터도 검사한다. 가격/펀딩/tic
 
 최종 Python 3.14 전체 836 passed (101.75초), ruff check/format 및 mypy strict 85 소스 통과.
 샌드박스 안 첫 전체 검사 프로세스는 출력 없이 정체돼 중단했고, 정상 권한에서 오프라인 전체 검사를 완료했다. Python 3.12는 PR CI 대상이다.
+
+
+## 2026-11-02 Claude 검토 반영
+
+- PR #40(main db08877) 병합. HANDOFF 양쪽 기록 보존.
+- FIELDS에 symbolType/fullName을 추가해 정규화/입력 해시/산출물 해시에 포함. 암호자산은 빈 값·innovation만 허용,
+  stock/ETF/commodity/forex는 non_crypto 사유로 제외하고 미지 유형은 중단. SPX 코인은 이름으로 제외하지 않는다.
+- ETHBTC 제외. 별칭 13건과 공식 링크를 추가(세부: D98-alias-evidence.md). SKYAI/SKYAI1은 미확정이라 합치지 않음.
+- 메타데이터 v3: 실행 코드 411844a, 1973개 응답. 기존 필터의 1130개 중 비암호자산 298개 제외 후 832개.
+  이 832개는 스테이블/ETHBTC 제외 표 적용 전 수치이며 풀별 집계가 아니다. 이번 요청 3회·재시도 0.
+- 정식 출력은 실행 checkout 기준 docs/reports/D98-pool.json만 허용하며 로컬/원격 main의 started 표식을 검사한다.
+  다른 output을 지정해 우회할 수 없다. CLI 인자 경로는 실제 해당 checkout 경로와 비교하므로 다른 cwd에서도 절대 경로로 사용 가능하다.
+- requests 감사 파일 쓰기 실패가 원래 예외를 가리지 않도록 add_note로 부가 실패를 남긴다.
+- 공개 instruments_page 메서드를 추가해 D98 collect의 비공개 _get 직접 사용을 제거했다.
+- 기존 검토 v2/실패/진단 파일은 수정하지 않았다. TABLES_FROZEN=False 유지, 정식 풀 실행 및 가격/펀딩 이력 수집 없음.
+
+- 2026-11-02 최종 검증: Python 3.14 전체 868 passed(58.07초), D98 회귀 73개, ruff check/format 및 mypy strict 85 소스 통과.

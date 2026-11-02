@@ -347,3 +347,49 @@ def test_audit_write_failure_preserves_original_exception(tmp_path):
         d98_pool.run(output, review_mode=True, client=client(fake), captured_at=NOW, commit="c")
     assert "audit write also failed" in caught.value.__notes__[0]
     assert output.with_suffix(".requests.json").read_text(encoding="utf-8") == "existing audit"
+
+
+@pytest.mark.parametrize("old,new", sorted(tables.ALIASES.items()))
+def test_aliases_share_key_and_pool_without_price_conversion(old, new):
+    assert asset_key(old) == (new, 1)
+    result = build([row(old), row(new)], NOW, "c")
+    a, b = result["body"]["contracts"]
+    assert a["key"] == b["key"] == new
+    assert a["pool"] == b["pool"]
+    assert a["multiplier"] == b["multiplier"] == 1
+
+
+def test_alias_lifecycle_overlap_and_classic_luna():
+    contracts = build(
+        [
+            row("MKR", launchTime="1000", status="Closed", deliveryTime="4000"),
+            row("SKY", launchTime="3000"),
+        ],
+        NOW,
+        "c",
+    )["body"]["contracts"]
+    assert active_contract(contracts, "SKY", 3500) == "MKRUSDT"
+    assert active_contract(contracts, "SKY", 4000) == "SKYUSDT"
+    assert asset_key("LUNA") == ("LUNC", 1)
+    assert asset_key("1000LUNC") == ("LUNC", 1000)
+    assert asset_key("LUNA2")[0] != "LUNC"
+
+
+@pytest.mark.parametrize(
+    "a,b",
+    [
+        ("AGIX", "FET"),
+        ("OCEAN", "FET"),
+        ("PUMP", "PUMPFUN"),
+        ("NEIROETH", "1000NEIROCTO"),
+        ("SKYAI", "SKYAI1"),
+    ],
+)
+def test_no_unverified_or_distinct_asset_merges(a, b):
+    assert asset_key(a)[0] != asset_key(b)[0]
+
+
+def test_evidence_links_are_in_table_digest():
+    snap = tables.snapshot()
+    assert set(tables.ALIAS_SOURCES) <= set(tables.ALIASES)
+    assert snap["alias_sources"] == tables.ALIAS_SOURCES
