@@ -1,6 +1,7 @@
 """Design-only paginated collection. No Symbol migration or order access."""
 
 import json
+from datetime import UTC, datetime
 from typing import Any
 from urllib.parse import parse_qsl, urlsplit
 
@@ -82,6 +83,7 @@ def _collect(
     *,
     symbols: list[str] | None = None,
     refresh: bool = False,
+    code_commit: str | None = None,
 ) -> None:
     contracts = design_contracts(pool)
     selected = sorted(contracts) if symbols is None else sorted(set(symbols))
@@ -89,6 +91,16 @@ def _collect(
         raise ValueError("not a design symbol")
     store.ensure_mutable()
     store.bind(pool["sha256"])
+    if code_commit is not None:
+        store.log(
+            {
+                "event": "collection_start",
+                "code_commit": code_commit,
+                "at": datetime.now(UTC).isoformat(),
+                "symbols": selected,
+                "refresh": refresh,
+            }
+        )
     allowed = set(contracts)
     tasks = [("BTCUSDT", "daily", BTC_START, END - DAY)]
     for symbol in selected:
@@ -167,6 +179,7 @@ def collect(
     *,
     symbols: list[str] | None = None,
     refresh: bool = False,
+    code_commit: str | None = None,
 ) -> None:
     with dataset_lock(store.path):
-        _collect(pool, store, client, symbols=symbols, refresh=refresh)
+        _collect(pool, store, client, symbols=symbols, refresh=refresh, code_commit=code_commit)

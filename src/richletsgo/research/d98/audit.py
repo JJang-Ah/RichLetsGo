@@ -1,7 +1,6 @@
 """Timestamp-only coverage decisions and separately streamed content hashes."""
 
 import hashlib
-import json
 from bisect import bisect_left, bisect_right
 from collections import Counter
 from concurrent.futures import ProcessPoolExecutor
@@ -12,6 +11,7 @@ from typing import Any
 from richletsgo.backtest.codec import digest, encode
 
 from .boundaries import BTC_START, DAY, END, HOUR, STUDY_END, STUDY_START, design_contracts, window
+from .logs import summarize_log
 from .pool import active_contract
 from .store import Store, dataset_lock
 
@@ -86,6 +86,15 @@ def coverage(
         "expected_bars": max(0, (end - w.start) // HOUR),
         "actual_bars": len(bars),
         "missing_ranges": gaps,
+        "launch_partial_hour": (
+            {
+                "start": contract["launch"] // HOUR * HOUR,
+                "launch": contract["launch"],
+                "missing": contract["launch"] // HOUR * HOUR not in bars,
+            }
+            if contract["launch"] % HOUR and w.contains(contract["launch"] // HOUR * HOUR, "bars")
+            else None
+        ),
         "F": first,
         "L_a": la,
         "L_e": le,
@@ -119,7 +128,9 @@ def contract_audit(
         store.close()
 
 
-def _audit(pool: dict[str, Any], path: Path, *, workers: int = 1) -> dict[str, Any]:
+def _audit(
+    pool: dict[str, Any], path: Path, *, workers: int = 1, export_log: Path | None = None
+) -> dict[str, Any]:
     if workers < 1:
         raise ValueError("workers must be positive")
     contracts = design_contracts(pool)
@@ -172,16 +183,15 @@ def _audit(pool: dict[str, Any], path: Path, *, workers: int = 1) -> dict[str, A
             else None,
             "manifest": manifest,
             "data_hash": digest(manifest),
-            "collection_log": [
-                json.loads(r[0])
-                for r in store.db.execute("SELECT content FROM collection_log ORDER BY id")
-            ],
+            "collection_log": summarize_log(store, export_log),
         }
         return {"body": body, "sha256": digest(body)}
     finally:
         store.close()
 
 
-def audit(pool: dict[str, Any], path: Path, *, workers: int = 1) -> dict[str, Any]:
+def audit(
+    pool: dict[str, Any], path: Path, *, workers: int = 1, export_log: Path | None = None
+) -> dict[str, Any]:
     with dataset_lock(path):
-        return _audit(pool, path, workers=workers)
+        return _audit(pool, path, workers=workers, export_log=export_log)

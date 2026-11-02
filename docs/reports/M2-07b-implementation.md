@@ -62,3 +62,15 @@ Published raw measurements: `D98-07b-synthetic-benchmark.json`.
 | Audit + hash, 4 workers | 78.180 | 225.652 (sum of process peaks) |
 
 Both full audit bodies/digests and data hashes are identical. Data hash: `de560629d5e97b3c4ce70ff28d0ee2d01c93af1bdb4a371628bee258ef5a0420`. Audit digest: `79ef17e94bd10d5e5d181ed67bb7ccb8d5208548b338814e6158bd1778c3581d`. The benchmark contains synthetic data and no network attempt logs; actual collection-log metadata adds report memory. This is data preparation performance, not trading performance. A preceding development measurement is retained locally; only the final committed-code run above is published.
+
+## PR #43 review follow-up (Claude 6571548433)
+
+The audit now carries a streaming `collection_log` summary instead of all normal page records: executed pages (including failed/refresh executions), requests, retried pages/total retries, error pages/error messages, refresh pages, skipped empty-lifetime symbols, collection-start records and a full-log SHA-256. Retry/error/refresh rows remain unmodified in `exceptional_rows`; the DB retains every original row.
+
+Hash contract: concatenate each stored `collection_log.content` in ascending id order, append one LF to each, encode UTF-8, and SHA-256 those **uncompressed** bytes. `d98_audit.py --export-log <path.jsonl.gz>` streams exactly those bytes into an exclusive new gzip file under the same dataset lock as the audit. Compare the decompressed file SHA-256 with `body.collection_log.sha256`. Normal pages are counted without accumulating them in memory; exceptional records necessarily grow when many requests fail or are refreshed.
+
+Each CLI collection invocation logs its executing git commit, start timestamp, selected symbols and refresh flag before requesting pages. Audit code provenance remains separate. Library fixtures may omit the optional commit argument.
+
+`launch_partial_hour` identifies a non-hour-aligned launch's preceding partial bar and whether it is absent. The mandated floor-hour expected range and raw `missing_ranges` are unchanged, and F/eligibility still use actual launch. This is explanatory metadata, not permission to omit otherwise required data. The price-invariance fixture now mutates open/high/low/close/volume/turnover and funding rate together.
+
+The published large benchmark remains the historical measurement of commit 879173f. This review changes audit presentation/digest, not the D98-data-v1 manifest/data_hash or series processing. A focused 44,756-normal-page regression confirms summary size stays below 1KB, and the synthetic worker comparison confirms the revised audit body remains deterministic. No large benchmark rerun or real market-data request was made for the log-format change.

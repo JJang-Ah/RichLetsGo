@@ -618,3 +618,11 @@
 - 커밋 879173f 합성 600계약×43,000봉: 저장 140.419초/38.598 MiB, 감사+해시 1 worker 205.691초/49.160 MiB, 4 workers 78.180초/프로세스 peak 합 225.652 MiB. 전체 감사 본문 및 data_hash 동일. 원본 측정 docs/reports/D98-07b-synthetic-benchmark.json.
 - 실제 풀 메타데이터로만 계산한 수집 계획: kline 7594 + funding 37159 + BTC daily 3 = 44756회. 0.2초 pacing만 약2.4864h, 응답/재시도 별도. 실제 조회 없음.
 - PR #43에 구현·측정·검토 요청 게시. 아직 병합/실제 수집하지 않았고, 다음은 Claude 구현 검토다.
+
+## 2026-11-02 Codex — PR #43 Claude 검토 반영
+
+- Claude 6571548433의 P2 반영: 전체 collection_log 본문 삽입을 스트리밍 요약(페이지/요청/재시도/오류/refresh/빈 수명/전체 로그 SHA-256)으로 교체. 재시도·오류·refresh 원본 행과 수집 시작 기록은 보존한다.
+- --export-log로 같은 잠금 아래 원본 JSONL gzip 내보내기 지원. 해시는 id 순 content+LF의 압축 전 UTF-8 바이트를 대상으로 하며, 압축 해제한 파일로 대조한다. 전체 원본은 DB에 계속 보존한다.
+- P3도 반영: 모든 OHLCV/turnover/rate 변경 시 판정 불변 검증, launch_partial_hour 설명 항목(기존 기대 범위·missing_ranges·F 규칙 유지), 수집 시작 시 CLI 코드 커밋/시각/대상/refresh 기록.
+- D98 102 tests 통과, 정상 로그 44756행 요약 1KB 미만·개수/예외 원문·압축 원본 해시·로그 변조 시 감사 digest 변경 회귀 포함. 대규모 기존 벤치마크 원본은 역사적 측정으로 보존(새 감사 형식은 digest가 달라짐). 실제 시장 데이터 조회 없음.
+- 최종 검증: Python 3.14 전체 897 passed(60.12초), D98 102개, ruff check/format 및 mypy strict 90 소스 통과. PR #43에 수정·검증 답변 게시; 병합과 실제 수집은 아직 하지 않았다.

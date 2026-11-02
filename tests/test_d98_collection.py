@@ -245,7 +245,11 @@ def test_audit_price_invariance_workers_hash(tmp_path):
     assert a["body"]["status"] == "READY"
     assert a["body"]["contracts"][0]["outside_bars"] == 2
     with st.db:
-        st.db.execute("UPDATE bars_1h SET open='999',turnover='-888'")
+        st.db.execute(
+            "UPDATE bars_1h SET open='999',high='1',low='2',close='3',volume='4',turnover='-888'"
+        )
+    with st.db:
+        st.db.execute("UPDATE funding SET rate='0.123'")
     b = audit(p, path)
     assert a["body"]["contracts"] == b["body"]["contracts"]
     assert a["body"]["data_hash"] != b["body"]["data_hash"]
@@ -381,4 +385,119 @@ def test_decimal_only_input(tmp_path, value):
     st = Store(tmp_path / "numbers.sqlite")
     with pytest.raises(ValueError), st.db:
         st.put("funding", "AAAUSDT", [[START, value]])
+    st.close()
+
+
+def test_log_summary_export_and_tampering(tmp_path):
+    import gzip
+    import hashlib
+
+    from richletsgo.research.d98.logs import summarize_log
+
+    st = Store(tmp_path / "logs.sqlite")
+    p = pool(contract(delist=START))
+    st.bind(p["sha256"])
+    normal = {
+        "page": ["AAAUSDT", "bars", 0, 1],
+        "attempts": [{"attempt": 1, "url": "fixture", "at": "t"}],
+        "error": None,
+        "refresh": False,
+    }
+    retry = {**normal, "attempts": [{"attempt": n, "url": "fixture", "at": "t"} for n in (1, 2, 3)]}
+    failed = {**normal, "error": "failed"}
+    refreshed = {**normal, "refresh": True}
+    entries = [
+        {"event": "collection_start", "code_commit": "abc"},
+        {"symbol": "OLD", "skip": "empty lifetime"},
+        normal,
+        retry,
+        failed,
+        refreshed,
+    ]
+    for entry in entries:
+        st.log(entry)
+    target = tmp_path / "log.jsonl.gz"
+    summary = summarize_log(st, target)
+    assert {
+        k: summary[k]
+        for k in (
+            "rows",
+            "pages",
+            "requests",
+            "retried_pages",
+            "retries",
+            "error_pages",
+            "refresh_pages",
+        )
+    } == dict(
+        rows=6, pages=4, requests=6, retried_pages=1, retries=2, error_pages=1, refresh_pages=1
+    )
+    assert summary["exceptional_rows"] == [retry, failed, refreshed]
+    assert summary["skipped_empty_symbols"] == ["OLD"]
+    assert summary["collection_runs"] == [entries[0]]
+    assert summary["errors"] == [{"page": normal["page"], "error": "failed"}]
+    raw = gzip.decompress(target.read_bytes())
+    assert raw == "".join(encode(e) + "\n" for e in entries).encode()
+    assert hashlib.sha256(raw).hexdigest() == summary["sha256"]
+    a = audit(p, st.path)
+    with st.db:
+        st.db.execute(
+            "UPDATE collection_log SET content=? WHERE id=3",
+            (encode({**normal, "attempts": [{"attempt": 1, "url": "changed", "at": "t"}]}),),
+        )
+    b = audit(p, st.path)
+    assert a["body"]["collection_log"]["sha256"] != b["body"]["collection_log"]["sha256"]
+    assert a["sha256"] != b["sha256"]
+    assert a["body"]["data_hash"] == b["body"]["data_hash"]
+    with pytest.raises(FileExistsError):
+        summarize_log(st, target)
+    st.close()
+
+
+def test_normal_logs_do_not_expand_audit(tmp_path):
+    from richletsgo.research.d98.logs import summarize_log
+
+    st = Store(tmp_path / "many.sqlite")
+    row = {
+        "page": ["AAAUSDT", "bars", 0, 1],
+        "attempts": [{"attempt": 1, "url": "fixture", "at": "t"}],
+        "error": None,
+        "refresh": False,
+    }
+    with st.db:
+        st.db.executemany(
+            "INSERT INTO collection_log(content) VALUES (?)", ((encode(row),) for _ in range(44756))
+        )
+    result = summarize_log(st)
+    assert result["pages"] == result["requests"] == 44756
+    assert result["exceptional_rows"] == [] and len(encode(result)) < 1000
+    st.close()
+
+
+def test_collection_commit_and_partial_launch_annotation(tmp_path):
+    c = contract(launch=START + 1, delist=START + 8 * HOUR)
+    p = pool(c)
+    st = Store(tmp_path / "provenance.sqlite")
+    transport = FixtureTransport(c["delist"])
+    client = DesignClient(
+        "https://api.bybit.com",
+        transport=DesignTransport(transport, set(design_contracts(p))),
+        policy=RetryPolicy(0, 1, 0, 1),
+        sleep=lambda _: None,
+    )
+    collect(p, st, client, symbols=["AAAUSDT"], code_commit="fixture-commit")
+    record = json.loads(
+        st.db.execute("SELECT content FROM collection_log ORDER BY id LIMIT 1").fetchone()[0]
+    )
+    assert record["event"] == "collection_start" and record["code_commit"] == "fixture-commit"
+    assert record["at"] and record["symbols"] == ["AAAUSDT"]
+    before = coverage(st, c, [c], 480)
+    assert before["launch_partial_hour"] == {"start": START, "launch": START + 1, "missing": False}
+    with st.db:
+        st.db.execute("DELETE FROM bars_1h WHERE symbol=? AND start=?", ("AAAUSDT", START))
+    after = coverage(st, c, [c], 480)
+    assert after["launch_partial_hour"]["missing"]
+    assert after["missing_ranges"] == [[START, START + HOUR]]
+    assert after["F"] == before["F"] == START + HOUR
+    assert after["metadata_eligible"] == before["metadata_eligible"]
     st.close()

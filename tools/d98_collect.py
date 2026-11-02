@@ -49,7 +49,16 @@ def main() -> None:
     )
     store = Store(args.db or directory / "d98-design.sqlite")
     try:
-        collect(pool, store, client, symbols=args.symbols, refresh=args.refresh)
+        collect(
+            pool,
+            store,
+            client,
+            symbols=args.symbols,
+            refresh=args.refresh,
+            code_commit=subprocess.check_output(
+                ["git", "-C", str(root), "rev-parse", "HEAD"], text=True
+            ).strip(),
+        )
     finally:
         store.close()
     print("D98 design collection complete; run d98_audit.py before registration")

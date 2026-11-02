@@ -17,15 +17,30 @@ def main() -> None:
     parser.add_argument("--config", type=Path, required=True)
     parser.add_argument("--db", type=Path)
     parser.add_argument("--output", type=Path, required=True)
+    parser.add_argument(
+        "--export-log",
+        type=Path,
+        help="Optional full .jsonl.gz log; hash covers decompressed bytes",
+    )
     args = parser.parse_args()
     if args.output.exists() or args.output.with_suffix(".md").exists():
         raise ValueError("output exists; preserve prior audits")
+    if args.export_log is not None:
+        if args.export_log.resolve() in {
+            args.output.resolve(),
+            args.output.with_suffix(".md").resolve(),
+        }:
+            raise ValueError("log export conflicts with audit output")
+        if args.export_log.exists():
+            raise ValueError("log export exists; preserve prior logs")
+        args.export_log.parent.mkdir(parents=True, exist_ok=True)
     directory, _ = load_settings(args.config)
     settings = tomllib.loads(args.config.read_text(encoding="utf-8"))["d98"]["collection"]
     result = audit(
         load_pool(args.pool),
         args.db or directory / "d98-design.sqlite",
         workers=settings["workers"],
+        export_log=args.export_log,
     )
     result["body"]["code_commit"] = subprocess.check_output(
         ["git", "-C", str(Path(__file__).resolve().parents[1]), "rev-parse", "HEAD"], text=True
