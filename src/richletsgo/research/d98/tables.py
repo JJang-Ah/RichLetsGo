@@ -21,10 +21,17 @@ ALIASES = {
     "COCOS": "COMBO",
     "LUNA": "LUNC",
     "UST": "USTC",
+    "LAYER": "SOLAYER",
+    "SKYAI1": "SKYAI",
 }
 # Evidence for additions reviewed without consulting price history. These links are
 # part of the frozen table snapshot; see D98-alias-evidence.md for metadata context.
 ALIAS_SOURCES = {
+    "LAYER": "v3 fullName 동일(비대칭 위험 원칙): solayer / solayer; "
+    "docs/reports/D98-metadata-review-v3.json",
+    "SKYAI1": "v3 fullName 동일(비대칭 위험 원칙): Skyai / skyai; "
+    "https://announcements.bybit.com/en/article/"
+    "new-listing-skyai1usdt-perpetual-contract-with-up-to-10x-leverage-bltc390d2afccc10cf8/",
     "EOS": "https://www.vaulta.com/resources/vaulta-token-swap-a-begins-may-14",
     "MKR": "https://sky.money/blog/understanding-the-sky-token",
     "KLAY": "https://docs.kaia.io/misc/kaia-transition/faq-chain-transition/",
@@ -42,6 +49,10 @@ ALIAS_SOURCES = {
     "LUNA": "https://docs.terra.money/migration/exchange-migration/",
     "UST": "https://docs.terra.money/migration/exchange-migration/",
 }
+# Explicit pairwise exceptions: (stripped/casefolded fullName, smaller key, larger key).
+# Empty until a documented distinct-asset exception is reviewed.
+DISTINCT_SAME_NAME: frozenset[tuple[str, str, str]] = frozenset()
+
 EXCLUDED = EXCLUDED_BASES | {"USDD", "RLUSD", "ETHBTC"}
 OBSERVED = frozenset({"BTC", "ETH", "SOL", "ZEC", "XRP", "NEAR", "NFT", "LADYS"})
 
@@ -51,6 +62,7 @@ def snapshot() -> dict[str, object]:
         "numeric_exceptions": sorted(NUMERIC_EXCEPTIONS),
         "aliases": dict(ALIASES),
         "alias_sources": dict(ALIAS_SOURCES),
+        "distinct_same_name": [list(pair) for pair in sorted(DISTINCT_SAME_NAME)],
         "excluded": sorted(EXCLUDED),
         "observed": sorted(OBSERVED),
     }

@@ -6,6 +6,7 @@ import unicodedata
 from collections import defaultdict
 from datetime import datetime
 from difflib import SequenceMatcher
+from itertools import combinations
 from typing import Any
 from urllib.parse import parse_qs, urlsplit
 
@@ -143,6 +144,36 @@ def exclusion(row: dict[str, Any]) -> str | None:
     return None
 
 
+def same_fullname_split(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Unapproved same-name key splits; inspect metadata without assigning pools."""
+    groups: dict[str, dict[str, list[str]]] = defaultdict(lambda: defaultdict(list))
+    for row in rows:
+        if exclusion(row) is not None:
+            continue
+        key, _ = asset_key(row["baseCoin"])
+        if key in tables.EXCLUDED:
+            continue
+        name = row["fullName"].strip().casefold()
+        if name:
+            groups[name][key].append(row["symbol"])
+    result = []
+    for name, keys in sorted(groups.items()):
+        unresolved = [
+            [a, b]
+            for a, b in combinations(sorted(keys), 2)
+            if (name, a, b) not in tables.DISTINCT_SAME_NAME
+        ]
+        if unresolved:
+            result.append(
+                {
+                    "fullName": name,
+                    "contracts_by_key": {k: sorted(v) for k, v in sorted(keys.items())},
+                    "unapproved_pairs": unresolved,
+                }
+            )
+    return result
+
+
 def review(rows: list[dict[str, Any]], captured_at: datetime, commit: str) -> dict[str, Any]:
     require_utc(captured_at)
     rows = normalize(rows)
@@ -172,6 +203,7 @@ def review(rows: list[dict[str, Any]], captured_at: datetime, commit: str) -> di
         ],
         "same_key_groups": {k: v for k, v in sorted(groups.items()) if len(v) > 1},
         "similar_closed_trading": similar,
+        "same_fullname_split": same_fullname_split(rows),
     }
 
 
@@ -186,6 +218,8 @@ def assignment(key: str) -> str:
 def build(rows: list[dict[str, Any]], captured_at: datetime, commit: str) -> dict[str, Any]:
     require_utc(captured_at)
     rows = normalize(rows)
+    if same_fullname_split(rows):
+        raise ValueError("unresolved same_fullname_split; review aliases or explicit exceptions")
     contracts = []
     keys: dict[str, dict[str, Any]] = {}
     for row in rows:

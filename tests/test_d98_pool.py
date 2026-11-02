@@ -382,7 +382,6 @@ def test_alias_lifecycle_overlap_and_classic_luna():
         ("OCEAN", "FET"),
         ("PUMP", "PUMPFUN"),
         ("NEIROETH", "1000NEIROCTO"),
-        ("SKYAI", "SKYAI1"),
     ],
 )
 def test_no_unverified_or_distinct_asset_merges(a, b):
@@ -393,3 +392,54 @@ def test_evidence_links_are_in_table_digest():
     snap = tables.snapshot()
     assert set(tables.ALIAS_SOURCES) <= set(tables.ALIASES)
     assert snap["alias_sources"] == tables.ALIAS_SOURCES
+
+
+def test_same_fullname_detected_and_build_rejected_before_assignment():
+    rows = [row("ABC", fullName="  Shared Asset "), row("DEF", fullName="shared asset")]
+    with patch("richletsgo.research.d98.pool.assignment", side_effect=AssertionError):
+        report = review(rows, NOW, "c")
+        assert report["same_fullname_split"] == [
+            {
+                "fullName": "shared asset",
+                "contracts_by_key": {"ABC": ["ABCUSDT"], "DEF": ["DEFUSDT"]},
+                "unapproved_pairs": [["ABC", "DEF"]],
+            }
+        ]
+        assert report == review(list(reversed(rows)), NOW, "c")
+        with pytest.raises(ValueError, match="same_fullname_split"):
+            build(rows, NOW, "c")
+
+
+def test_fullname_ignores_empty_excluded_and_already_aliased():
+    rows = [
+        row("LAYER", fullName="Solayer"),
+        row("SOLAYER", fullName=" solayer "),
+        row("SKYAI", fullName="skyai"),
+        row("SKYAI1", fullName="Skyai"),
+        row("AAPL", fullName="solayer", symbolType="stock"),
+        row("ETHBTC", fullName="solayer"),
+        row("AAA", fullName=""),
+        row("BBB", fullName="  "),
+    ]
+    assert review(rows, NOW, "c")["same_fullname_split"] == []
+    body = build(rows, NOW, "c")["body"]
+    contracts = {r["symbol"]: r for r in body["contracts"]}
+    for a, b in [("LAYER", "SOLAYER"), ("SKYAI1", "SKYAI")]:
+        assert contracts[a + "USDT"]["key"] == contracts[b + "USDT"]["key"]
+        assert contracts[a + "USDT"]["pool"] == contracts[b + "USDT"]["pool"]
+
+
+def test_distinct_same_name_exception_is_pair_scoped_and_hashed(monkeypatch):
+    rows = [row("AAA", fullName="Same"), row("BBB", fullName="same")]
+    before = digest(tables.snapshot())
+    monkeypatch.setattr(tables, "DISTINCT_SAME_NAME", frozenset({("same", "AAA", "BBB")}))
+    assert digest(tables.snapshot()) != before
+    assert review(rows, NOW, "c")["same_fullname_split"] == []
+    assert len(build(rows, NOW, "c")["body"]["keys"]) == 2
+    rows.append(row("CCC", fullName="same"))
+    assert review(rows, NOW, "c")["same_fullname_split"][0]["unapproved_pairs"] == [
+        ["AAA", "CCC"],
+        ["BBB", "CCC"],
+    ]
+    with pytest.raises(ValueError, match="same_fullname_split"):
+        build(rows, NOW, "c")
