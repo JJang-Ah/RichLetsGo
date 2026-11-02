@@ -193,3 +193,11 @@ params = { fast = 5, slow = 20, exit_channel = 10 }
 candidate = "S2-A"
 source = "manual"
 params = { period = 20, k = "2", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 }
+
+# D98 research collection pacing and bounded audit parallelism (not trading settings).
+[d98.collection]
+pause_seconds = 0.2
+max_attempts = 5
+backoff_seconds = 1.0
+timeout_seconds = 10.0
+workers = 4
