@@ -559,3 +559,32 @@
 - M2-07 명세 작성(2026-11-01, PR 대기): `docs/tasks/M2-07-d98-signal-study.md`. 세 PR 순서 07a 풀 분리(instruments-info만, `--review`는 풀 배정 숨김 → 표 확정 → 정식 실행 1회) → 07b 설계용 풀 수집(판정용 심볼 네트워크 전 거절)·감사(가격 값 미사용, 입력 부족률·`data_hash`) → 07c 신호 연구(연구 사전 등록 digest 확인 후 1회, GO/NO_GO). 별도 패키지 `research/d98/`, Symbol enum·실거래 경로 불변. Q30 제안(일평균 거래대금 하한 5M, 등급 0.0005/0.001/0.0015/0.0025)은 연구 사전 등록 전 사용자 결정.
 - 추가(PR #38 Codex 검토 P2 2·비차단 3 반영): 봉/정산 경계 분리(완결 봉 `s+1h ≤ min(T,D)`, 정산 `τ ≤ D` 포함·앞 24h 여유, 범위 판정 함수 하나), 폐지 시각 정산 연결 회귀; 실행은 등록 커밋 C의 깨끗한 worktree + 병합된 등록·감사·풀 파일 외부 경로; 스트리밍 계약별 해시 manifest(`D98-data-v1`), 계약 단위 처리·대규모 합성 벤치마크; 등록 digest별 원자적 실행 표식(`COMPLETED` 재계산 없음, `--resume-crashed`); Q30은 07b 수집 전 확정.
 - D98 범위 보완(2026-11-01, PR #39 검토 중 발견): Bybit USDT 무기한에 주식 232·ETF 59·원자재 4·외환 3개가 섞여 있음(`symbolType`). 04 3.3 1 대상을 암호자산(`symbolType ∈ {"", "innovation"}`)으로 한정, 알 수 없는 값은 도구 중단. `ETHBTC`(비율 상품)는 제외 표. 메타데이터만 확인, 가격 조회 없음.
+
+
+
+## 2026-11-01 Codex — M2-07a 메타데이터 풀 분리 도구
+
+- PR #38 병합 뒤 task/M2-07a-pool-split 구현. 별도 research/d98 패키지에 정규화·표·배정·시각별 계약 선택, CLI에 instruments-info 전용 전송/배타 출력/실패 표식/표 병합 확인 추가. 기존 Symbol·실거래 코드 불변.
+- 실제 --review 완료: 응답 1973개, 풀 배정 미계산. Closed 조회에 PendingOpen이 섞여 첫 실행 실패 → 메타데이터 진단 기록 보존 → 명세 필터 적용 회귀 → 성공 검토 v2. 총 공개 메타데이터 요청 7회·재시도 0, 가격/펀딩 이력/tickers 호출 없음.
+- 예외·별칭·제외 표 초안과 검토 목록은 docs/reports/M2-07a-implementation.md 및 D98-metadata-review-v2.json. TABLES_FROZEN=False로 정식 실행 차단 유지. Claude 표 검토 → 확정 커밋/병합 → 정식 풀 분리 1회 → 결과 게시·병합이 남았다. 이는 M2-07 07a의 표 확정 절차이며 아직 D98-pool.json을 생성하지 않았다.
+- 신규 합성 회귀 41개 통과. 전체 검사 결과는 PR에 기록한다. 07b 실제 수집은 풀 결과 병합 및 Q30 확정 뒤다.
+- 최종 검증: Python 3.14 전체 836 passed(101.75초), ruff check/format, mypy strict 85 소스 통과. PR #39 개설. 실제 메타데이터의 AAPL/NVDA/TSLA 무기한도 명세 필터를 통과하므로 암호자산 전용 여부를 풀 배정 전 Claude가 설계로 확인하도록 코멘트했다.
+
+
+## 2026-11-02 Codex — PR #39 Claude 검토 반영
+
+- main db08877(PR #40) 병합, HANDOFF 충돌 양쪽 기록 보존. symbolType/fullName 메타데이터 및 암호자산 필터/미지 유형 중단, ETHBTC 제외 구현.
+- 메타데이터 --review v3 완료: 1973개 응답, 기존 대상 1130 중 비암호자산 298 제외 → 832(추가 제외 표 전). 이번 공개 instruments-info 3회·재시도 0. 풀 배정/가격/펀딩 이력 미조회.
+- 공식 자료를 확인한 별칭 13건 추가 및 근거 링크를 표 digest에 포함. D98-alias-evidence.md에 수명·근거·미확정 SKYAI 제외 이유 기록. MKR/SKY 겹침과 LUNA2 분리 회귀 포함.
+- 정식 출력은 checkout의 docs/reports/D98-pool.json, 로컬/원격 main started 표식으로 재실행 거절. 감사 파일 실패 시 원래 예외 보존. 공개 instruments_page로 D98의 _get 직접 사용 제거.
+- TABLES_FROZEN=False 유지. 다음은 Claude 표 재확인 → 확정 커밋/병합 → 정식 1회. 새 사용자 승인을 추가로 요구한 것이 아니라 기존 명세의 표 검토 단계다.
+
+- 2026-11-02 최종 검증: Python 3.14 전체 868 passed(58.07초), D98 회귀 73개, ruff check/format 및 mypy strict 85 소스 통과.
+
+## 2026-11-02 Codex — PR #39 동일 fullName 재검토 반영·표 확정
+
+- Claude 코멘트 6566546410 반영: LAYER→SOLAYER, SKYAI1→SKYAI 통합, v3 fullName 동일/비대칭 위험 근거 기록. review.same_fullname_split 및 build 배정 전 차단, DISTINCT_SAME_NAME 이름+키 쌍 예외 표(digest 포함, 현재 비어 있음) 추가.
+- v4 검토(코드 510dbfa)에서 메타데이터 1973개·미해결 분리 빈 목록 확인. instruments-info 3회·재시도 0, 풀 배정/가격/펀딩 이력 없음.
+- Claude의 조건부 표 확정 승인 요건을 충족해 TABLES_FROZEN=True로 변경. 다음은 PR #39 병합 → 정식 1회 → 결과 게시/병합. 정식 실행은 아직 하지 않았다.
+
+- 최종 검증: Python 3.14 전체 872 passed(58.37초), D98 77 tests, ruff check/format 및 mypy strict 85 소스 통과.

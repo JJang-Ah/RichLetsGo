@@ -114,6 +114,15 @@ class BybitPublicClient:
             f"{path} failed after {self._policy.max_attempts} attempts: {last_error}"
         )
 
+    def instruments_page(self, status: str, *, cursor: str = "") -> dict[str, Any]:
+        """One public linear instruments page; caller owns pagination and filtering."""
+        if status not in {"Trading", "Closed"}:
+            raise ValueError("unsupported instrument status")
+        params = {"category": "linear", "status": status, "limit": "1000"}
+        if cursor:
+            params["cursor"] = cursor
+        return self._get("/v5/market/instruments-info", params)
+
     def klines(
         self, symbol: Symbol, interval: Interval, first: datetime, last: datetime
     ) -> list[list[str]]:
