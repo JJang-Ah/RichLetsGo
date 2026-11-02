@@ -37,10 +37,28 @@ python tools/benchmark_d98_collection.py --output backtest_results/d98-07b-synth
 
 It inserts 600 × 43,000 hourly bars plus funding and BTC daily via Store, then compares 1/4-worker audit bodies and data hashes. Memory is OS high-water working set per process; sum of parent and worker peaks is a conservative upper bound, not a simultaneous RSS sample. Timing includes both timestamp audit and streaming hash. Signal-study runtime is measured in 07c, where that code is implemented.
 
-The first benchmark process stopped during storage when the preceding turn ended (338 committed contracts); that partial synthetic DB is retained locally and is not used for the published measurement. No market data was involved.
+The first benchmark process stopped during storage (338 committed contracts; termination cause not verified); that partial synthetic DB is retained locally and is not used for the published measurement. No market data was involved.
 
 ## Remaining manual sequence
 
 Claude reviews this implementation, user merges, then run the actual design collection and publish its audit in a separate PR. Pool and D99 are already merged. No judgment data access is permitted; research registration/one-shot study remains 07c. The real audit result cannot be predicted from these synthetic tests.
 
 API references: [Bybit kline](https://bybit-exchange.github.io/docs/v5/market/kline), [funding history](https://bybit-exchange.github.io/docs/v5/market/history-fund-rate).
+
+## Actual collection request plan (metadata only)
+
+Using the merged 405-contract DESIGN pool and fixed lifetime ranges, a fresh collection plans 7,594 hourly kline pages + 37,159 funding pages + 3 BTC daily pages = **44,756 requests**, before retries. At the example 0.2-second pause this alone takes **2.4864 hours**, plus network latency and retry backoff. Funding intentionally uses fixed 200-hour pages to accommodate hourly settlement and make page recovery deterministic; sparse/8-hour histories incur more requests than backwards record-count pagination. These counts were calculated from metadata only; no availability probe or price request was made.
+
+Final local validation: Python 3.14.3 **894 passed in 70.15 seconds**, including 22 new collection/audit cases and 77 pool cases. Ruff check/format and strict mypy (89 source files) pass.
+
+## Final benchmark (code 879173fac5c51f71a484c7f7e041f7369b1d62f1)
+
+Published raw measurements: `D98-07b-synthetic-benchmark.json`.
+
+| Operation | Seconds | Peak working-set measure (MiB) |
+|---|---:|---:|
+| Store 600 x 43,000 bars + funding/daily | 140.419 | 38.598 |
+| Audit + hash, 1 worker | 205.691 | 49.160 |
+| Audit + hash, 4 workers | 78.180 | 225.652 (sum of process peaks) |
+
+Both full audit bodies/digests and data hashes are identical. Data hash: `de560629d5e97b3c4ce70ff28d0ee2d01c93af1bdb4a371628bee258ef5a0420`. Audit digest: `79ef17e94bd10d5e5d181ed67bb7ccb8d5208548b338814e6158bd1778c3581d`. The benchmark contains synthetic data and no network attempt logs; actual collection-log metadata adds report memory. This is data preparation performance, not trading performance. A preceding development measurement is retained locally; only the final committed-code run above is published.

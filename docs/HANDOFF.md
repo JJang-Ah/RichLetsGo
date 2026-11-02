@@ -613,3 +613,8 @@
 - 시각 전용 누락·폐지 꼬리·F/60일·계약 우선순위·800h/정산 3개 감사, BTC 완결성, 5% 초과 판정, 계약별 스트리밍 D98-data-v1 hash와 순서 고정 병렬 감사. 데이터셋 잠금/등록 후 동결 API 제공.
 - D98 수집 회귀 22 tests 통과. 폐지 정산은 수집→감사→data_hash→독립 청산 R 장부 회귀로 연결; 07c의 전체 거래 시뮬레이터에는 같은 fixture를 다시 연결한다.
 - 대규모 합성 벤치마크 및 최종 검사 결과는 후속 항목/PR에 기록. 실제 설계용/판정용 가격·펀딩 수집 없음. 다음: Claude 구현 검토·병합 → 실제 설계용 수집·감사 별도 결과 PR. 상세는 docs/reports/M2-07b-implementation.md.
+
+- 최종 검증: Python 3.14 전체 894 passed(70.15초), D98 99개, ruff check/format 및 mypy strict 89 소스 통과.
+- 커밋 879173f 합성 600계약×43,000봉: 저장 140.419초/38.598 MiB, 감사+해시 1 worker 205.691초/49.160 MiB, 4 workers 78.180초/프로세스 peak 합 225.652 MiB. 전체 감사 본문 및 data_hash 동일. 원본 측정 docs/reports/D98-07b-synthetic-benchmark.json.
+- 실제 풀 메타데이터로만 계산한 수집 계획: kline 7594 + funding 37159 + BTC daily 3 = 44756회. 0.2초 pacing만 약2.4864h, 응답/재시도 별도. 실제 조회 없음.
+- PR #43에 구현·측정·검토 요청 게시. 아직 병합/실제 수집하지 않았고, 다음은 Claude 구현 검토다.
