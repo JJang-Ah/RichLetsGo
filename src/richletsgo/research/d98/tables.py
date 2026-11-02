@@ -2,7 +2,8 @@
 
 from richletsgo.marketdata.universe import EXCLUDED_BASES
 
-TABLES_FROZEN = False
+# Claude conditional approval: PR #39 comment 6566546410; v4 split list is empty.
+TABLES_FROZEN = True
 NUMERIC_EXCEPTIONS = frozenset({"0G", "1CAT", "1INCH", "2Z", "4", "4STOCK"})
 ALIASES = {
     "MATIC": "POL",

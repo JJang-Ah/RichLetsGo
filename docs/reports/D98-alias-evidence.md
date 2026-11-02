@@ -26,8 +26,26 @@ MKR/SKY처럼 활성 구간이 겹치면 배수→상장 시각→심볼 규칙�
 
 - AGIX/OCEAN/FET: 별개 자산 합병이므로 이 표에서 합치지 않는다.
 - PUMP/PUMPFUN, NEIROETH/1000NEIROCTO, 밈 GME/주식 GMESTOCK: 다른 자산이며 주식은 symbolType 필터로 제외한다.
-- SKYAI/SKYAI1: [새 계약 공식 상장 공지](https://announcements.bybit.com/en/article/new-listing-skyai1usdt-perpetual-contract-with-up-to-10x-leverage-bltc390d2afccc10cf8/)는 확인했지만 이전 폐지 계약과의 이전 관계를 확정하지 못했다. Claude 요청대로 별칭에 추가하지 않았다.
+- 초기 SKYAI/SKYAI1 검토(아래 재검토로 대체): [새 계약 공식 상장 공지](https://announcements.bybit.com/en/article/new-listing-skyai1usdt-perpetual-contract-with-up-to-10x-leverage-bltc390d2afccc10cf8/)는 확인했지만 이전 폐지 계약과의 이전 관계를 확정하지 못했다. Claude 요청대로 별칭에 추가하지 않았다.
 
 ## 상태
 
 TABLES_FROZEN=False 유지. Claude가 근거 및 표를 재확인한 뒤에만 확정/병합 및 정식 풀 실행을 진행한다.
+
+
+## 2026-11-02 동일 fullName 재검토 및 표 확정
+
+Claude의 [재검토 조건부 승인](https://github.com/JJang-Ah/RichLetsGo/pull/39#issuecomment-6566546410)에 따라
+이전 SKYAI 미통합 판단을 변경했다. 같은 자산을 두 풀로 나누는 누출 위험이 잘못 합칠 때의 표본 감소보다 크므로,
+비어 있지 않은 fullName이 공백 제거·대소문자 무시 후 같으면 같은 키로 묶는다.
+
+| 추가 별칭 | 근거 | 설명 |
+|---|---|---|
+| LAYER → SOLAYER | v3 fullName `solayer`/`solayer` | 폐지 LAYER는 4시간 수명이지만 같은 자산 키로 일관되게 보존한다. |
+| SKYAI1 → SKYAI | v3 fullName `Skyai`/`skyai`, 위 공식 SKYAI1 상장 링크 | 토큰 이전 공지를 확인했다는 뜻이 아니라 메타데이터 동일 이름과 비대칭 위험 원칙에 따른 보수적 통합이다. |
+
+`review.same_fullname_split`에 미승인 분리를 표시하며 `build`는 배정 전에 거절한다.
+`DISTINCT_SAME_NAME`은 (정규화 fullName, 정렬된 키 쌍)의 명시적 예외만 허용하고 현재 빈 표다.
+예외 한 쌍이 제3의 키까지 허용하지 않으며 표 내용은 digest에 포함한다.
+v4(코드 510dbfa) 실제 메타데이터 1973개에서 해당 목록이 비었음을 확인했다.
+조건을 충족했으므로 TABLES_FROZEN=True로 확정했다. 정식 실행은 PR 병합 뒤에만 가능하며 아직 실행하지 않았다.

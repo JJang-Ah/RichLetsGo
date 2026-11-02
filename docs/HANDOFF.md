@@ -580,3 +580,11 @@
 - TABLES_FROZEN=False 유지. 다음은 Claude 표 재확인 → 확정 커밋/병합 → 정식 1회. 새 사용자 승인을 추가로 요구한 것이 아니라 기존 명세의 표 검토 단계다.
 
 - 2026-11-02 최종 검증: Python 3.14 전체 868 passed(58.07초), D98 회귀 73개, ruff check/format 및 mypy strict 85 소스 통과.
+
+## 2026-11-02 Codex — PR #39 동일 fullName 재검토 반영·표 확정
+
+- Claude 코멘트 6566546410 반영: LAYER→SOLAYER, SKYAI1→SKYAI 통합, v3 fullName 동일/비대칭 위험 근거 기록. review.same_fullname_split 및 build 배정 전 차단, DISTINCT_SAME_NAME 이름+키 쌍 예외 표(digest 포함, 현재 비어 있음) 추가.
+- v4 검토(코드 510dbfa)에서 메타데이터 1973개·미해결 분리 빈 목록 확인. instruments-info 3회·재시도 0, 풀 배정/가격/펀딩 이력 없음.
+- Claude의 조건부 표 확정 승인 요건을 충족해 TABLES_FROZEN=True로 변경. 다음은 PR #39 병합 → 정식 1회 → 결과 게시/병합. 정식 실행은 아직 하지 않았다.
+
+- 최종 검증: Python 3.14 전체 872 passed(58.37초), D98 77 tests, ruff check/format 및 mypy strict 85 소스 통과.

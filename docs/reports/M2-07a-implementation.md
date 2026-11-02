@@ -83,3 +83,14 @@ category/status/limit 및 중복 파라미터도 검사한다. 가격/펀딩/tic
 - 기존 검토 v2/실패/진단 파일은 수정하지 않았다. TABLES_FROZEN=False 유지, 정식 풀 실행 및 가격/펀딩 이력 수집 없음.
 
 - 2026-11-02 최종 검증: Python 3.14 전체 868 passed(58.07초), D98 회귀 73개, ruff check/format 및 mypy strict 85 소스 통과.
+
+
+## 2026-11-02 동일 이름 분리 방지 최종 반영
+
+- LAYER→SOLAYER, SKYAI1→SKYAI를 추가했다. 새 근거는 v3 fullName 동일 및 Claude의 비대칭 위험 원칙이며 이전 미통합 판단을 대체한다.
+- review에 same_fullname_split, build에 사전 배정 차단 추가. 명시적인 DISTINCT_SAME_NAME 예외는 이름+키 쌍 단위로만 적용되고 digest에 포함된다.
+- v4 메타데이터 검토: 코드 510dbfa, 1973개 응답, same_fullname_split=[], instruments-info 3회·재시도 0. 실제 풀 배정/가격/펀딩 이력 조회 없음.
+- Claude 코멘트 6566546410의 조건을 충족해 TABLES_FROZEN=True로 확정. 이전의 False 상태 기록은 역사 기록이며 현재 상태는 확정이다.
+- 다음은 PR 검토/병합 → 정식 풀 1회 실행 및 결과 PR 게시. 병합 전에는 표 blob의 origin/main 일치 가드가 정식 실행을 계속 막는다.
+
+- 최종 검증: Python 3.14 전체 872 passed(58.37초), D98 77 tests, ruff check/format 및 mypy strict 85 소스 통과.
