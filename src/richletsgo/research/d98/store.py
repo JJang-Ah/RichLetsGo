@@ -1,5 +1,6 @@
 """SQLite series with exact decimal text, immutable rows and durable page checkpoints."""
 
+import json
 import os
 import sqlite3
 from collections.abc import Iterable, Iterator
@@ -10,6 +11,8 @@ from pathlib import Path
 from typing import Any
 
 from richletsgo.backtest.codec import encode
+
+from .locks import execution_gate
 
 
 class Store:
@@ -60,7 +63,12 @@ class Store:
 
     def freeze(self, registration_digest: str) -> None:
         with self.db:
-            self.db.execute("INSERT INTO identity VALUES ('frozen', ?)", (registration_digest,))
+            row = self.db.execute("SELECT value FROM identity WHERE key='frozen'").fetchone()
+            if row is not None and row[0] != registration_digest:
+                raise ValueError("dataset frozen for another registration")
+            self.db.execute(
+                "INSERT OR IGNORE INTO identity VALUES ('frozen', ?)", (registration_digest,)
+            )
 
     @staticmethod
     def table(kind: str) -> str:
@@ -130,12 +138,29 @@ class Store:
 
 
 @contextmanager
-def dataset_lock(path: Path) -> Iterator[None]:
-    """Single collector/auditor; never remove another process's lock or stale lock silently."""
+def dataset_lock(
+    path: Path,
+    *,
+    owner: dict[str, Any] | None = None,
+    recover_owners: list[dict[str, Any]] | None = None,
+) -> Iterator[None]:
+    """Exclusive dataset access; registered dead-owner recovery must match its marker.
+
+    The shared OS gate prevents a recovery/read/unlink race across registrations
+    and collectors. Legacy collector/auditor markers remain fail-closed.
+    """
     lock = path.with_suffix(path.suffix + ".lock")
-    with lock.open("x", encoding="utf-8") as stream:
-        stream.write(str(os.getpid()))
-    try:
-        yield
-    finally:
-        lock.unlink()
+    if lock.exists() and recover_owners is None:
+        raise FileExistsError(lock)
+    with execution_gate(path.with_suffix(path.suffix + ".gate")):
+        if lock.exists() and recover_owners is not None:
+            content = json.loads(lock.read_text(encoding="utf-8"))
+            if content not in recover_owners:
+                raise ValueError("dataset lock belongs to another execution")
+            lock.unlink()
+        with lock.open("x", encoding="utf-8", newline="\n") as stream:
+            stream.write(encode(owner) if owner is not None else str(os.getpid()))
+        try:
+            yield
+        finally:
+            lock.unlink()

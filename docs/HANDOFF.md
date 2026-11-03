@@ -642,3 +642,12 @@
 - P3: 검증 JSON의 파일 해시는 Windows CRLF 생성 바이트 기준이고 저장소 사본은 LF로 정규화됨(내용 digest 영향 없음). 07c부터 `newline="\n"`로 저장.
 - M2-07 명세: 07b 완료 표시, 07c 완료 조건에 4개 추가(폐지 시각 정산의 거래 R 연결 이관, 과거 정산 간격 변경, `Store.freeze` 고정, 산출물 바이트 결정성).
 - 다음: Codex 07c 구현(`task/M2-07c-signal-study`, 합성 데이터만) → Claude 검토 → 병합 → 연구 사전 등록 게시·병합 → C worktree에서 연구 1회. JUDGMENT 접근 금지 유지.
+
+
+## 2026-11-03 Codex — M2-07c 신호 연구 구현·합성 검증
+
+- task/M2-07c-signal-study, main 1ba3dbd 기준. 고정 창 지표/BTC 상태/실제 정산 주기, 8조합 독립 거래, 단계·진행 기준·기술 분포, 계약별 병렬/스트리밍 집계 구현. 기존 주문·장부·실거래 경로 변경 없음.
+- C/P 분리 등록 검증, 데이터 재해시 후 Store.freeze, 동일 등록 멱등/다른 등록 거절, LF 산출물. 실행/DB OS 잠금과 자기 이력 표식 확인으로 hard crash 재개 및 rename 후 무계산 복구. 기존 07b 수집/감사 표식은 자동 회수하지 않음.
+- 전체 927 passed(77.72s), 수집→감사→신호→거래 fixture 최종 보강 뒤 관련17 passed(1.27s), ruff check/format 및 mypy strict98 sources 통과. OS 종료/잠금·재개 digest·기존 ATR 교차·폐지 Ea rate/R·240→60분·판정용 poison 미접근 포함.
+- 600×43000 합성 벤치마크: 저장218.088s, 감사4 workers76.087s, 연구1 worker1563.900s/4 workers401.847s; 부모115.64 MiB, 다중 최대치 합계 상한497.63 MiB. 273600거래/99590400 bytes, 결과593b7a02…678bf 및 거래74341cd6…56060 동일. 임시 DB/거래 파일 삭제 확인. 상세는 docs/reports/D98-07c-implementation.md 및 측정 JSON.
+- 실제 d98-design.sqlite 연구 실행/데이터 접근 및 판정용 접근 없음. 다음: Claude 구현 검토·사용자 병합 → C 사전 등록 별도 PR·병합 → C worktree 실제 연구1회. 봉 내 손절 exit_time의 1h 시작 라벨/기술 histogram 표현을 PR 검토 요청으로 남김.
