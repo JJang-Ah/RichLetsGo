@@ -626,3 +626,12 @@
 - P3도 반영: 모든 OHLCV/turnover/rate 변경 시 판정 불변 검증, launch_partial_hour 설명 항목(기존 기대 범위·missing_ranges·F 규칙 유지), 수집 시작 시 CLI 코드 커밋/시각/대상/refresh 기록.
 - D98 102 tests 통과, 정상 로그 44756행 요약 1KB 미만·개수/예외 원문·압축 원본 해시·로그 변조 시 감사 digest 변경 회귀 포함. 대규모 기존 벤치마크 원본은 역사적 측정으로 보존(새 감사 형식은 digest가 달라짐). 실제 시장 데이터 조회 없음.
 - 최종 검증: Python 3.14 전체 897 passed(60.12초), D98 102개, ruff check/format 및 mypy strict 90 소스 통과. PR #43에 수정·검증 답변 게시; 병합과 실제 수집은 아직 하지 않았다.
+
+## 2026-11-03 Codex — D98 07b 실제 수집·감사 결과 게시
+
+- PR #43 병합 0149420 확인 후 task/M2-07b-collection-result에서 실제 DESIGN 수집 1회. 실행 2026-11-02 07:45:24~12:01:29 UTC(수집+감사 4h16m5s). config.example의 0.2초 pacing·감사4 workers 사용, 소스 변경 없음.
+- 405계약 중 빈 구간 2개 건너뜀. 범위 안 1h봉 7,380,156, 정산 1,409,382, BTC 일봉 2,162. 성공44756페이지, 실제44772요청, 재시도16회 복구, 최종 오류0·refresh0. DESIGN kline/funding 및 BTC일봉 외 요청 없음.
+- 감사 READY: 자격 통과 1,689,258기회, 입력 부족0(0%), BTC 누락0. raw gap 284계약은 모두 F 이전 앞부분(1716h), 내부 공백 없음. 폐지 allowed143 모두 실제 꼬리 길이0. SOPH의 현재60분/과거 마지막240분 차이는 기술용으로 기록. 신호·수익 계산 없음.
+- 감사 digest dace1ad6783af04e31209a9bcd95911e9a585852d5518af175c44ee9bd667685, data_hash 42acf4dfb41f5d9eff49c02c73a37cc5bc8d6c3d48de04b42382d0b04a08bc6c, 압축 전 로그 c14a4f047d540295b650e3763d3b2b755c409ff0b50f05def00de644dab8ab87.
+- SQLite 무결성·파일/본문/manifest/로그 해시·로그와 DB 원문 바이트·요청/심볼 범위 검증. 저장 DB를1 worker로 재감사해 최초4 workers 전체본문/digest와 동일. 네트워크 재수집 없음. 원본 audit.json/md·jsonl.gz, 별도 결과 설명/검증 JSON 게시.
+- 다음: Claude 결과 검토·사용자 병합 → 07c 구현·합성 검증·검토 → 연구 사전 등록 게시/병합 → 연구1회. JUDGMENT 접근 금지 유지. DB는 설정 경로 d98-design.sqlite에 보존.
