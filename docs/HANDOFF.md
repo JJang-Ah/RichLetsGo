@@ -635,3 +635,11 @@
 - 감사 digest dace1ad6783af04e31209a9bcd95911e9a585852d5518af175c44ee9bd667685, data_hash 42acf4dfb41f5d9eff49c02c73a37cc5bc8d6c3d48de04b42382d0b04a08bc6c, 압축 전 로그 c14a4f047d540295b650e3763d3b2b755c409ff0b50f05def00de644dab8ab87.
 - SQLite 무결성·파일/본문/manifest/로그 해시·로그와 DB 원문 바이트·요청/심볼 범위 검증. 저장 DB를1 worker로 재감사해 최초4 workers 전체본문/digest와 동일. 네트워크 재수집 없음. 원본 audit.json/md·jsonl.gz, 별도 결과 설명/검증 JSON 게시.
 - 다음: Claude 결과 검토·사용자 병합 → 07c 구현·합성 검증·검토 → 연구 사전 등록 게시/병합 → 연구1회. JUDGMENT 접근 금지 유지. DB는 설정 경로 d98-design.sqlite에 보존.
+
+## 2026-11-03 Claude — PR #44 검토·병합, 07c 준비
+
+- PR #44(07b 실제 수집 결과) 독립 재계산 통과 후 병합(4fc4d69). 감사 digest·data_hash·로그 sha, 806개 시계열 해시·개수, 요청 44,772건 전부 DESIGN(JUDGMENT 0), 내부 공백 0, 앞부분 공백은 모두 F 이전임을 확인.
+- P3: 검증 JSON의 파일 해시는 Windows CRLF 생성 바이트 기준이고 저장소 사본은 LF로 정규화됨(내용 digest 영향 없음). 07c부터 `newline="
+"`로 저장.
+- M2-07 명세: 07b 완료 표시, 07c 완료 조건에 4개 추가(폐지 시각 정산의 거래 R 연결 이관, 과거 정산 간격 변경, `Store.freeze` 고정, 산출물 바이트 결정성).
+- 다음: Codex 07c 구현(`task/M2-07c-signal-study`, 합성 데이터만) → Claude 검토 → 병합 → 연구 사전 등록 게시·병합 → C worktree에서 연구 1회. JUDGMENT 접근 금지 유지.
