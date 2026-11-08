@@ -76,6 +76,14 @@ FUNDING_LIMIT = D("0.0005")
 HOLD = 168 * HOUR
 POLICY = {
     "version": "D98-study-v1",
+    "rules": {
+        "direction": "BTC trend state: LONG -> long only; SHORT -> short only; FLAT -> no signal.",
+        "overheat": "abs(close(B_0) - EMA20) <= e * ATR14 (boundary included).",
+        "exit_time": (
+            "Start timestamp of the exit 1h bar, not the actual intrabar stop fill time; "
+            "delisting liquidation uses E_a."
+        ),
+    },
     "grid": [[g.v, g.n, g.k] for g in GRID],
     "e": 3,
     "f": "0.0005",

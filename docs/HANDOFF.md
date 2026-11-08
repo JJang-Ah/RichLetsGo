@@ -651,3 +651,12 @@
 - 전체 927 passed(77.72s), 수집→감사→신호→거래 fixture 최종 보강 뒤 관련17 passed(1.27s), ruff check/format 및 mypy strict98 sources 통과. OS 종료/잠금·재개 digest·기존 ATR 교차·폐지 Ea rate/R·240→60분·판정용 poison 미접근 포함.
 - 600×43000 합성 벤치마크: 저장218.088s, 감사4 workers76.087s, 연구1 worker1563.900s/4 workers401.847s; 부모115.64 MiB, 다중 최대치 합계 상한497.63 MiB. 273600거래/99590400 bytes, 결과593b7a02…678bf 및 거래74341cd6…56060 동일. 임시 DB/거래 파일 삭제 확인. 상세는 docs/reports/D98-07c-implementation.md 및 측정 JSON.
 - 실제 d98-design.sqlite 연구 실행/데이터 접근 및 판정용 접근 없음. 다음: Claude 구현 검토·사용자 병합 → C 사전 등록 별도 PR·병합 → C worktree 실제 연구1회. 봉 내 손절 exit_time의 1h 시작 라벨/기술 histogram 표현을 PR 검토 요청으로 남김.
+
+
+## 2026-11-08 Codex — M2-07c 사전 등록 준비 1단계
+
+- PR #46 병합 main d9555b6에서 codex/m2-07c-preregistration-guards 시작. 사용자 지정 순서에 따라 코드 보완만 별도 PR로 준비.
+- POLICY.rules에 BTC LONG/SHORT/FLAT 방향 제한, abs(close(B_0)-EMA20) <= e*ATR14(경계 포함), exit_time의 1h봉 시작 라벨/봉 내 실제 체결시각 아님/폐지는 E_a를 명시. 이 문구는 registration의 policy 및 digest에 포함되며 거래 계산식은 변경하지 않음. 이전 합성 벤치마크 digest는 당시 POLICY의 역사적 측정으로 보존.
+- tools/d98_study.py는 CLI 파일 위치에서 worktree root를 정하고 imported richletsgo 패키지 및 execution 모듈 위치를 먼저 대조한다. 불일치는 인자 파싱·등록 입력/DB 접근 전에 명확한 오류와 C 전용 venv/pip install -e . 안내로 종료.
+- 합성 회귀 36 passed(26.36s): 일치하는 worktree/다른 cwd, 타 checkout 패키지·execution·CLI, 복사한 C CLI+기존 editable 환경의 실제 subprocess 거절, rules 누락/각 문구 변경 시 digest 변경·등록 거절, 기존 실행/거래/집계 회귀. ruff check/format 및 mypy strict98 sources 통과.
+- 다음: Claude 코드 PR 검토·병합 → 그 병합 커밋을 C로 확정 → execution.registration(C,pool,audit)로 사전 등록 JSON/MD 생성 및 C worktree 전용 venv/설치/실행 절차를 별도 PR로 게시 → Claude 검토·병합. 아직 C 미확정이므로 실제 사전 등록 파일을 만들지 않았다. 실제 d98-design.sqlite 실행 및 판정용 풀 접근 없음.
