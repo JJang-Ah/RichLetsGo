@@ -660,3 +660,11 @@
 - tools/d98_study.py는 CLI 파일 위치에서 worktree root를 정하고 imported richletsgo 패키지 및 execution 모듈 위치를 먼저 대조한다. 불일치는 인자 파싱·등록 입력/DB 접근 전에 명확한 오류와 C 전용 venv/pip install -e . 안내로 종료.
 - 합성 회귀 36 passed(26.36s): 일치하는 worktree/다른 cwd, 타 checkout 패키지·execution·CLI, 복사한 C CLI+기존 editable 환경의 실제 subprocess 거절, rules 누락/각 문구 변경 시 digest 변경·등록 거절, 기존 실행/거래/집계 회귀. ruff check/format 및 mypy strict98 sources 통과.
 - 다음: Claude 코드 PR 검토·병합 → 그 병합 커밋을 C로 확정 → execution.registration(C,pool,audit)로 사전 등록 JSON/MD 생성 및 C worktree 전용 venv/설치/실행 절차를 별도 PR로 게시 → Claude 검토·병합. 아직 C 미확정이므로 실제 사전 등록 파일을 만들지 않았다. 실제 d98-design.sqlite 실행 및 판정용 풀 접근 없음.
+
+## 2026-11-08 Claude — PR #46·#47 병합, D100, 07c 사전 등록 게시
+
+- PR #46(07c 구현) 검토 통과 후 병합(d9555b6), PR #47(POLICY.rules, CLI worktree 확인) 검토 통과 후 병합(c235b28).
+- D100(PR #48): 병합 위임·P3 이월·PR 감시·Claude 병렬 구현. 연구 무결성 규칙은 그대로.
+- 사전 등록: C = c235b28의 깨끗한 worktree 코드로 `execution.registration(C, pool, audit)` → `publish_registration`. 등록 digest f7388c0737eafecee0ead281c8aea486c3155ba9c32303742a53273b3106d2e3, data_hash 42acf4df…, audit dace1ad6…, pool 8e5e2d0c….
+- 실행 절차: docs/reports/D98-study-run-procedure.md. Claude가 만든 PR이므로 Codex 검토 → 통과 뒤 병합 → Codex가 C worktree에서 연구 1회 실행 → 결과 PR.
+- 실제 d98-design.sqlite로 연구를 실행하지 않았다. 판정용 풀 접근 없음.

@@ -1,0 +1,7 @@
+# D98 study preregistration
+
+Digest: `f7388c0737eafecee0ead281c8aea486c3155ba9c32303742a53273b3106d2e3`
+
+```json
+{"audit_sha256":"dace1ad6783af04e31209a9bcd95911e9a585852d5518af175c44ee9bd667685","code_commit":"c235b28cebf4c29a0adaa465354e9ba01bbd0651","data_hash":"42acf4dfb41f5d9eff49c02c73a37cc5bc8d6c3d48de04b42382d0b04a08bc6c","policy":{"H":42,"criteria":{"denominator":8,"invalid_ratio_max":"0.05","mean_r":"0.10","min_signals":300,"min_year_signals":30,"min_years":3,"positive_combinations":4,"positive_years_strict_majority":true,"trim_top":"0.01","trimmed_mean_strictly_positive":true},"e":3,"f":"0.0005","fee":"0.00055","grid":[[2,42,2],[2,42,3],[2,84,2],[2,84,3],[3,42,2],[3,42,3],[3,84,2],[3,84,3]],"limitations":["metadata list may omit historic contracts","regularly missing funding records may masquerade as a longer interval","independent one-unit trades; no portfolio, liquidation or capacity model","funding after modelled delist Ea is ignored","design reference only; not holdout validation"],"liquidity_slippage":[["200000000","0.0005"],["50000000","0.0010"],["20000000","0.0015"],["5000000","0.0025"]],"rules":{"direction":"BTC trend state: LONG -> long only; SHORT -> short only; FLAT -> no signal.","exit_time":"Start timestamp of the exit 1h bar, not the actual intrabar stop fill time; delisting liquidation uses E_a.","overheat":"abs(close(B_0) - EMA20) <= e * ATR14 (boundary included)."},"version":"D98-study-v1"},"pool_sha256":"8e5e2d0c4dfa32e0269dd9c906203a97026f552fab739bbe90c68d5368e206fe"}
+```
