@@ -41,3 +41,9 @@
 - 결과를 본 뒤 조건·격자·데이터를 바꾸는 것(바꾸면 새 가설이다).
 - 판정용 풀 데이터 접근. 결과가 GO여도 2단계 사전 등록 전까지 금지다.
 - 실행 전 실제 DB로 시험 실행. 시험은 합성 데이터로만 한다.
+
+## 실행 뒤 주석 (2026-11-09, PR #49·#50 검토 P3)
+
+- 4번 명령의 `^` 줄 연결은 cmd 문법이다. PowerShell에서는 백틱(`` ` ``) 줄 연결이나 인자 배열을 쓴다. 실제 실행(PR #50)은 같은 인자를 PowerShell에 맞게 넘겼다.
+- 7번의 게시 위치는 실제로 `docs/reports/D98-study-result/`(원본 세 파일)와 요약 `docs/reports/D98-study-result.md`였다. 파일 내용은 실행 산출물과 바이트가 같다.
+- DB 경로는 `config.example.toml`의 `market_data_dir`를 메인 checkout 기준으로 해석한 `C:\J_PROGRAM\RichLetsGo\data\backtest\market_data\d98-design.sqlite`였다(`config.local.toml` 없음).
