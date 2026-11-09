@@ -32,6 +32,7 @@ D98 S2-M은 1단계 NO_GO(PR #50)로 끝났다. D101은 S1-B 일봉 채널 돌�
   - `simulate.py`: 04 3.4 3의 거래 상태기계. 계약마다 거래 하나, 각 t에서 청산 처리 → 보유 없을 때만 신호, 반대 돌파 뒤집기, 진입봉부터 1시간봉 순서(펀딩 → 00:00 경계에서 reverse/H/추적 손절 → 손절 판정), 갭, H = 2160시간, 결과 무효(누락 시각에서 끝내고 제외, 다음 t부터 재개).
   - `study.py`: 평가 단계 1~6 집계(1~4는 조합 무관, 보유 여부와 관계없이 모든 `(계약, t)`), 조합 4개, 진행 기준 1~5, 기술용 출력(04 3.4 6).
   - `statistics.py`의 **진입일 묶음 평균**(기준 4): 같은 신호 시각 t의 거래 R 평균을 하나로 보고, 그 값들의 평균. 결과 무효 거래는 넣지 않는다.
+- **등록·실행 경계** (PR #51 Codex 검토 P2): D98의 `execution.validate_checkout`·`run_registered`는 D98 등록 경로·`POLICY`·D98 연구에 묶여 있으므로 **D101에서 호출하지 않는다**. D101은 자기 등록 스키마(`D101-study-v1`)·검증·실행 오케스트레이션을 `research/d101/execution.py`에 따로 둔다. D98에서 가져오는 것은 공통 primitive뿐이다: Git clean·`HEAD = C`·C가 `origin/main`의 조상·게시 blob 바이트 비교, one-shot 잠금·상태, 원자적 LF 출력, data_hash 계산. 이 primitive가 D98 함수 안에 섞여 있어 그대로 import할 수 없으면, 동작을 바꾸지 않는 추출(공통 모듈로 옮기고 D98은 그것을 호출)만 허용한다. 이때 D98 합성 회귀 digest와 D98 테스트가 그대로 통과해야 한다.
 - **DB 확인 순서** (계산 전, 하나라도 실패하면 거절): 풀·감사·등록 파일 digest → checkout 검증(D98과 같은 C/P 규칙) → DB freeze 기록 = D98 등록 digest `f7388c0737eafecee0ead281c8aea486c3155ba9c32303742a53273b3106d2e3` → data_hash 재계산 일치 → 계산.
 - **출력**: `backtest_results/d101-study/<등록 digest>/`에 `D101-study.json`(body + execution, body digest), `D101-study.md`, `D101-study-trades.jsonl`(거래마다: symbol, combination, d, t, P_e, P_x, exit_time, exit_reason, R, R₀, funding, slippage, holding_hours, btc_state). 모두 `newline="\n"`.
 - **계약별 처리**: D98처럼 계약 단위로 읽고 worker 수는 설정값으로 둔다. 1 worker와 다중 worker의 body digest가 같아야 한다.
