@@ -668,3 +668,11 @@
 - 사전 등록: C = c235b28의 깨끗한 worktree 코드로 `execution.registration(C, pool, audit)` → `publish_registration`. 등록 digest f7388c0737eafecee0ead281c8aea486c3155ba9c32303742a53273b3106d2e3, data_hash 42acf4df…, audit dace1ad6…, pool 8e5e2d0c….
 - 실행 절차: docs/reports/D98-study-run-procedure.md. Claude가 만든 PR이므로 Codex 검토 → 통과 뒤 병합 → Codex가 C worktree에서 연구 1회 실행 → 결과 PR.
 - 실제 d98-design.sqlite로 연구를 실행하지 않았다. 판정용 풀 접근 없음.
+
+
+## 2026-11-09 Codex — D98 등록 연구 1회 실행
+
+- PR #49 병합 7fb59ab 및 게시 입력/등록 digest 확인. C=c235b28 전용 `.venv`/editable 설치를 확인하고 C worktree에서 실행. 메인 checkout 기준 `config.example.toml`의 상대 경로로 해석한 `C:\J_PROGRAM\RichLetsGo\data\backtest\market_data\d98-design.sqlite`를 `--db`에 전달(별도 config.local.toml 없음). DB audit 재계산은 등록 data_hash 42acf4df…a08bc6c와 일치, 상태 READY. 그 뒤 freeze 및 정확히 1회 실행 완료, 재시작 0, COMPLETED.
+- 결과 NO_GO, body digest 2cf057539b89ab85e36559dd9b139ab23cc4c615b9247e43e1c65706b4fbe307. 입력 부족 0/1,689,258. 평가 기회1,819,280; 메타 부적격130,022; 메타 자격1,689,258; 데이터 자격629,749; 데이터 부적격1,059,509; 유효 거래12,186.
+- D98-study.json 54,829B SHA a91dd394…f30b3e4; MD1,454B SHA16cefefe…b2653; JSONL6,216,836B/12,186행 SHA4c3e982…71118(10MB 미만이므로 결과 PR에 포함).
+- 경로 해석(예시 상대경로→메인 checkout 기준)과 결과 요약을 `docs/reports/D98-study-result.md`, 원본 세 산출물을 `docs/reports/D98-study-result/`에 둠. 판정용 풀 접근 없음. 다음: 결과 PR 검토·병합; NO_GO여도 결과를 보고 같은 가설/판정 풀을 재실행하지 않는다.
