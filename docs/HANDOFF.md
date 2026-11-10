@@ -736,3 +736,10 @@
 - D102 30 passed(6.23s), D101/D98 연구58 passed(5.72s), D98 수집/실행/풀/통계115 passed(24.43s), 전체 Ruff/format/mypy 통과. 상세 명세 대응은 docs/reports/D102-09a-validation.md.
 - 600계약×43,000봉 합성 벤치마크: DB 생성147.993s, 연구1 worker219.229s/165.36MiB, 4 workers84.520s/462.87MiB. Body b7f54abe0a777135c07d9fd05a15db3b8a7308f3bc1b36d8877b4780e32db4dd 동일, 종목·기간395,520개 stream 바이트/digest 동일. 임시 DB 삭제 확인. JSON/MD 측정 보고서 첨부.
 - 실제 d98-design.sqlite 미접근·미실행, 판정용 풀 미조회. 다음: Claude 구현 검토·병합 → 09b 사전 등록. 실제 연구는 그 등록이 병합된 뒤 09c에서만 실행한다.
+
+## 2026-11-10 — Claude Code (PR #56 병합, D102 09b 사전 등록)
+
+- PR #56(09a) 검토: 04 3.5·M2-09 기준으로 펀딩 점수·자격 단계·바구니·비용 상태·기간 손익·폐지/최종 청산·통계·등록/완료 재호출 경계를 따라가 확인했고 P2 이상은 없었다. D102 테스트 30개(로컬)와 CI 3.12·3.14가 통과해 병합했다(1f2c014). P3: 등급 대체 규칙을 조합의 재조정 시각 기준으로 해석한다(등록 MD에 명시). `_completed` 함수 안의 `import hashlib`은 다음 관련 PR에서 정리한다.
+- 사전 등록: C = 1f2c014의 깨끗한 worktree 코드로 `d102.execution.registration(C, pool, audit)`를 생성했다. 등록 digest b252a7781a9b3e52947fc1495c4e710aebe528765f63c0882ac40c4862183fcc, 파일 3,629 bytes, sha256 14aad310…c89d. 산출물은 `docs/reports/D102-study-preregistration.json`·`.md`, 실행 절차 `D102-study-run-procedure.md`(PowerShell `$main`·`$codeRoot`)다.
+- 실제 DB로 D102 연구를 실행하지 않았고 판정용 풀에도 접근하지 않았다.
+- 다음: Codex가 이 PR을 검토한다(등록 바이트 재생성 일치, 절차와 validate_checkout·verify_frozen_dataset의 일치). 통과하면 Claude가 병합하고, Codex가 09c를 1회 실행한 뒤 결과 PR을 올린다.
