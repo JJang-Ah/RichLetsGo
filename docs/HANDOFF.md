@@ -683,3 +683,13 @@
 - 사용자 위임("가설 설계 알아서해줘")으로 D101 초안 작성: S1-B 분산 추세 신호 연구. 계약 원문 04 3.4, 전략 01 1.2c, 작업 명세 docs/tasks/M2-08-d101-trend-study.md. D98 설계용 풀 DB를 읽기 전용으로 재사용(새 수집 없음), 판정용 풀 미관측 유지.
 - Q27·Q31 닫음, Q28·Q29·Q32·Q33은 D101 2단계로 이월. D98 실행 절차 문서에 실행 뒤 주석 추가(P3 두 건 처리).
 - 다음: Codex가 이 PR(D101 명세) 검토 → 병합 뒤 08a 구현.
+
+## 2026-11-10 Codex — M2-08a D101 연구 도구·합성 검증
+
+- PR #51 병합 main에서 `task/M2-08a-trend-study` 구현. D98 모듈은 수정하지 않고 공통 경계·풀 선택·SQLite Store·audit·codec primitive를 가져와 D101 전용 daily/signal/state machine/statistics/study/execution 경로를 추가했다.
+- 04 3.4 계약에 맞춰 완전한 UTC 24시간 일봉, 엄격한 N=20/55 채널 돌파, both/long 4조합, 계약별 상태기계·역전·손절/갭/H=2160h/펀딩/폐지 E_a 정산·무효 경계, 평가 단계와 진행 기준·기술 통계를 구현했다. 결과 JSON/MD/JSONL은 LF 바이트로 고정하고 worker 결과는 정렬 병합한다.
+- D101 실행 경계는 D98 `validate_checkout`/`run_registered`를 호출하지 않고 D101 등록 스키마·checkout 검증·freeze/data_hash 검증·one-shot 실행을 별도 구현했다. C 이후 게시되는 등록 JSON은 CLI 입력 파일과 `origin/main` blob 바이트를 비교하도록 해 깨끗한 C worktree와 공존하게 했고, 이 흐름을 합성 Git 회귀로 고정했다.
+- 회귀 중 상위 1% 절사 평균 힙이 `ceil(n/100)`이 증가할 때 과거 후보를 보존하지 못하는 결함을 발견해, 사전 집계된 최종 유효 거래 수로 힙 용량을 고정하고 101건 경계 테스트를 추가했다. D98 합성 결과 digest 고정 회귀도 그대로 통과한다.
+- D101 합성 테스트 37 passed(3.55s), D98 수집·실행·풀·등록·통계·연구 테스트 138 passed(23.10s). Ruff check/format 및 mypy strict 10 source 통과. CLI `--help` 확인. 전체 970개 스위트는 기존 `test_backtest.py::test_small_run_prices_fees_funding_and_sqlite`에서 장시간 진행되지 않아 중단했다. 이 테스트는 D101 외 기존 백테스트 경로다.
+- 합성 벤치마크 600계약×43,000봉(25.8M 시간봉): DB 적재147.616s/peak36.96MiB, 연구1 worker233.377s/89.79MiB, 4 workers81.206s/401.68MiB. 두 연구 body SHA-256 동일 `6763ef33030f9aa73d59ba4f911fcc5f678f4c646649aab19e6e3c41e87ba533`; 거래 stream 바이트/digest도 동일(합성 flat 가격이라 0건). 임시 SQLite 제거 확인. 원본 측정은 docs/reports/D101-08a-synthetic-benchmark.json·.md.
+- 실제 `d98-design.sqlite` 미접근·미실행. JUDGMENT 풀 미조회. 다음: PR 게시 → Claude 구현 검토·사용자 병합 → 08b D101 사전 등록 후 08c에서만 실제 설계 DB 1회 실행.

@@ -1,0 +1,34 @@
+{
+  "benchmark": "D101 08a synthetic study",
+  "body_digest_equal": true,
+  "contracts": 600,
+  "database_build_elapsed_seconds": 147.616,
+  "database_build_peak_process_tree_working_set_bytes": 38756352,
+  "database_bytes_before_cleanup": 2558050304,
+  "funding_interval_hours": 4,
+  "hourly_bars_per_contract": 43000,
+  "runs": [
+    {
+      "body_sha256": "6763ef33030f9aa73d59ba4f911fcc5f678f4c646649aab19e6e3c41e87ba533",
+      "elapsed_seconds": 233.377,
+      "peak_process_tree_working_set_bytes": 94150656,
+      "trade_bytes": 0,
+      "trade_count": 0,
+      "trades_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "workers": 1
+    },
+    {
+      "body_sha256": "6763ef33030f9aa73d59ba4f911fcc5f678f4c646649aab19e6e3c41e87ba533",
+      "elapsed_seconds": 81.206,
+      "peak_process_tree_working_set_bytes": 421187584,
+      "trade_bytes": 0,
+      "trade_count": 0,
+      "trades_sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "workers": 4
+    }
+  ],
+  "synthetic_only": true,
+  "temporary_database_removed": true,
+  "total_hourly_bars": 25800000,
+  "trade_stream_bytes_and_digest_equal": true
+}
