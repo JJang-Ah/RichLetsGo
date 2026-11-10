@@ -1,0 +1,34 @@
+{
+  "benchmark": "D102 09a synthetic study",
+  "body_digest_equal": true,
+  "contracts": 600,
+  "database_build_elapsed_seconds": 147.993,
+  "database_build_peak_process_tree_working_set_bytes": 38248448,
+  "database_bytes_before_cleanup": 2558050304,
+  "funding_interval_hours": 4,
+  "hourly_bars_per_contract": 43000,
+  "position_stream_bytes_and_digest_equal": true,
+  "runs": [
+    {
+      "body_sha256": "b7f54abe0a777135c07d9fd05a15db3b8a7308f3bc1b36d8877b4780e32db4dd",
+      "elapsed_seconds": 219.229,
+      "peak_process_tree_working_set_bytes": 173395968,
+      "position_bytes": 101060160,
+      "position_count": 395520,
+      "positions_sha256": "be6a0d22d4ce811cfaeffd5f94650ac145319d775b14427b7dcfcfec99b3b276",
+      "workers": 1
+    },
+    {
+      "body_sha256": "b7f54abe0a777135c07d9fd05a15db3b8a7308f3bc1b36d8877b4780e32db4dd",
+      "elapsed_seconds": 84.52,
+      "peak_process_tree_working_set_bytes": 485355520,
+      "position_bytes": 101060160,
+      "position_count": 395520,
+      "positions_sha256": "be6a0d22d4ce811cfaeffd5f94650ac145319d775b14427b7dcfcfec99b3b276",
+      "workers": 4
+    }
+  ],
+  "synthetic_only": true,
+  "temporary_database_removed": true,
+  "total_hourly_bars": 25800000
+}

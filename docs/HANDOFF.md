@@ -721,3 +721,18 @@
 - 사용자 선택("펀딩 시장중립 설계")으로 D102 초안: 펀딩 순위 롱·숏 시장 중립 바구니. 계약 원문 04 3.5, 전략 01 1.2d, 작업 명세 docs/tasks/M2-09-d102-funding-neutral-study.md. D98 설계용 풀 DB 읽기 전용 재사용, 판정용 풀 미관측 유지.
 - P3 이월 처리: D101 실행 절차에 실행 뒤 주석(`<C>` 자리 표시, 재호출 확인 단계, MD 수치 표현). 코드 쪽 P3 두 건(MD 수치 표현, 심볼 동률 정렬)은 M2-09에서 같은 실수를 반복하지 않도록 명세에 넣음.
 - 다음: Codex가 이 PR(D102 명세) 검토 → 병합 뒤 09a 구현.
+
+## 2026-11-10 Codex — PR #55 최종 검토 통과·09a 구현 시작
+
+- PR #55 HEAD75be5cc 최종 청산 P2 재검토 통과(댓글6760414344). Claude 병합3ee1ddc 확인 후 task/M2-09a-funding-neutral 생성.
+- 첫 구현: d102/funding.py의 L=1/7 점수·역사적 주기별 8h 환산·기간 양 끝 커버리지, basket.py의 단일 순위 양끝 다리·부호 있는 목표 차이 비용·등급 보존·폐지/최종 청산 상태.
+- 합성 회귀12 passed(0.09s). 주기 변경·창 경계·동률 심볼 접두어·방향 전환·현금 청산·폐지 중복 비용 방지를 확인했다. 실제 DB/판정용 데이터 접근 없음.
+- 09a는 진행 중이다. 남은 구현: eligibility/period/study/statistics/execution/CLI, 전체 완료 조건 합성 검증과 600×43000 벤치마크, 구현 PR. 사전 등록/실제 연구 실행은 아직 하지 않는다.
+
+## 2026-11-10 Codex — M2-09a D102 연구 도구·합성 검증 완료
+
+- task/M2-09a-funding-neutral에서 계약별 eligibility/funding 계산, 시각순 바구니·기간 손익·통계, D102 전용 등록/checkout/one-shot 실행과 CLI를 구현했다. D98/D101 계산 코드는 변경하지 않았고 읽기 전용 freeze/data_hash 검사를 import했다.
+- 원문 04 3.5의 펀딩 가격 비율, 폐지 Ea 포함·현금화·최종 생존 보유 비용, 무효 기여 0·비중 유지, 현금/무효 기간 통계 경계와 기준5 고정 분모를 반영했다. JSON/MD/JSONL LF 및 Markdown 정규화, 심볼 문자열 동률 정렬을 고정했다.
+- D102 30 passed(6.23s), D101/D98 연구58 passed(5.72s), D98 수집/실행/풀/통계115 passed(24.43s), 전체 Ruff/format/mypy 통과. 상세 명세 대응은 docs/reports/D102-09a-validation.md.
+- 600계약×43,000봉 합성 벤치마크: DB 생성147.993s, 연구1 worker219.229s/165.36MiB, 4 workers84.520s/462.87MiB. Body b7f54abe0a777135c07d9fd05a15db3b8a7308f3bc1b36d8877b4780e32db4dd 동일, 종목·기간395,520개 stream 바이트/digest 동일. 임시 DB 삭제 확인. JSON/MD 측정 보고서 첨부.
+- 실제 d98-design.sqlite 미접근·미실행, 판정용 풀 미조회. 다음: Claude 구현 검토·병합 → 09b 사전 등록. 실제 연구는 그 등록이 병합된 뒤 09c에서만 실행한다.
