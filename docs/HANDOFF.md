@@ -700,3 +700,10 @@
 - 합성 SQLite에서 실제 채널 계산·시뮬레이터·contract_study를 연결한 롱/숏 회귀: 봉 내 손절일 재진입 없음, 다음 날 재진입 가능, 시가 갭 청산일 재진입 가능. 추적 갱신 봉의 release 경계도 수정했다.
 - POLICY.limitations에 같은 날 종목 간 신호 상관·독립 표본 한계(기준 3·4 일부 보완), 저유동성 장기 보유의 tier·레버리지 제약(2단계)을 추가했다. 등록 본문 포함과 각 항목 제거 시 digest 변경을 검증했다. 기존 대형 합성 벤치마크는 이전 POLICY의 역사적 측정으로 보존·주석 처리했다.
 - D101 41 passed(4.06s), Ruff check 및 mypy strict 8 modules 통과. 실제 DB·판정용 풀 접근 없음. 다음은 Claude 재검토이며, P3 심볼 접두어 동률 정렬은 검토 지시대로 다음 관련 PR에 이월한다.
+
+## 2026-11-10 — Claude Code (PR #52 병합, D101 08b 사전 등록)
+
+- PR #52(08a) 검토: P2 두 건(00:00 봉 안 손절 뒤 같은 t 재진입 겹침, POLICY 한계 두 항목 누락)을 Codex가 a76539d로 고침 → 재검토 통과, CI 통과, 병합 303ef3d. P3(심볼 접두어 동률 정렬, trim_order_sha256에만 영향)는 다음 관련 PR로 이월.
+- 사전 등록: C = 303ef3d의 깨끗한 worktree 코드로 `d101.execution.registration(C, pool, audit)` 생성. 등록 digest e2d0cec79f829bcbabc10322c6a43ab0e975a39f04f2a27dc534e60e383fb314. `docs/reports/D101-study-preregistration.json`·`.md`, 실행 절차 `D101-study-run-procedure.md`(PowerShell).
+- 실제 DB로 D101 연구를 실행하지 않았다. 판정용 풀 접근 없음.
+- 다음: Codex가 이 PR 검토(등록 바이트 재생성 일치, 절차가 validate_checkout·verify_frozen_dataset과 맞는지) → Claude 병합 → Codex 08c 1회 실행 → 결과 PR.
