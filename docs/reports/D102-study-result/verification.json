@@ -1,0 +1,68 @@
+{
+  "attempts": 1,
+  "checks": {
+    "L1-H3": {
+      "cash": 301,
+      "cash_ratio": "0.5207612456747404844290657439446367",
+      "mean_trim_concentration_mdd_and_components_match": true,
+      "periods": 578,
+      "positions": 4010
+    },
+    "L1-H7": {
+      "cash": 127,
+      "cash_ratio": "0.5141700404858299595141700404858300",
+      "mean_trim_concentration_mdd_and_components_match": true,
+      "periods": 247,
+      "positions": 1730
+    },
+    "L7-H3": {
+      "cash": 301,
+      "cash_ratio": "0.5207612456747404844290657439446367",
+      "mean_trim_concentration_mdd_and_components_match": true,
+      "periods": 578,
+      "positions": 4010
+    },
+    "L7-H7": {
+      "cash": 127,
+      "cash_ratio": "0.5141700404858299595141700404858300",
+      "mean_trim_concentration_mdd_and_components_match": true,
+      "periods": 247,
+      "positions": 1730
+    }
+  },
+  "files": [
+    {
+      "bytes": 46315,
+      "file": "D102-study.json",
+      "included": true,
+      "sha256": "fd47fc5a4d1035cc26af449d63f989469dddf88ceee2c3612d92fc7a2c8c026b"
+    },
+    {
+      "bytes": 903,
+      "file": "D102-study.md",
+      "included": true,
+      "sha256": "53d3a23cddc10c3a7bf2b98583ccc4fc3ee95a032eb1f46078f3dbd73793620f"
+    },
+    {
+      "bytes": 1019290,
+      "file": "D102-study-periods.jsonl",
+      "included": true,
+      "sha256": "59b703b2100c30d163e35c7af27ae5735c4ff98272b46dded8fe70f894156960"
+    },
+    {
+      "bytes": 4307592,
+      "file": "D102-study-positions.jsonl",
+      "included": true,
+      "sha256": "bf281f147b31c961a0e2b02c97bcd3bf7de85b3f54b946d08f0db051b748a42f"
+    },
+    {
+      "bytes": 154,
+      "file": "state.json",
+      "included": true,
+      "sha256": "02fc20286d6416387de783ef8afd4d4f39d7fb05d3fdbaf78b8a5b955a9695ac"
+    }
+  ],
+  "result_sha256": "52ddbf46967042bd2932287c894a4a2c3177d4e1e051bf1a7775ce3d371256e5",
+  "resumes": 0,
+  "verification": "artifact-only; no DB read or research rerun"
+}

@@ -743,3 +743,10 @@
 - 사전 등록: C = 1f2c014의 깨끗한 worktree 코드로 `d102.execution.registration(C, pool, audit)`를 생성했다. 등록 digest b252a7781a9b3e52947fc1495c4e710aebe528765f63c0882ac40c4862183fcc, 파일 3,629 bytes, sha256 14aad310…c89d. 산출물은 `docs/reports/D102-study-preregistration.json`·`.md`, 실행 절차 `D102-study-run-procedure.md`(PowerShell `$main`·`$codeRoot`)다.
 - 실제 DB로 D102 연구를 실행하지 않았고 판정용 풀에도 접근하지 않았다.
 - 다음: Codex가 이 PR을 검토한다(등록 바이트 재생성 일치, 절차와 validate_checkout·verify_frozen_dataset의 일치). 통과하면 Claude가 병합하고, Codex가 09c를 1회 실행한 뒤 결과 PR을 올린다.
+
+## 2026-11-10 Codex — D102 09c 등록 연구 1회 완료
+
+- PR #57 병합 f051ecb 확인 후 clean C=1f2c014 worktree/전용 venv를 재사용했다. 절차의 등록/checkout/freeze/pool identity/감사 data_hash 검증 통과 뒤 등록 연구1회 실행, COMPLETED·시도1·재개0·exit0. 코드·조건·데이터 변경이나 판정용 풀 접근 없음.
+- 결과 NO_GO, body digest 52ddbf46967042bd2932287c894a4a2c3177d4e1e051bf1a7775ce3d371256e5. 네 조합 모두 현금 기간51.42~52.08%로 조합 판정 불가(5% 초과); 입력 부족0, 무효 종목·기간0. L7-H3 원시 평균만 양수지만 t/절사/집중/낙폭 기준 미달.
+- 원본 JSON/MD/기간 JSONL1,019,290 bytes/종목 JSONL4,307,592 bytes/state를 docs/reports/D102-study-result/에 바이트 그대로 보존했다. JSONL 두 개 모두10MB 이하라 제외 없음. 실행 기록·파일 해시·독립 집계 검증과 요약 D102-study-result.md 첨부.
+- 명령 전체52.630초(검증 포함),4 workers. 결과 파일만 읽어 평균/절사/기여 제거/MDD/가격·펀딩 집계를 검증했으며 DB 재감사나 연구 재실행은 하지 않았다. 다음: Claude 결과 PR 검토. 같은 가설 재실행 금지 유지.
