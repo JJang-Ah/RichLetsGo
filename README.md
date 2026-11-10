@@ -1,4 +1,4 @@
-# RichLetsGo — Bybit 선물 / 국내·미국 주식 자동매매
+# RichLetsGo — Bybit USDT 무기한 자동매매
 
 2026-10-19에 시작한 Codex + Claude Code 공동 개발 프로젝트입니다.
 
@@ -24,7 +24,7 @@
 - 첫 대상: Bybit USDT 무기한 BTCUSDT·ETHUSDT, 단방향, 격리 마진, 레버리지 3~5배 범위.
 - 완전 자동매매, 사용자의 Windows PC에서 Windows 서비스로 실행, 주 저장소는 로컬 Oracle Database Free.
 - AI 점수는 진입을 막거나 크기를 줄이기만 하며, 손절·한도는 규칙 엔진이 강제합니다.
-- 한국투자증권 국내·미국 주식은 Bybit 실거래가 안정된 뒤 별도 설계로 추가합니다.
+- 모든 거래는 Bybit에서 합니다(D103). 한국투자증권(KIS)은 범위에서 뺐고, Bybit의 주식·ETF·원자재·외환 USDT 무기한은 실현 가능성 점검(04 3.6) 뒤 검토합니다.
 
 ## 협업 방식
 
