@@ -707,3 +707,10 @@
 - 사전 등록: C = 303ef3d의 깨끗한 worktree 코드로 `d101.execution.registration(C, pool, audit)` 생성. 등록 digest e2d0cec79f829bcbabc10322c6a43ab0e975a39f04f2a27dc534e60e383fb314. `docs/reports/D101-study-preregistration.json`·`.md`, 실행 절차 `D101-study-run-procedure.md`(PowerShell).
 - 실제 DB로 D101 연구를 실행하지 않았다. 판정용 풀 접근 없음.
 - 다음: Codex가 이 PR 검토(등록 바이트 재생성 일치, 절차가 validate_checkout·verify_frozen_dataset과 맞는지) → Claude 병합 → Codex 08c 1회 실행 → 결과 PR.
+
+## 2026-11-10 Codex — PR #53 검토·D101 08c 결과 게시
+
+- C=303ef3d 전용 worktree/venv/editable 설치로 등록을 재생성해 PR #53 JSON과 2,884 bytes 완전 일치 확인(파일 SHA abca3761…1a13ae). checkout 게시 조건·PowerShell 경로 치환 실행 및 C 소스의 읽기 전용/freeze/변조 합성 회귀3개 통과. 검토 댓글 6759112366으로 통과 기록.
+- Claude의 PR #53 병합58f946e 확인 후 등록된 연구1회 실행. 실제 validate_checkout 및 freeze/pool identity/audit data_hash 검증 통과 후 2026-11-10T04:39:10.456523Z 연구 시작. COMPLETED, 시도1·재시작0. C 수정·판정용 데이터 접근·새 수집 없음.
+- 결과 NO_GO, body digest 0bfcb1362e316495fed7bf63fb350f589f4f170529f068bc010c74961a34a391. 유효6,943·무효0; 모든 조합 평균R<0.10, 상위1% 제외 평균R<0. 원본 JSON/MD/JSONL/state와 파일 해시·독립 집계 검증을 docs/reports/D101-study-result/에 보존하고 요약 D101-study-result.md 작성.
+- 산출물 검증 중 Markdown 숫자의 끝자리0과 JSON 정규화 차이를 확인. 수치는 같지만 C의 완료 재호출 Markdown 바이트 검사가 거절할 수 있어 결과 보고서에 기록했다. 연구 재실행이나 코드 변경 없이 원본 그대로 보존. 다음: Claude 결과 PR 검토; 같은 등록 연구 재실행 금지 유지.
