@@ -693,3 +693,10 @@
 - D101 합성 테스트 37 passed(3.55s), D98 수집·실행·풀·등록·통계·연구 테스트 138 passed(23.10s). Ruff check/format 및 mypy strict 10 source 통과. CLI `--help` 확인. 전체 970개 스위트는 기존 `test_backtest.py::test_small_run_prices_fees_funding_and_sqlite`에서 장시간 진행되지 않아 중단했다. 이 테스트는 D101 외 기존 백테스트 경로다.
 - 합성 벤치마크 600계약×43,000봉(25.8M 시간봉): DB 적재147.616s/peak36.96MiB, 연구1 worker233.377s/89.79MiB, 4 workers81.206s/401.68MiB. 두 연구 body SHA-256 동일 `6763ef33030f9aa73d59ba4f911fcc5f678f4c646649aab19e6e3c41e87ba533`; 거래 stream 바이트/digest도 동일(합성 flat 가격이라 0건). 임시 SQLite 제거 확인. 원본 측정은 docs/reports/D101-08a-synthetic-benchmark.json·.md.
 - 실제 `d98-design.sqlite` 미접근·미실행. JUDGMENT 풀 미조회. 다음: PR 게시 → Claude 구현 검토·사용자 병합 → 08b D101 사전 등록 후 08c에서만 실제 설계 DB 1회 실행.
+
+## 2026-11-10 Codex — PR #52 Claude P2 두 건 반영
+
+- Claude 댓글 6757905758 반영. 봉 내 접촉 손절은 보고용 exit_time을 유지하고 release를 exit_time+1h로 돌려 같은 00:00 시가의 중복 진입을 차단했다. 시가 청산(reverse/H/갭/이벤트와 겹친 stop)의 release는 해당 시각을 유지한다.
+- 합성 SQLite에서 실제 채널 계산·시뮬레이터·contract_study를 연결한 롱/숏 회귀: 봉 내 손절일 재진입 없음, 다음 날 재진입 가능, 시가 갭 청산일 재진입 가능. 추적 갱신 봉의 release 경계도 수정했다.
+- POLICY.limitations에 같은 날 종목 간 신호 상관·독립 표본 한계(기준 3·4 일부 보완), 저유동성 장기 보유의 tier·레버리지 제약(2단계)을 추가했다. 등록 본문 포함과 각 항목 제거 시 digest 변경을 검증했다. 기존 대형 합성 벤치마크는 이전 POLICY의 역사적 측정으로 보존·주석 처리했다.
+- D101 41 passed(4.06s), Ruff check 및 mypy strict 8 modules 통과. 실제 DB·판정용 풀 접근 없음. 다음은 Claude 재검토이며, P3 심볼 접두어 동률 정렬은 검토 지시대로 다음 관련 PR에 이월한다.

@@ -21,3 +21,5 @@ The temporary database occupied 2,558,050,304 bytes (2.382 GiB) before cleanup. 
 - Temporary database removed: **yes**
 
 The machine-readable measurements are in [D101-08a-synthetic-benchmark.json](D101-08a-synthetic-benchmark.json).
+
+These measurements and digests describe the original `f816e9f` implementation. The PR #52 review follow-up adds two registered policy limitations, so a new run's body digest will differ. The original measurements are preserved as historical results; the review follow-up did not rerun this benchmark.

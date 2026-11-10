@@ -82,6 +82,10 @@ POLICY = {
         "input_insufficient_ratio_max": "0.05",
     },
     "limitations": [
+        "Same-day breakouts across symbols are correlated, not independent trade samples; "
+        "criteria 3 and 4 partially mitigate this limitation.",
+        "Long holdings in low-liquidity symbols face risk-tier and leverage constraints "
+        "beyond tiered slippage; these are addressed in stage 2.",
         "DESIGN pool only; this is a research gate, not holdout validation.",
         "Independent one-unit trades; no portfolio, liquidation or capacity model.",
         "Daily candles are aggregated from UTC hourly data.",

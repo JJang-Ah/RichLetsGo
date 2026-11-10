@@ -207,7 +207,8 @@ def test_trailing_stop_is_effective_on_update_bar_without_retroactive_touch(dire
     )
     assert reason is None and trade is not None
     assert trade["exit_reason"] == "stop"
-    assert trade["exit_time"] == at == release
+    assert trade["exit_time"] == at
+    assert release == at + HOUR
     assert trade["P_x"] == expected * (1 - direction * D("0.001"))
 
 
@@ -521,6 +522,65 @@ def test_workers_have_identical_body_and_artifact_bytes(tmp_path):
     assert all(json.loads(line)["symbol"] == "SYNUSDT" for line in trades.splitlines())
 
 
+@pytest.mark.parametrize("direction", [1, -1])
+@pytest.mark.parametrize("intrabar", [True, False])
+def test_midnight_stop_reentry_depends_on_open_or_intrabar_exit(tmp_path, direction, intrabar):
+    path = tmp_path / "midnight-stop.sqlite"
+    pool, audit = hourly_dataset(path)
+    contract = pool["body"]["contracts"][0]
+    store = Store(path)
+    try:
+        with store.db:
+            for day, values in (
+                (-1, (100, 122, 95, 120)),
+                (0, (130, 132, 125, 130)),
+                (1, (150, 152, 145, 150)),
+                (2, (160, 162, 155, 160)),
+            ):
+                for hour in range(24):
+                    opening, high, low, close = map(D, values)
+                    if day == 1 and hour == 0:
+                        low = D(95) if intrabar else D(94)
+                        opening = opening if intrabar else D(94)
+                    if direction == -1:
+                        opening, high, low, close = (
+                            200 - opening,
+                            200 - low,
+                            200 - high,
+                            200 - close,
+                        )
+                    store.db.execute(
+                        "UPDATE bars_1h SET open=?, high=?, low=?, close=? "
+                        "WHERE symbol=? AND start=?",
+                        (
+                            *map(str, (opening, high, low, close)),
+                            contract["symbol"],
+                            STUDY_START + day * DAY + hour * HOUR,
+                        ),
+                    )
+    finally:
+        store.close()
+
+    class FlatBTC:
+        def at(self, at):
+            return 0
+
+    coverage = {**audit["body"]["contracts"][0], "tail": "allowed"}
+    output = tmp_path / "trades.jsonl"
+    result = contract_study((path, contract, [contract], coverage, FlatBTC(), output))
+    trades = [json.loads(line) for line in output.read_text().splitlines()]
+    for key in ("N20-M10-both", "N55-M20-both"):
+        rows = [row for row in trades if row["combination"] == key]
+        assert rows[0]["exit_time"] == STUDY_START + DAY
+        assert rows[0]["exit_reason"] == ("stop" if intrabar else "gap")
+        assert [row["t"] for row in rows] == (
+            [STUDY_START, STUDY_START + 2 * DAY]
+            if intrabar
+            else [STUDY_START, STUDY_START + DAY, STUDY_START + 2 * DAY]
+        )
+        assert result["combinations"][key]["fired"] == len(rows)
+
+
 def result_is_lf(path) -> bool:
     data = path.read_bytes()
     return b"\r\n" not in data and data.endswith(b"\n")
@@ -627,6 +687,17 @@ def test_checkout_c_uses_later_published_registration_inputs(tmp_path, monkeypat
     monkeypatch.setattr(execution, "D98_AUDIT_DIGEST", audit["sha256"])
     monkeypatch.setattr(execution, "D98_DATA_HASH", audit["body"]["data_hash"])
     reg = execution.registration(code_commit, pool, audit)
+    required_limitations = [
+        "Same-day breakouts across symbols are correlated, not independent trade samples; "
+        "criteria 3 and 4 partially mitigate this limitation.",
+        "Long holdings in low-liquidity symbols face risk-tier and leverage constraints "
+        "beyond tiered slippage; these are addressed in stage 2.",
+    ]
+    policy = reg["body"]["policy"]
+    for limitation in required_limitations:
+        assert limitation in policy["limitations"]
+        without = {**policy, "limitations": [x for x in policy["limitations"] if x != limitation]}
+        assert execution.envelope({**reg["body"], "policy": without})["sha256"] != reg["sha256"]
     input_values = {
         execution.REGISTRATION_PATH: reg,
         execution.POOL_PATH: pool,

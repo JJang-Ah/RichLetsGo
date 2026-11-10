@@ -26,7 +26,7 @@ def simulate(
     features: dict[str, Any],
     btc_state: str,
 ) -> tuple[dict[str, Any] | None, str | None, int]:
-    """Return (trade, invalid reason, release time); invalid paths stop at first gap."""
+    """Return trade, invalid reason and release time (after the bar for intrabar stops)."""
     if direction not in (-1, 1):
         raise ValueError("direction must be +/-1")
     signal_day = series.daily.get(at - DAY)
@@ -83,6 +83,7 @@ def simulate(
     last_funding_index = funding_index
     exit_time: int | None = None
     exit_reason = ""
+    intrabar_exit = False
     price: Decimal | None = None
     reference: Decimal | None = None
 
@@ -158,6 +159,7 @@ def simulate(
             reference = stop
             price = reference * (1 - direction * slip)
             exit_time, exit_reason = u, "stop"
+            intrabar_exit = True
             break
 
     if exit_time is None or price is None or reference is None:
@@ -179,7 +181,9 @@ def simulate(
         btc_state,
         str(features["liquidity_bucket"]),
     )
-    return trade, None, exit_time
+    # exit_time labels the bar, not the actual intrabar fill time. Its opening
+    # cannot be reused for entry when the position closes later in that bar.
+    return trade, None, exit_time + HOUR if intrabar_exit else exit_time
 
 
 @calculated
