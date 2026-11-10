@@ -764,3 +764,11 @@
 - 0단계 1차(공식 문서 + 공개 `instruments-info` 메타데이터 4회만, 시세·키·주문 없음): `docs/reports/D103-feasibility.md`. TradFi 무기한 305개(주식 238: US 210·HK 19·KR 7·CN 2, ETF 59, 원자재 4, 외환 4), 주식 첫 상장 2026-04-21. 암호자산과 겹치는 심볼 0.
 - 핵심 사실: 휴장 중 지수는 느린 EWMA로 거의 멈춘다. 주말에 일부 심볼은 reduce-only만 허용될 수 있다. 분할 때 거래가 중단된다. 거래 동의는 마스터 웹 UI로 하거나, API로 하려면 출금·이체 권한 키가 필요하다(D75와 충돌). 데모 지원과 한국 거주자 이용 가능 여부는 미확인.
 - 제안: 보류에 가까운 조건부 진행. 먼저 사용자 확인(앱 거래 동의 화면, 웹 UI 동의) → 2차(수집 계획 뒤 유동성·스프레드) → 데모 보호 동작 확인.
+
+## 2026-11-10 — Claude Code (PR #60 병합, M2-10a D103 수집 도구)
+
+- PR #60(D103 1차 보고서·2차 수집 계획): Codex P2 5건(ticker 과거 필드, B 배타 경계·펀딩 시간 인수, 스냅샷 보존, 재개 갭 근사, EWMA 서술)과 P3 반영 → 재검토 통과, 병합 eda9672. 1차 메타데이터 원문은 `docs/reports/D103-instruments-2026-11-10/`에 보존(해시 일치).
+- M2-10a 구현(`task/M2-10-tradfi-structure`): `research/d103/`(allowlist, guard, store, collect, sessions, stats), CLI `tools/d103_collect.py`(history/live)·`d103_stats.py`·`d103_sessions.py`, 세션 표 `docs/reports/D103-sessions.json`(exchange_calendars 4.13.2).
+- 가드: 심볼 명시·allowlist 밖 거절, tickers 금지, 과거 요청은 시작·종료 인수 필수이고 종료 ≤ B − 봉 폭(펀딩 B − 1ms), 상장 ≥ B 심볼은 과거 요청 0건, B 이상 응답이면 저장 없이 중단·사고 기록, orderbook 예상 밖 필드면 중단, D98 경로 DB 거절.
+- 합성 테스트 29개 통과, ruff·mypy(124 소스) 통과. 실제 시세 요청은 하지 않았다(메타데이터도 이번에는 다시 받지 않음).
+- 다음: Codex 도구 검토 → 병합 뒤 Claude가 history 수집 → live 14일 표본 → 통계·2차 보고서.

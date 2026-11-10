@@ -1,6 +1,6 @@
 # M2-10 D103 0단계 2차: TradFi 무기한 시장 구조 수집 계획
 
-- 상태: 계획 초안(2026-11-10, Claude). PR #60 Codex P2 5건·P3 반영. Codex 재검토 → 병합 뒤 수집
+- 상태: 계획 확정(PR #60 eda9672). **M2-10a 수집 도구 구현**(Claude) → Codex 검토·병합 뒤 수집
 - 근거: D103, **04 3.6이 계약 원문**이다. 1차 결과는 `docs/reports/D103-feasibility.md`.
 - 담당: 수집 도구와 수집은 Claude가 맡는다(D100: 과거 데이터 수집·도구는 위험이 낮은 작업). 도구 PR은 Codex 검토 뒤 병합한다. 주문·키 경로는 없다.
 - 결과물: `docs/reports/D103-structure.md`(2차 보고서). 1차 보고서 6절의 "진행 / 보류" 제안을 갱신한다.
@@ -49,12 +49,14 @@ TradFi 무기한이 우리 운용 규모에서 거래할 만한지를 **시장 �
 | 데이터 | 엔드포인트(공개, `category=linear`, `symbol=` 명시) | 범위 | 필드 |
 |---|---|---|---|
 | 1시간봉 | `/v5/market/kline`, `interval=60`, `start`·`end` | 상장 ~ B | start, open, high, low, close, volume, turnover |
-| 경계 5분봉 | `/v5/market/kline`, `interval=5`, `start`·`end` | 4절 세션 시작 경계 R마다 `[R − 5m, R + 15m)`, 그리고 `R + 15m ≤ B` | 같음 |
+| 경계 5분봉 | `/v5/market/kline`, `interval=5`, `start`·`end` | 요청은 상장 ~ B의 5분봉 페이지(1,000개 단위), **저장은 4절 세션 시작 경계 R마다 `[R − 5m, R + 15m)`인 봉만**, 그리고 `R + 15m ≤ B` | 같음 |
 | index·mark 가격 1시간봉 | `/v5/market/index-price-kline`, `/v5/market/mark-price-kline`, `interval=60` | 상장 ~ B | start, open, high, low, close |
 | 펀딩 이력 | `/v5/market/funding/history`, `startTime`·`endTime` | 상장 ~ B | 정산 시각, 율 |
 | 최우선 호가 | `/v5/market/orderbook`, `limit=1` | [T0, T0 + 14일), **5분마다** 심볼별 | 응답 시각, bid1·ask1 가격·수량 |
 | 호가 깊이 | `/v5/market/orderbook`, `limit=50` | [T0, T0 + 14일), **1시간마다** | 응답 시각, 양쪽 50단계 가격·수량 |
 
+- 5분봉은 경계마다 따로 요청하면 약 10만 회가 들어서, B 이전 관측 구간 안에서 페이지로 받고 경계 창만 저장한다(PR M2-10a 구현 결정). 받는 범위가 넓어지지만 모두 B 이전 관측 구간이라 판정 후보 경계는 그대로다.
+- 세션 표는 `tools/d103_sessions.py`가 `exchange_calendars`(선택 패키지, 프로젝트 의존성 아님)로 한 번 만든 `docs/reports/D103-sessions.json`이다. 버전을 표에 기록하고, 수집·통계 코드는 이 표만 읽는다.
 - 요청 속도는 초당 5회 이하로 둔다. 오류나 빈 응답은 재시도 3회 뒤 결측으로 기록한다. 결측을 0이나 직전 값으로 채우지 않는다.
 - 저장은 새 SQLite `data/backtest/market_data/d103-tradfi-structure.sqlite`에만 한다. **D98 DB는 열지 않는다.** 수집이 끝나면 data_hash를 계산해 기록한다.
 - 분할 등으로 거래가 중단된 구간은 결측으로 둔다. 과거 kline이 분할 비율로 조정된다는 점(1차 2절)을 기록하고, 공지된 중단 구간은 갭 통계에서 뺀다.
