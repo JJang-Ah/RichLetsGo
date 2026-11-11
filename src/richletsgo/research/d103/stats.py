@@ -7,8 +7,8 @@ from decimal import Decimal
 from typing import Any
 
 from .allowlist import Allowlist
-from .models import AFTER, BEFORE, DAY, HOUR, NOTIONALS
-from .sessions import Boundary, Sessions, calendar_for, load
+from .models import AFTER, BEFORE, DAY, HOUR, NOTIONALS, STALE_AFTER
+from .sessions import Boundary, Sessions, calendar_for, load, reopen_points
 from .store import Store
 
 D = Decimal
@@ -84,18 +84,49 @@ def depth_cost(
 
 
 def reopen_changes(
-    closes: dict[int, Decimal], boundaries: Iterable[Boundary]
-) -> tuple[list[tuple[str, str, Decimal]], int]:
-    """abs(P_after / P_before - 1) per boundary; a missing bar skips and is counted."""
-    out, missing = [], 0
+    closes: dict[int, Decimal],
+    boundaries: Iterable[Boundary],
+    halts: Sequence[Sequence[int]] = (),
+) -> tuple[list[tuple[str, str, Decimal]], int, int]:
+    """abs(P_after / P_before - 1) per R; (values, missing, halted).
+
+    A missing bar skips and counts as missing. A window [R - 5m, R + 15m) overlapping an
+    announced halt [start, end) is excluded and counted apart, even with both bars present.
+    """
+    out, missing, halted = [], 0, 0
     for b in boundaries:
+        low, high = b.at + BEFORE[0], b.at + AFTER[1]
+        if any(start < high and low < end for start, end in halts):
+            halted += 1
+            continue
         before = closes.get(b.at + BEFORE[0])
         after = closes.get(b.at + AFTER[1] - 5 * 60_000)
         if before is None or after is None or before <= 0:
             missing += 1
             continue
         out.append((b.label, b.previous, abs(after / before - 1)))
-    return out, missing
+    return out, missing, halted
+
+
+def load_halts(document: dict[str, Any]) -> dict[str, list[tuple[int, int]]]:
+    """Announced trading halts per symbol; every interval needs a recorded source."""
+    if not document.get("checked_at") or not isinstance(document.get("halts"), dict):
+        raise ValueError("halts file needs checked_at and a halts mapping")
+    out: dict[str, list[tuple[int, int]]] = {}
+    for symbol, rows in document["halts"].items():
+        for row in rows:
+            start, end, source = int(row["start"]), int(row["end"]), str(row.get("source") or "")
+            if not start < end or not source:
+                raise ValueError(f"invalid halt for {symbol}")
+            out.setdefault(symbol, []).append((start, end))
+    return out
+
+
+def book_label(sessions: Sessions, requested: int, ts: int) -> str:
+    """Session of the book's own time; a ts far from the request start is stale."""
+    if abs(ts - requested) > STALE_AFTER:
+        return "stale"
+    return sessions.label(ts)
 
 
 def flat_runs(bars: dict[int, tuple[Decimal, ...]], sessions: Sessions) -> list[int]:
@@ -134,7 +165,12 @@ def funding_summary(rates: Sequence[Decimal], upper: str) -> dict[str, Any]:
     }
 
 
-def summarize(store: Store, allowlist: Allowlist, table: dict[str, Any]) -> dict[str, Any]:
+def summarize(
+    store: Store,
+    allowlist: Allowlist,
+    table: dict[str, Any],
+    halts: dict[str, list[tuple[int, int]]],
+) -> dict[str, Any]:
     symbols: dict[str, Any] = {}
     sessions_cache: dict[str, Sessions] = {}
     for symbol in sorted(allowlist.symbols):
@@ -165,7 +201,9 @@ def summarize(store: Store, allowlist: Allowlist, table: dict[str, Any]) -> dict
                 (symbol,),
             )
         }
-        changes, missing = reopen_changes(closes, sessions.boundaries())
+        changes, missing, halted = reopen_changes(
+            closes, reopen_points(sessions, entry.launch), halts.get(symbol, [])
+        )
         flat = {}
         for kind in ("index", "mark"):
             bars = {
@@ -184,10 +222,13 @@ def summarize(store: Store, allowlist: Allowlist, table: dict[str, Any]) -> dict
             }
         spreads: dict[str, list[Decimal]] = defaultdict(list)
         empty: dict[str, int] = defaultdict(int)
-        for at, bid, ask in store.rows(
-            "SELECT at, bid, ask FROM book_top WHERE symbol=?", (symbol,)
+        for requested, ts, bid, ask in store.rows(
+            "SELECT requested, ts, bid, ask FROM book_top WHERE symbol=?", (symbol,)
         ):
-            label = sessions.label(int(at))
+            label = book_label(sessions, int(requested), int(ts))
+            if label == "stale":
+                empty[label] += 1
+                continue
             value = spread(bid, ask)
             if value is None:
                 empty[label] += 1
@@ -195,10 +236,13 @@ def summarize(store: Store, allowlist: Allowlist, table: dict[str, Any]) -> dict
                 spreads[label].append(value)
         costs: dict[str, dict[str, list[Decimal]]] = defaultdict(lambda: defaultdict(list))
         unfilled: dict[str, int] = defaultdict(int)
-        for at, bids_text, asks_text in store.rows(
-            "SELECT at, bids, asks FROM book_depth WHERE symbol=?", (symbol,)
+        for requested, ts, bids_text, asks_text in store.rows(
+            "SELECT requested, ts, bids, asks FROM book_depth WHERE symbol=?", (symbol,)
         ):
-            label = sessions.label(int(at))
+            label = book_label(sessions, int(requested), int(ts))
+            if label == "stale":
+                unfilled[label] += 1
+                continue
             bids, asks = json.loads(bids_text), json.loads(asks_text)
             if not bids or not asks:
                 unfilled[label] += 1
@@ -236,6 +280,7 @@ def summarize(store: Store, allowlist: Allowlist, table: dict[str, Any]) -> dict
                 for k, v in sorted(by_boundary.items())
             },
             "reopen_missing": missing,
+            "reopen_halted": halted,
             "flat": flat,
             "spread": {
                 k: {"count": len(v), "median": quantile(v, D("0.5")), "p90": quantile(v, D("0.9"))}

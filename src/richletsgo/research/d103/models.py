@@ -29,3 +29,5 @@ BOOK_KEYS = frozenset({"s", "a", "b", "ts", "u", "seq", "cts"})
 # Reopen approximation window around a session start R (5m bars).
 BEFORE = (-5 * MINUTE, 0)
 AFTER = (10 * MINUTE, 15 * MINUTE)
+# A book whose ts is more than this from its request start is stale: excluded and counted.
+STALE_AFTER = MINUTE

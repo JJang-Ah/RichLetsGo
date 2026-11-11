@@ -12,6 +12,7 @@ from datetime import date, timedelta
 from typing import Any
 
 from .allowlist import Entry
+from .models import AFTER, BEFORE, BOUNDARY
 
 LABELS = frozenset({"regular", "break", "pre", "post", "overnight"})
 
@@ -76,11 +77,10 @@ class Boundary:
 class Sessions:
     def __init__(self, intervals: Sequence[Sequence[Any]], first: int, last: int) -> None:
         rows = sorted((int(a), int(b), str(c)) for a, b, c in intervals if int(a) < int(b))
-        for (_start, b, label), nxt in zip(rows, rows[1:] + [None], strict=True):
-            if label not in LABELS:
-                raise ValueError(f"unknown session label {label}")
-            if nxt is not None and nxt[0] < b:
-                raise ValueError("overlapping session intervals")
+        if any(label not in LABELS for _, _, label in rows):
+            raise ValueError("unknown session label")
+        if any(nxt[0] < cur[1] for cur, nxt in zip(rows, rows[1:], strict=False)):
+            raise ValueError("overlapping session intervals")
         self.rows = rows
         self.starts = [r[0] for r in rows]
         self.first, self.last = first, last
@@ -101,6 +101,23 @@ class Sessions:
             if previous != label and previous != "unknown":
                 out.append(Boundary(start, label, previous))
         return out
+
+
+def is_reopen(b: Boundary) -> bool:
+    """M2-10 4 session starts R: pre or regular start, or the first session after a closure.
+
+    Session ends (regular->post, regular->break) and post->overnight are not R.
+    """
+    return b.label in ("pre", "regular") or b.previous == "closed"
+
+
+def reopen_points(sessions: Sessions, launch: int) -> list[Boundary]:
+    """R whose whole comparison window lies in the observed range [launch, B)."""
+    return [
+        b
+        for b in sessions.boundaries()
+        if is_reopen(b) and b.at + BEFORE[0] >= launch and b.at + AFTER[1] <= BOUNDARY
+    ]
 
 
 def load(table: dict[str, Any], name: str) -> Sessions:

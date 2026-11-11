@@ -5,6 +5,7 @@ Synthetic symbols use an XQ prefix so they never name a real (or D98 judgment) c
 
 import json
 import shutil
+from collections.abc import Callable
 from datetime import date
 from decimal import Decimal as D
 from pathlib import Path
@@ -23,9 +24,20 @@ from richletsgo.research.d103.allowlist import (
     load_snapshot,
 )
 from richletsgo.research.d103.collect import collect_history, collect_live, history_tasks
-from richletsgo.research.d103.guard import ObservationIncident, StructureClient, StructureTransport
+from richletsgo.research.d103.guard import (
+    FUNDING_WINDOW,
+    ObservationIncident,
+    StructureClient,
+    StructureTransport,
+)
 from richletsgo.research.d103.models import BOUNDARY, DAY, HOUR, MINUTE, SNAPSHOT_DIR
-from richletsgo.research.d103.sessions import Boundary, Sessions, us_extended
+from richletsgo.research.d103.sessions import (
+    Boundary,
+    Sessions,
+    regular_intervals,
+    reopen_points,
+    us_extended,
+)
 from richletsgo.research.d103.store import Store
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -50,10 +62,21 @@ def launches() -> dict[str, int]:
 class FakeTransport:
     """Serves synthetic rows; records every URL that passed the guard."""
 
-    def __init__(self, *, leak: bool = False, book_extra: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        leak: bool = False,
+        leak_to: int = BOUNDARY,
+        book_extra: bool = False,
+        empty: bool = False,
+        on_book: Callable[[], None] | None = None,
+    ) -> None:
         self.urls: list[str] = []
         self.leak = leak
+        self.leak_to = leak_to
         self.book_extra = book_extra
+        self.empty = empty
+        self.on_book = on_book
 
     def get(self, url: str, timeout: float) -> tuple[int, bytes]:
         self.urls.append(url)
@@ -65,7 +88,9 @@ class FakeTransport:
             start, end = int(p["start"]), int(p["end"])
             starts = list(range(start // width * width, end + 1, width))
             if self.leak:
-                starts.append(BOUNDARY)
+                starts += list(range(BOUNDARY, self.leak_to + 1, width))
+            if self.empty:
+                starts = []
             if u.path == "/v5/market/kline":
                 rows = [[str(s), "10", "11", "9", "10", "5", "50"] for s in starts]
             else:
@@ -76,6 +101,8 @@ class FakeTransport:
             times = [t for t in range(-(-first // (8 * HOUR)) * 8 * HOUR, last + 1, 8 * HOUR)]
             if self.leak:
                 times.append(BOUNDARY)
+            if self.empty:
+                times = []
             result = {
                 "list": [
                     {"symbol": p["symbol"], "fundingRateTimestamp": str(t), "fundingRate": "0.0001"}
@@ -83,6 +110,8 @@ class FakeTransport:
                 ]
             }
         elif u.path == "/v5/market/orderbook":
+            if self.on_book is not None:
+                self.on_book()
             result = {"s": p["symbol"], "b": [["9.9", "100"]], "a": [["10.1", "100"]], "ts": 1}
             if self.book_extra:
                 result["price24hPcnt"] = "0.1"
@@ -91,11 +120,15 @@ class FakeTransport:
         return 200, json.dumps({"retCode": 0, "result": result}).encode()
 
 
-def client(transport: FakeTransport) -> StructureClient:
+def client(
+    transport: FakeTransport,
+    clock: Callable[[], int] = lambda: 0,
+    policy: RetryPolicy = POLICY,
+) -> StructureClient:
     return StructureClient(
         API,
-        transport=StructureTransport(transport, launches()),
-        policy=POLICY,
+        transport=StructureTransport(transport, launches(), clock=clock),
+        policy=policy,
         sleep=lambda _: None,
     )
 
@@ -200,7 +233,10 @@ def test_guard_rejects_before_network(query: str) -> None:
 
 def test_guard_allows_bounded_history_and_live_book_for_new_symbol() -> None:
     transport = FakeTransport()
-    guard = StructureTransport(transport, launches())
+    guard = StructureTransport(transport, launches(), clock=lambda: 0)
+    with pytest.raises(ValueError, match="live window"):
+        guard.get(API + "/v5/market/orderbook?category=linear&symbol=XQBUSDT&limit=1", 1)
+    guard.book_until = 1
     guard.get(
         API + "/v5/market/kline?category=linear&symbol=XQAUSDT&interval=60"
         f"&start={OLD}&end={BOUNDARY - HOUR}&limit=1000",
@@ -222,8 +258,11 @@ def test_responses_reaching_b_are_incidents_and_unknown_book_fields_stop() -> No
         leaky.bars("/v5/market/kline", "XQAUSDT", "60", OLD, BOUNDARY - HOUR)
     with pytest.raises(ObservationIncident):
         leaky.funding("XQAUSDT", OLD, BOUNDARY - 1)
-    with pytest.raises(ValueError, match="unexpected orderbook fields"):
-        client(FakeTransport(book_extra=True)).orderbook("XQAUSDT", "1")
+    extra = client(FakeTransport(book_extra=True))
+    extra.guard.book_until = 1
+    with pytest.raises(ObservationIncident) as caught:
+        extra.orderbook("XQAUSDT", "1")
+    assert caught.value.details["fields"] == ["price24hPcnt"]
 
 
 # --- collection ----------------------------------------------------------------------
@@ -360,10 +399,18 @@ def test_depth_cost_both_sides_non_negative_and_unfilled() -> None:
 def test_reopen_changes_skip_missing_and_flat_runs_break() -> None:
     r = 10 * DAY
     closes = {r - 5 * MINUTE: D(100), r + 10 * MINUTE: D(97)}
-    values, missing = stats.reopen_changes(
+    values, missing, halted = stats.reopen_changes(
         closes, [Boundary(r, "regular", "closed"), Boundary(r + DAY, "regular", "closed")]
     )
-    assert values == [("regular", "closed", D("0.03"))] and missing == 1
+    assert values == [("regular", "closed", D("0.03"))] and (missing, halted) == (1, 0)
+    # Both end bars exist, but an announced halt inside the window excludes it.
+    values, missing, halted = stats.reopen_changes(
+        closes, [Boundary(r, "regular", "closed")], [(r + MINUTE, r + 2 * MINUTE)]
+    )
+    assert (values, missing, halted) == ([], 0, 1)
+    with pytest.raises(ValueError):
+        stats.load_halts({"checked_at": "x", "halts": {"XQAUSDT": [{"start": 1, "end": 2}]}})
+    assert stats.load_halts({"checked_at": "x", "halts": {}}) == {}
     sessions = Sessions([(0, HOUR, "regular")], 0, 100 * HOUR)
     flat = (D(1), D(1), D(1), D(1))
     bars = {h * HOUR: flat for h in (0, 1, 2, 3, 5, 6)}
@@ -376,3 +423,143 @@ def test_funding_uses_current_cap_only() -> None:
     assert summary["at_current_cap_ratio"] == D(1) / 3
     assert summary["abs_median"] == D("0.001")
     assert stats.quantile([], D("0.5")) is None
+
+
+# --- PR #61 review cases --------------------------------------------------------------
+
+
+def test_incident_records_observed_range_per_leak(tmp_path: Path) -> None:
+    ends = []
+    for n, leak_to in enumerate((BOUNDARY, BOUNDARY + 3 * HOUR)):
+        store = Store(tmp_path / f"d103-{n}.sqlite")
+        with pytest.raises(ObservationIncident):
+            collect_history(
+                store,
+                client(FakeTransport(leak=True, leak_to=leak_to)),
+                allowlist(),
+                table(),
+                code_commit="c",
+            )
+        logs = [json.loads(c) for (c,) in store.rows("SELECT content FROM log")]
+        incident = next(e for e in logs if e["event"] == "observation_incident")
+        assert incident["symbol"] == "XQAUSDT" and incident["params"]["end"]
+        assert incident["detected_at"]
+        ends.append(incident["observed_last_end"])
+        store.close()
+    assert ends == [BOUNDARY + HOUR, BOUNDARY + 4 * HOUR]
+
+
+def test_empty_pages_retry_then_stay_missing_not_done(tmp_path: Path) -> None:
+    transport = FakeTransport(empty=True)
+    store = Store(tmp_path / "d103.sqlite")
+    collect_history(
+        store,
+        client(transport, policy=RetryPolicy(0, 2, 0, 1)),
+        allowlist(),
+        table(),
+        code_commit="c",
+    )
+    tasks = len(history_tasks(allowlist()))
+    assert len(transport.urls) == 2 * tasks
+    assert list(store.rows("SELECT COUNT(*) FROM pages")) == [(0,)]
+    logs = [json.loads(c) for (c,) in store.rows("SELECT content FROM log")]
+    assert sum(e["event"] == "missing" for e in logs) == tasks
+    store.close()
+
+
+def test_five_minute_page_without_windows_is_done_with_received_range(tmp_path: Path) -> None:
+    store = Store(tmp_path / "d103.sqlite")
+    quiet = {"range": table()["range"], "calendars": {"XNYS": []}}
+    collect_history(store, client(FakeTransport()), allowlist(), quiet, code_commit="c")
+    pages = list(store.rows("SELECT key, rows, received, first, last FROM pages"))
+    five = [p for p in pages if json.loads(p[0])[1] == "5"]
+    assert five and all(
+        rows == 0 and received > 0 and first <= last for _, rows, received, first, last in five
+    )
+    store.close()
+
+
+def test_live_never_requests_after_expiry(tmp_path: Path) -> None:
+    t0 = BOUNDARY + DAY + 1234
+    store = Store(tmp_path / "d103.sqlite")
+    store.bind("allowlist_sha256", allowlist().sha256())
+    store.bind("T0", str(t0))
+    transport = FakeTransport()
+    now = [t0 + 14 * DAY + 1]
+    collect_live(
+        store,
+        client(transport, lambda: now[0]),
+        allowlist(),
+        clock=lambda: now[0],
+        sleep=lambda _: None,
+    )
+    assert transport.urls == []
+    store.close()
+
+
+def test_live_expiry_mid_slot_keeps_taken_books_and_logs_unsampled(tmp_path: Path) -> None:
+    t0 = BOUNDARY + DAY + 1234
+    store = Store(tmp_path / "d103.sqlite")
+    store.bind("allowlist_sha256", allowlist().sha256())
+    store.bind("T0", str(t0))
+    now = [t0 + 14 * DAY - 1]
+
+    def tick() -> None:
+        now[0] += 2  # the first request pushes the clock past T0 + 14d
+
+    transport = FakeTransport(on_book=tick)
+    collect_live(
+        store,
+        client(transport, lambda: now[0]),
+        allowlist(),
+        clock=lambda: now[0],
+        sleep=lambda _: None,
+    )
+    assert len(transport.urls) == 1
+    assert [s for (s,) in store.rows("SELECT symbol FROM book_top")] == ["XQAUSDT"]
+    logs = [json.loads(c) for (c,) in store.rows("SELECT content FROM log")]
+    expired = next(e for e in logs if e["event"] == "live_expired_in_slot")
+    # The slot is on the hour: XQAUSDT kept its top book but expiry stopped its depth book.
+    assert expired["unsampled"] == ["XQAUSDT", "XQBUSDT"]
+    assert list(store.rows("SELECT COUNT(*) FROM book_depth")) == [(0,)]
+    store.close()
+
+
+def test_book_session_uses_response_ts_and_drops_stale(tmp_path: Path) -> None:
+    sessions = Sessions([(0, HOUR, "pre"), (HOUR, 2 * HOUR, "regular")], 0, DAY)
+    assert stats.book_label(sessions, HOUR - MINUTE // 2, HOUR + 1) == "regular"
+    assert stats.book_label(sessions, HOUR - 5 * MINUTE, HOUR - 4 * MINUTE) == "pre"
+    assert stats.book_label(sessions, 10 * MINUTE, 10 * MINUTE - 2 * MINUTE) == "stale"
+    store = Store(tmp_path / "d103.sqlite")
+    open_ = REGULAR_OPEN
+    slot = open_ - 5 * MINUTE  # slot in the gap before the open, book taken after it
+    store.put(
+        "book_top",
+        [
+            ("XQAUSDT", slot, open_ - 1, open_ + 1, "9", "1", "11", "1"),
+            ("XQAUSDT", slot + 5 * MINUTE, open_, open_ - 2 * MINUTE, "9", "1", "11", "1"),
+        ],
+    )
+    summary = stats.summarize(store, allowlist(), table(), {})["symbols"]["XQAUSDT"]
+    assert summary["spread"]["regular"]["count"] == 1 and "closed" not in summary["spread"]
+    assert summary["spread_empty"] == {"stale": 1}
+    store.close()
+
+
+def test_reopen_points_follow_contract_and_observed_range() -> None:
+    days = [
+        (date(2026, 8, 3), fake_wall(date(2026, 8, 3), 9, 30), fake_wall(date(2026, 8, 3), 16, 0))
+    ]
+    sessions = Sessions(us_extended(days, fake_wall), 0, 10**14)
+    kinds = {(b.previous, b.label) for b in reopen_points(sessions, 0)}
+    assert kinds == {("closed", "overnight"), ("overnight", "pre"), ("pre", "regular")}
+    lunch = Sessions(regular_intervals([[0, HOUR, 2 * HOUR, 3 * HOUR]]), -DAY, DAY)
+    assert {(b.previous, b.label) for b in reopen_points(lunch, -DAY)} == {
+        ("closed", "regular"),
+        ("break", "regular"),
+    }
+    late = Sessions([(BOUNDARY - 10 * MINUTE, BOUNDARY + HOUR, "regular")], 0, 10**14)
+    assert reopen_points(late, 0) == []
+    # R - 5m before launch drops the first open only.
+    assert [(b.previous, b.label) for b in reopen_points(lunch, 1)] == [("break", "regular")]
+    assert FUNDING_WINDOW == 199 * HOUR

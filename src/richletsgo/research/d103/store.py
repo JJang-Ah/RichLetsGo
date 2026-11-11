@@ -12,11 +12,15 @@ TABLES = {
     "bars": "kind TEXT, interval TEXT, symbol TEXT, start INTEGER, open TEXT, high TEXT, "
     "low TEXT, close TEXT, volume TEXT, turnover TEXT, PRIMARY KEY(kind,interval,symbol,start)",
     "funding": "symbol TEXT, time INTEGER, rate TEXT, PRIMARY KEY(symbol,time)",
-    "book_top": "symbol TEXT, at INTEGER, ts INTEGER, bid TEXT, bid_qty TEXT, ask TEXT, "
-    "ask_qty TEXT, PRIMARY KEY(symbol,at)",
-    "book_depth": "symbol TEXT, at INTEGER, ts INTEGER, bids TEXT, asks TEXT, "
-    "PRIMARY KEY(symbol,at)",
-    "pages": "key TEXT PRIMARY KEY, rows INTEGER NOT NULL",
+    # at = schedule slot (checkpoint only); requested = request start; ts = book time.
+    "book_top": "symbol TEXT, at INTEGER, requested INTEGER, ts INTEGER, bid TEXT, "
+    "bid_qty TEXT, ask TEXT, ask_qty TEXT, PRIMARY KEY(symbol,at)",
+    "book_depth": "symbol TEXT, at INTEGER, requested INTEGER, ts INTEGER, bids TEXT, "
+    "asks TEXT, PRIMARY KEY(symbol,at)",
+    # received/first/last: raw rows and time range actually returned (design observation),
+    # even when only boundary windows are stored.
+    "pages": "key TEXT PRIMARY KEY, rows INTEGER NOT NULL, received INTEGER, first INTEGER, "
+    "last INTEGER",
     "identity": "key TEXT PRIMARY KEY, value TEXT NOT NULL",
     "log": "id INTEGER PRIMARY KEY, content TEXT NOT NULL",
 }
@@ -68,8 +72,16 @@ class Store:
     def done(self, key: str) -> bool:
         return self.db.execute("SELECT 1 FROM pages WHERE key=?", (key,)).fetchone() is not None
 
-    def put(self, table: str, rows: Iterable[tuple[Any, ...]], page: str | None = None) -> None:
+    def put(
+        self,
+        table: str,
+        rows: Iterable[tuple[Any, ...]],
+        page: str | None = None,
+        observed: tuple[int, int, int] | None = None,
+    ) -> None:
+        """Store rows; `observed` = (received rows, first, last) of the raw response."""
         rows = list(rows)
+        received, first, last = observed if observed is not None else (len(rows), None, None)
         columns = self.db.execute(f"PRAGMA table_info({table})").fetchall()
         if any(len(row) != len(columns) for row in rows):
             raise ValueError(f"row width mismatch for {table}")
@@ -78,7 +90,10 @@ class Store:
                 marks = ",".join("?" * len(columns))
                 self.db.executemany(f"INSERT OR REPLACE INTO {table} VALUES ({marks})", rows)
             if page is not None:
-                self.db.execute("INSERT OR REPLACE INTO pages VALUES (?,?)", (page, len(rows)))
+                self.db.execute(
+                    "INSERT OR REPLACE INTO pages VALUES (?,?,?,?,?)",
+                    (page, len(rows), received, first, last),
+                )
 
     def rows(self, sql: str, params: tuple[Any, ...] = ()) -> Iterator[tuple[Any, ...]]:
         yield from self.db.execute(sql, params)

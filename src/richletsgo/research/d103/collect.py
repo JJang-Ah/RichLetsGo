@@ -8,9 +8,9 @@ from richletsgo.backtest.codec import encode
 from richletsgo.marketdata.bybit_public import BybitApiError
 
 from .allowlist import Allowlist
-from .guard import FUNDING_WINDOW, ObservationIncident, StructureClient
+from .guard import FUNDING_WINDOW, LiveWindowClosed, ObservationIncident, StructureClient
 from .models import AFTER, BEFORE, BOUNDARY, DEPTH_EVERY, HISTORY_INTERVALS, LIVE_SPAN, TOP_EVERY
-from .sessions import Sessions, calendar_for, load
+from .sessions import Sessions, calendar_for, load, reopen_points
 from .store import Store
 
 PATHS = {
@@ -20,8 +20,9 @@ PATHS = {
 }
 
 
-def reopen_windows(sessions: Sessions) -> list[tuple[int, int]]:
-    return [(b.at + BEFORE[0], b.at + AFTER[1]) for b in sessions.boundaries()]
+def reopen_windows(sessions: Sessions, launch: int) -> list[tuple[int, int]]:
+    """[R - 5m, R + 15m) for the contract's R inside [launch, B) (PR #61 P2-5)."""
+    return [(b.at + BEFORE[0], b.at + AFTER[1]) for b in reopen_points(sessions, launch)]
 
 
 def _in_windows(start: int, windows: list[tuple[int, int]]) -> bool:
@@ -63,7 +64,8 @@ def collect_history(
         }
     )
     windows = {
-        s: reopen_windows(load(table, calendar_for(e))) for s, e in allowlist.entries.items()
+        s: reopen_windows(load(table, calendar_for(e)), e.launch)
+        for s, e in allowlist.entries.items()
     }
     for kind, interval, symbol, first, last in history_tasks(allowlist):
         step = FUNDING_WINDOW if kind == "funding" else 1000 * HISTORY_INTERVALS[interval]
@@ -75,16 +77,30 @@ def collect_history(
                 try:
                     if kind == "funding":
                         funding = client.funding(symbol, cursor, end)
-                        store.put("funding", [(symbol, int(t), r) for t, r in funding], key)
+                        times = [int(t) for t, _ in funding]
+                        store.put(
+                            "funding",
+                            [(symbol, int(t), r) for t, r in funding],
+                            key,
+                            (len(funding), min(times), max(times)),
+                        )
                     else:
-                        rows = client.bars(PATHS[kind], symbol, interval, cursor, end)
+                        raw = client.bars(PATHS[kind], symbol, interval, cursor, end)
+                        starts = [int(r[0]) for r in raw]
+                        kept = raw
                         if interval == "5":
-                            rows = [r for r in rows if _in_windows(int(r[0]), windows[symbol])]
-                        store.put("bars", [_bar(kind, interval, symbol, r) for r in rows], key)
+                            kept = [r for r in raw if _in_windows(int(r[0]), windows[symbol])]
+                        store.put(
+                            "bars",
+                            [_bar(kind, interval, symbol, r) for r in kept],
+                            key,
+                            (len(raw), min(starts), max(starts)),
+                        )
                 except ObservationIncident as exc:
-                    store.log({"event": "observation_incident", "page": key, "error": str(exc)})
+                    store.log({"event": "observation_incident", "page": key, **exc.details})
                     raise
                 except BybitApiError as exc:
+                    # Not marked done: a rerun retries the page (PR #61 P2-2).
                     store.log({"event": "missing", "page": key, "error": str(exc)})
                 finally:
                     client.attempts.clear()
@@ -115,7 +131,11 @@ def collect_live(
     sleep: Callable[[float], None],
     stop_after: int | None = None,
 ) -> None:
-    """Sample orderbooks on a fixed grid from T0 for 14 days; resumable by slot."""
+    """Sample orderbooks on a fixed grid in [T0, T0 + 14d); resumable by slot.
+
+    The guard refuses any request attempt at or after T0 + 14d, so an expiring slot keeps
+    the books already taken and logs the symbols left unsampled (PR #61 P2-3).
+    """
     store.bind("allowlist_sha256", allowlist.sha256())
     t0 = store.get("T0")
     if t0 is None:
@@ -124,27 +144,48 @@ def collect_live(
         store.log({"event": "live_start", "T0": now, "held": allowlist.held})
         t0 = str(now)
     until = int(t0) + LIVE_SPAN
+    client.guard.book_until = until
     symbols = sorted(allowlist.symbols)
     slots = 0
-    while True:
-        now = clock()
-        slot = now // TOP_EVERY * TOP_EVERY
-        if slot >= until or (stop_after is not None and slots >= stop_after):
-            break
+    while clock() < until and (stop_after is None or slots < stop_after):
+        slot = clock() // TOP_EVERY * TOP_EVERY
         key = encode(["live", slot])
         if not store.done(key):
-            top, depth = [], []
+            top: list[tuple[Any, ...]] = []
+            depth: list[tuple[Any, ...]] = []
+            expired: list[str] = []
             for symbol in symbols:
+                if expired:
+                    expired.append(symbol)
+                    continue
                 try:
+                    requested = clock()
                     book = client.orderbook(symbol, "1")
                     bid, bid_qty = _side(book.get("b"))
                     ask, ask_qty = _side(book.get("a"))
-                    top.append((symbol, slot, int(book["ts"]), bid, bid_qty, ask, ask_qty))
+                    top.append(
+                        (symbol, slot, requested, int(book["ts"]), bid, bid_qty, ask, ask_qty)
+                    )
                     if slot % DEPTH_EVERY == 0:
+                        requested = clock()
                         full = client.orderbook(symbol, "50")
                         depth.append(
-                            (symbol, slot, int(full["ts"]), encode(full["b"]), encode(full["a"]))
+                            (
+                                symbol,
+                                slot,
+                                requested,
+                                int(full["ts"]),
+                                encode(full["b"]),
+                                encode(full["a"]),
+                            )
                         )
+                except LiveWindowClosed:
+                    expired.append(symbol)
+                except ObservationIncident as exc:
+                    store.put("book_top", top)
+                    store.put("book_depth", depth)
+                    store.log({"event": "observation_incident", "slot": slot, **exc.details})
+                    raise
                 except BybitApiError as exc:
                     store.log(
                         {"event": "missing", "slot": slot, "symbol": symbol, "error": str(exc)}
@@ -154,6 +195,10 @@ def collect_live(
                     client.requests.clear()
             store.put("book_top", top)
             store.put("book_depth", depth, key)
+            if expired:
+                # The symbol hit by expiry may keep its top book without its depth book.
+                store.log({"event": "live_expired_in_slot", "slot": slot, "unsampled": expired})
+                break
         slots += 1
         wait = (slot + TOP_EVERY - clock()) / 1000
         if wait > 0:
