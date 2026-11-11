@@ -44,6 +44,22 @@ PAUSE_LABELS = {
     "ENTRY_PAUSED_RISK": "신규 진입 정지(위험 한도)",
     "HALTED": "중단(HALTED)",
 }
+WARN = Decimal("0.8")
+
+
+def attention(snap: Snapshot, warn: Decimal) -> list[tuple[str, str]]:
+    """Things the operator should look at first, as (text, link) pairs."""
+    items = []
+    unknown = sum(1 for r in snap.orders if r.status == "UNKNOWN")
+    if unknown:
+        items.append((f"UNKNOWN 주문 {unknown}건: 거래소에서 확인 필요", "/orders?status=unknown"))
+    exposed = sum(1 for p in snap.positions if not p.fully_protected)
+    if exposed:
+        items.append((f"거래소 손절이 보유 수량과 다른 포지션 {exposed}개", "/positions"))
+    hot = [limit.code for limit in snap.overview.limits if limit.used >= warn]
+    if hot:
+        items.append((f"한도 {int(warn * 100)}% 이상 사용: {', '.join(hot)}", "#limits"))
+    return items
 
 
 def create_app(
@@ -81,6 +97,7 @@ def create_app(
         context = {
             "page": name,
             "pages": PAGES,
+            "page_label": next(label for key, _, label in PAGES if key == name),
             "o": snap.overview,
             "pause_label": PAUSE_LABELS.get(snap.overview.pause_state, snap.overview.pause_state),
             "trader": trader.connected(),
@@ -92,7 +109,7 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         snap = source.snapshot()
-        return page(request, "overview", snap, warn=Decimal("0.8"))
+        return page(request, "overview", snap, warn=WARN, attention=attention(snap, WARN))
 
     @app.get("/positions", response_class=HTMLResponse)
     def positions(request: Request) -> HTMLResponse:

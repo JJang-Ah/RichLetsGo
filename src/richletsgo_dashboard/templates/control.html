@@ -10,14 +10,14 @@
 {% if session %}
 <section class="card">
   <h2>명령</h2>
-  <p class="muted">텔레그램과 같은 명령만 있습니다. 재개·취소·확정은 확인 화면을 한 번 더 거칩니다.</p>
+  <p class="muted">텔레그램과 같은 명령만 있습니다. 재개, 취소, 확정은 확인 화면을 한 번 더 거칩니다.</p>
   <div class="actions">
     <form method="post" action="/control/pause"><input type="hidden" name="csrf" value="{{ session.csrf }}">
       <button type="submit"{% if not trader %} disabled{% endif %}>신규 진입 정지</button></form>
     <form method="post" action="/control/resume"><input type="hidden" name="csrf" value="{{ session.csrf }}">
-      <button type="submit"{% if not trader %} disabled{% endif %}>재개 요청</button></form>
+      <button type="submit" class="secondary"{% if not trader %} disabled{% endif %}>재개 요청</button></form>
     <form method="post" action="/control/cancel"><input type="hidden" name="csrf" value="{{ session.csrf }}">
-      <button type="submit"{% if not trader %} disabled{% endif %}>미체결 진입 취소 요청</button></form>
+      <button type="submit" class="secondary"{% if not trader %} disabled{% endif %}>미체결 진입 취소 요청</button></form>
   </div>
   {% if unknown %}
   <h3>UNKNOWN 주문 수동 확정</h3>
@@ -26,7 +26,7 @@
   {% for r in unknown %}
     <li><span class="mono">{{ r.order_link_id }}</span> · {{ r.symbol }} · {{ r.created_at | kst("%m-%d %H:%M") }}
       <form method="post" action="/control/resolve" class="inline"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="order_link_id" value="{{ r.order_link_id }}">
-      <button type="submit"{% if not trader %} disabled{% endif %}>NOT_FOUND 확정 요청</button></form></li>
+      <button type="submit" class="secondary"{% if not trader %} disabled{% endif %}>NOT_FOUND 확정 요청</button></form></li>
   {% endfor %}
   </ul>
   {% endif %}
@@ -35,8 +35,8 @@
 {% else %}
 <section class="card login">
   <h2>제어하려면 로그인하세요</h2>
-  {% if locked %}<p class="flag">로그인 실패가 반복돼 10분 동안 잠겼습니다.</p>
-  {% elif request.query_params.get('login') == 'failed' %}<p class="flag">접근 코드가 맞지 않습니다.</p>{% endif %}
+  {% if locked %}<p class="flag" role="alert">로그인 실패가 반복돼 10분 동안 잠겼습니다.</p>
+  {% elif request.query_params.get('login') == 'failed' %}<p class="flag" role="alert">접근 코드가 맞지 않습니다.</p>{% endif %}
   <form method="post" action="/login">
     <label for="code">접근 코드</label>
     <input id="code" name="code" type="password" autocomplete="current-password" required{% if locked %} disabled{% endif %}>

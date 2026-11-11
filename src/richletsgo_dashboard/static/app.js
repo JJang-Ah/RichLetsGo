@@ -66,5 +66,7 @@ function bindChart(figure) {
 
 document.addEventListener("DOMContentLoaded", () => {
   for (const fig of document.querySelectorAll("figure.chart[data-points]")) bindChart(fig);
+  const tab = document.querySelector('.tabs [aria-current="page"]');
+  if (tab) tab.parentElement.scrollLeft = tab.offsetLeft - 12;  // keep the current tab visible on narrow screens
   if (document.querySelector("[data-field]")) setInterval(refreshOverview, 10000);
 });
