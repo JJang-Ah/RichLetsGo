@@ -781,3 +781,11 @@
 - 진행 중: D103 0단계 실시간 호가 7일 수집(T0 2026-11-11, 11-18 종료 예정).
 - 다음 담당자: Codex가 이 문서 PR을 검토한다. 통과하면 Codex는 M3-02 SQLite 구현과 M5-01b 제어 API, Claude는 M5-01a 화면(가짜 데이터)을 맡는다.
 - 검증: 문서 변경만.
+
+## 2026-11-11 — Claude Code (M5-01a 대시보드 화면)
+
+- 완료: `src/richletsgo_dashboard/`에 FastAPI·Jinja2 화면 7개(개요, 포지션, 평가액, 주문·체결, 기록, 결정·AI, 제어)를 가짜 데이터 공급원으로 만들었다. 접근 제한은 `127.0.0.1` 바인딩과 `Host`·`Origin` 확인이다. 접근 코드 로그인 세션(재발급, 유휴 15분·절대 8시간, 로그아웃, 코드 변경 시 회수, 5회 실패 시 10분 잠금), CSRF, CSP·`frame-ancestors 'none'`, 서버 SVG 그래프(외부 CDN 없음)도 넣었다.
+- 제어 버튼은 Trader 제어 API(M5-01b)가 생길 때까지 비활성이다(`Disconnected`).
+- 실행: `python -m richletsgo_dashboard --port 8765`, 접근 코드는 `python -m richletsgo.keystore set richletsgo/dashboard-access`.
+- 검증: 테스트 23개 추가(전체 1063 passed), ruff·mypy 통과. 앱 안 브라우저 창이 가려져 있어 스크린샷은 찍지 못했다. 대신 375px 폭에서 7개 화면 모두 가로 넘침 0, 그래프 툴팁 동작, 콘솔 오류 0, iframe 차단을 스크립트로 확인했다.
+- 다음 담당자: Codex가 M5-01a를 검토한다. M3-02 병합 뒤 SQLite 읽기 공급원을 붙인다. M5-01b는 Codex가 맡는다.

@@ -1,0 +1,51 @@
+{% extends "base.html" %}
+{% block main %}
+<nav class="filters" aria-label="주문 상태">
+  {% for key in filters %}
+  <a href="/orders?status={{ key }}"{% if key == current %} aria-current="true"{% endif %}>{{ {'all': '전체', 'open': '미체결', 'unknown': 'UNKNOWN', 'closed': '종결'}[key] }}</a>
+  {% endfor %}
+</nav>
+<section class="card">
+  <h2>주문</h2>
+  {% if orders %}
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th scope="col">생성</th><th scope="col">orderLinkId</th><th scope="col">전략</th><th scope="col">계약</th><th scope="col">용도</th>
+      <th scope="col">방향</th><th scope="col" class="r">수량</th><th scope="col" class="r">가격</th><th scope="col" class="r">체결</th><th scope="col">상태</th>
+    </tr></thead>
+    <tbody>
+    {% for r in orders %}
+      <tr{% if r.status == 'UNKNOWN' %} class="row-unknown"{% endif %}>
+        <td>{{ r.created_at | kst("%m-%d %H:%M") }}</td><td class="mono">{{ r.order_link_id }}</td><td>{{ r.strategy }}</td><td>{{ r.symbol }}</td><td>{{ r.purpose }}</td>
+        <td>{{ '매수' if r.side == 'Buy' else '매도' }}</td><td class="r">{{ r.quantity | num }}</td><td class="r">{{ r.price | num }}</td><td class="r">{{ r.filled | num }}</td>
+        <td><span class="pill status-{{ r.status | lower }}">{% if r.status == 'UNKNOWN' %}? {% endif %}{{ r.status }}</span></td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">해당하는 주문이 없습니다.</p>{% endif %}
+</section>
+<section class="card">
+  <h2>체결</h2>
+  {% if fills %}
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th scope="col">시각</th><th scope="col">execId</th><th scope="col">orderLinkId</th><th scope="col">계약</th><th scope="col">방향</th>
+      <th scope="col" class="r">가격</th><th scope="col" class="r">수량</th><th scope="col" class="r">수수료</th>
+    </tr></thead>
+    <tbody>
+    {% for f in fills %}
+      <tr>
+        <td>{{ f.at | kst("%m-%d %H:%M") }}</td><td class="mono">{{ f.exec_id }}</td><td class="mono">{{ f.order_link_id }}</td><td>{{ f.symbol }}</td>
+        <td>{{ '매수' if f.side == 'Buy' else '매도' }}</td><td class="r">{{ f.price | num }}</td><td class="r">{{ f.quantity | num }}</td><td class="r">{{ f.fee | num }}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">체결이 없습니다.</p>{% endif %}
+</section>
+{% endblock %}
