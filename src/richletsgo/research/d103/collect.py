@@ -131,9 +131,9 @@ def collect_live(
     sleep: Callable[[float], None],
     stop_after: int | None = None,
 ) -> None:
-    """Sample orderbooks on a fixed grid in [T0, T0 + 14d); resumable by slot.
+    """Sample orderbooks on a fixed grid in [T0, T0 + 7d); resumable by slot.
 
-    The guard refuses any request attempt at or after T0 + 14d, so an expiring slot keeps
+    The guard refuses any request attempt at or after T0 + 7d, so an expiring slot keeps
     the books already taken and logs the symbols left unsampled (PR #61 P2-3).
     """
     store.bind("allowlist_sha256", allowlist.sha256())

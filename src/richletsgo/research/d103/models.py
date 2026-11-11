@@ -22,7 +22,7 @@ PRICE_KLINE_PATHS = ("/v5/market/index-price-kline", "/v5/market/mark-price-klin
 BOOK_LIMITS = ("1", "50")
 TOP_EVERY = 5 * MINUTE
 DEPTH_EVERY = HOUR
-LIVE_SPAN = 14 * DAY
+LIVE_SPAN = 7 * DAY  # shortened from 14 days by user decision before any live data was read
 NOTIONALS = (1_000, 5_000, 20_000)
 # Documented orderbook result keys; anything else stops live sampling.
 BOOK_KEYS = frozenset({"s", "a", "b", "ts", "u", "seq", "cts"})
