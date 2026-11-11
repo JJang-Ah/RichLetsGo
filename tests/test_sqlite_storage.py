@@ -286,6 +286,8 @@ def test_pending_marker_retention_resolution_failure_and_waiter_cancel(tmp_path)
                 await db.resolve(txn)
             assert db.entry_paused and alerts
             await uow.commit()
+        # The 10ms deadline above intentionally tests a held lock, not disk speed.
+        db.outcome_timeout_seconds = 5
         assert await db.resolve(txn) is True  # 40 days old, but still pending
         db.reconciled(txn)
         async with db.unit_of_work() as uow:
