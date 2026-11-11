@@ -1,4 +1,4 @@
-"""D103 stage-0 collection: `history` (< 2026-09-01) or `live` (14-day orderbook samples)."""
+"""D103 stage-0 collection: `history` (< 2026-09-01) or `live` (7-day orderbook samples)."""
 
 import argparse
 import json

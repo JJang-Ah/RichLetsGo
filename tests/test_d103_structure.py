@@ -30,7 +30,7 @@ from richletsgo.research.d103.guard import (
     StructureClient,
     StructureTransport,
 )
-from richletsgo.research.d103.models import BOUNDARY, DAY, HOUR, MINUTE, SNAPSHOT_DIR
+from richletsgo.research.d103.models import BOUNDARY, DAY, HOUR, LIVE_SPAN, MINUTE, SNAPSHOT_DIR
 from richletsgo.research.d103.sessions import (
     Boundary,
     Sessions,
@@ -485,7 +485,7 @@ def test_live_never_requests_after_expiry(tmp_path: Path) -> None:
     store.bind("allowlist_sha256", allowlist().sha256())
     store.bind("T0", str(t0))
     transport = FakeTransport()
-    now = [t0 + 14 * DAY + 1]
+    now = [t0 + LIVE_SPAN + 1]
     collect_live(
         store,
         client(transport, lambda: now[0]),
@@ -502,10 +502,10 @@ def test_live_expiry_mid_slot_keeps_taken_books_and_logs_unsampled(tmp_path: Pat
     store = Store(tmp_path / "d103.sqlite")
     store.bind("allowlist_sha256", allowlist().sha256())
     store.bind("T0", str(t0))
-    now = [t0 + 14 * DAY - 1]
+    now = [t0 + LIVE_SPAN - 1]
 
     def tick() -> None:
-        now[0] += 2  # the first request pushes the clock past T0 + 14d
+        now[0] += 2  # the first request pushes the clock past T0 + LIVE_SPAN
 
     transport = FakeTransport(on_book=tick)
     collect_live(
