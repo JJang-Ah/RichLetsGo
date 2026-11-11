@@ -10,6 +10,8 @@ from .journal import JournalRecord
 
 def store_record(uow: UnitOfWork, record: JournalRecord) -> None:
     uow.recovery.put(record.key, record.encode())
+    if record.action_key and record.phase == "result":
+        uow.recovery.put("action_result:" + record.action_key, record.encode())
     request_raw = uow.recovery.get(f"journal:{record.operation_id}:requested")
     result_raw = uow.recovery.get(f"journal:{record.operation_id}:result")
     if request_raw is None or result_raw is None:

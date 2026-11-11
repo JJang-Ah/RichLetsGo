@@ -799,3 +799,14 @@
 - SQL 행의 payload는 허용된 도메인 타입만 복원하는 JSON이다. 명령/대상·저널·위험 상태는 조회용 전용 테이블에도 같은 트랜잭션으로 반영한다. SQL 마이그레이션은 저장소 배포 패키지에도 포함했다.
 - 검증: 전체 오프라인 테스트 1411 passed (178.57초), 추가 경계 테스트 포함 저장소 테스트 21 passed. M1-02/03/04 및 재시작·D90·추적 손절 계약을 memory/sqlite로 매개변수화했다. 보호 결과 불명 6가지 및 진입 결과 불명 2가지 통합 테스트 통과. ruff lint/format, mypy 통과.
 - 다음: Claude가 저장소 PR 검토. Codex는 이 브랜치 위에 `task/M5-01b-control-api`를 쌓아 제어 명령을 별도 PR로 구현한다. 실제 운영 DB·키·거래소·판정 풀은 사용하지 않았다.
+
+## 2026-11-11 — Codex (M5-01b 공통 명령·웹 제어 API)
+
+- 브랜치: `task/M5-01b-control-api`, 기준: M3-02 PR #66 (`0a1fd0b`). 저장소와 제어 API를 별도 PR로 검토한다.
+- 공통 `CommandService`를 만들고 웹 API와 `TelegramCommands`가 같은 권한·확인·실행 경로를 사용하게 했다. 웹 actor는 Trader의 operator 설정으로 만들며 환경별 토큰·DB 메타 환경/계좌를 대조한다. 계좌 잠금은 `RiskGate.account_lock`을 공유한다.
+- 60초 확인 번호는 출처·actor·세션·환경·계좌·명령·대상을 고정한다. `/resume`은 기존 ResumePrompt 검사와 적용값 기록을 재사용한다. `/pause`·`/resume`·`/resolve`는 명령 기록과 도메인 변경을 한 UoW로 저장하고 알려진 커밋 뒤 메모리에 게시한다. 결과 불명은 같은 요청으로 결과만 재조회하며 재실행하지 않는다.
+- `/cancel`은 최초 대상 목록과 outbox 작업을 함께 저장한다. 대상별 pending/requested/confirmed/failed, 새 시도별 작업 키, 영구 거절·시간 초과·상한을 처리하며 FILLED는 "취소 전에 체결됨"으로 남긴다. acknowledge만으로 완료하지 않는다. 재시작은 취소 추적을 이어 가고 비정상 미종결 명령은 interrupted로 끝낸다.
+- Dashboard 확인 화면·세션 회수 전달·HTTP 클라이언트·SQLite 읽기 공급원을 연결했다. 샘플 데이터는 제어를 차단한다. 제어 서버는 localhost Host/Origin·환경별 bearer 토큰을 확인하고 127.0.0.1만 바인딩한다. 명령 알림은 DB 영속 큐에 남기고 DB 잠금 밖에서 주입된 Telegram 전송 함수로 보낸다.
+- 저장소 보완: 계좌 전체 복구가 끝난 뒤에도 진행 중 명령이 이미 판정된 txn 결과를 조회할 수 있게 계좌별 판정 결과를 보존했다. 실제 봇 polling, Trader 전체 서비스 조립, 실시간 시세·한도·평가액 이력 적재는 M3-04/05/06 연결 범위다. 이 PR은 이를 임의로 시작하거나 실주문을 활성화하지 않는다.
+- 검증: 전체 1442 passed / 181.71초. 마지막 보완 후 제어·실제 outbox/가상 거래소 취소 복구·저장소 테스트 50 passed. ruff lint/format·mypy 통과. 실제 키/운영 DB/거래소/판정 풀 접근 없음.
+- 다음 담당자: Claude가 PR #66 저장소를 먼저 검토하고 이 제어 PR을 이어서 검토한다. 런타임은 `build_control`/`serve_control`과 동기화 후 `service.tick()`을 연결하며, 위험 상태 관측/게시에도 같은 계좌 잠금을 사용해야 한다.

@@ -40,7 +40,7 @@ class _File:
     executor: ThreadPoolExecutor
     lock: asyncio.Lock
     unresolved: dict[str, str]
-    resolved: dict[str, bool]
+    resolved: dict[str, tuple[str, bool]]
 
 
 _FILES: dict[Path, _File] = {}
@@ -187,6 +187,11 @@ class SqliteDatabase(InMemoryDatabase):
 
     async def resolve(self, txn_id: str) -> bool:
         """Determine the result only. Resume requires journal reconciliation by the caller."""
+        if txn_id not in self._file.unresolved and txn_id in self._file.resolved:
+            account, outcome = self._file.resolved[txn_id]
+            if account != self.account_id:
+                raise ValueError("transaction belongs to another account")
+            return outcome
         if self._file.unresolved.get(txn_id) != self.account_id:
             raise ValueError("transaction is not awaiting resolution for this account")
 
@@ -208,7 +213,7 @@ class SqliteDatabase(InMemoryDatabase):
         try:
             async with asyncio.timeout(self.outcome_timeout_seconds):
                 result = await self._exclusive(run)
-                self._file.resolved[txn_id] = result
+                self._file.resolved[txn_id] = self.account_id, result
                 return result
         except (TimeoutError, sqlite3.Error):
             if self.alert:
@@ -219,8 +224,11 @@ class SqliteDatabase(InMemoryDatabase):
         """Only after journal merge, outbox acknowledgement and order reconciliation."""
         if txn_id not in self._file.resolved:
             raise ValueError("resolve the transaction before completing reconciliation")
+        if self._file.resolved[txn_id][0] != self.account_id:
+            raise ValueError("transaction belongs to another account")
         self._file.unresolved.pop(txn_id, None)
-        self._file.resolved.pop(txn_id, None)
+        # In-process command/entry continuations may poll after account-wide recovery.
+        # Keep the proven result; absence of the pause must not turn it back into UNKNOWN.
 
     async def recover(self, reconcile: Callable[[], Awaitable[bool]]) -> bool:
         """Resolve, then run Synchronizer.synchronize (journal first), then release entry pause."""

@@ -128,6 +128,11 @@ class RiskGate:
         self.working_set_days = working_set_days
         self._lock = asyncio.Lock()
 
+    @property
+    def account_lock(self) -> asyncio.Lock:
+        """Shared with control and runtime risk-state publication."""
+        return self._lock
+
     def refresh_pauses(self, strategies: Mapping[StrategyId, StrategyRiskInput]) -> None:
         """Expire timed pauses, then add what the current figures require (D76 step 3)."""
         now = self._clock.now()

@@ -3,7 +3,7 @@
 {% if not trader %}
 <section class="card notice">
   <h2>Trader 미연결</h2>
-  <p>제어 API(M5-01b)가 아직 없어서 버튼은 비활성화돼 있습니다. 화면 보기는 그대로 됩니다.</p>
+  <p>Trader 연결을 확인할 수 없어 버튼이 비활성화돼 있습니다. 화면 보기는 그대로 됩니다.</p>
 </section>
 {% endif %}
 
@@ -12,11 +12,11 @@
   <h2>명령</h2>
   <p class="muted">텔레그램과 같은 명령만 있습니다. 재개·취소·확정은 확인 화면을 한 번 더 거칩니다.</p>
   <div class="actions">
-    <form method="post" action="/control/pause"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <form method="post" action="/control/pause"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="request_id" value="{{ new_request_id() }}">
       <button type="submit"{% if not trader %} disabled{% endif %}>신규 진입 정지</button></form>
-    <form method="post" action="/control/resume"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <form method="post" action="/control/resume"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="request_id" value="{{ new_request_id() }}">
       <button type="submit"{% if not trader %} disabled{% endif %}>재개 요청</button></form>
-    <form method="post" action="/control/cancel"><input type="hidden" name="csrf" value="{{ session.csrf }}">
+    <form method="post" action="/control/cancel"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="request_id" value="{{ new_request_id() }}">
       <button type="submit"{% if not trader %} disabled{% endif %}>미체결 진입 취소 요청</button></form>
   </div>
   {% if unknown %}
@@ -25,12 +25,12 @@
   <ul class="plain">
   {% for r in unknown %}
     <li><span class="mono">{{ r.order_link_id }}</span> · {{ r.symbol }} · {{ r.created_at | kst("%m-%d %H:%M") }}
-      <form method="post" action="/control/resolve" class="inline"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="order_link_id" value="{{ r.order_link_id }}">
+      <form method="post" action="/control/resolve" class="inline"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="request_id" value="{{ new_request_id() }}"><input type="hidden" name="order_link_id" value="{{ r.order_link_id }}">
       <button type="submit"{% if not trader %} disabled{% endif %}>NOT_FOUND 확정 요청</button></form></li>
   {% endfor %}
   </ul>
   {% endif %}
-  <form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{ session.csrf }}"><button type="submit" class="secondary">로그아웃</button></form>
+  <form method="post" action="/logout" class="logout"><input type="hidden" name="csrf" value="{{ session.csrf }}"><input type="hidden" name="request_id" value="{{ new_request_id() }}"><button type="submit" class="secondary">로그아웃</button></form>
 </section>
 {% else %}
 <section class="card login">

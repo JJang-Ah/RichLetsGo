@@ -89,6 +89,10 @@ class EquityTracker:
     def state(self) -> TrackerState:
         return self._s
 
+    def publish(self, committed: "EquityTracker") -> None:
+        """Publish known-committed control state while holding the shared account lock."""
+        self._s = committed.state
+
     def start_day(self, snapshot: AccountSnapshot, cash_flows: Sequence[CashFlow] = ()) -> None:
         """New trading day: baseline = wallet balance excluding unrealized PnL (D72)."""
         day = trading_day_start(snapshot.at)

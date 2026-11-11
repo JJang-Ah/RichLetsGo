@@ -11,14 +11,14 @@ from typing import Any
 from richletsgo.domain import enums, events, values
 from richletsgo.oms import models as orders
 from richletsgo.portfolio import models as portfolio
-from richletsgo.risk import records
+from richletsgo.risk import equity, records, resume
 
 from . import contracts
 
 EPOCH = datetime(1970, 1, 1, tzinfo=UTC)
 TYPES: dict[str, Any] = {
     cls.__name__: cls
-    for module in (enums, events, values, orders, portfolio, records, contracts)
+    for module in (enums, events, values, orders, portfolio, records, contracts, equity, resume)
     for cls in vars(module).values()
     if isinstance(cls, type) and (is_dataclass(cls) or issubclass(cls, Enum))
 }
@@ -51,6 +51,8 @@ def pack(value: Any) -> Any:
         }
     if isinstance(value, tuple):
         return {"tuple": [pack(v) for v in value]}
+    if isinstance(value, frozenset):
+        return {"frozenset": [pack(v) for v in sorted(value)]}
     if isinstance(value, Mapping):
         return {"map": [[pack(k), pack(v)] for k, v in value.items()]}
     if value is None or isinstance(value, (str, int, float, bool)):
@@ -71,6 +73,8 @@ def unpack(value: Any) -> Any:
         return TYPES[value["type"]](**{k: unpack(v) for k, v in value["fields"].items()})
     if "tuple" in value:
         return tuple(unpack(v) for v in value["tuple"])
+    if "frozenset" in value:
+        return frozenset(unpack(v) for v in value["frozenset"])
     if "map" in value:
         return {unpack(k): unpack(v) for k, v in value["map"]}
     raise ValueError("unknown persisted encoding")

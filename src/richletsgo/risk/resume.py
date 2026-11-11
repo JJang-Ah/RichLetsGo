@@ -116,6 +116,21 @@ class ResumeService:
         if at < prompt.created_at:
             return ResumeRejected("confirmation precedes prompt", auth)
         del self._prompts[prompt_id]
+        return self.confirm_prompt(prompt, actor_id, at)
+
+    def confirm_prompt(
+        self, prompt: ResumePrompt, actor_id: str, at: datetime
+    ) -> ResumeRecord | ResumeRejected:
+        """Validate a server-owned prompt against staged current state.
+
+        CommandService owns binding/atomic consumption; this method only applies the
+        existing risk checks and mutates the transaction's private risk-state copy.
+        """
+        auth = authorize_command(actor_id, RESUME_COMMAND, self._allowed, require_utc(at))
+        if not auth.allowed or prompt.actor_id != actor_id:
+            return ResumeRejected("unauthorized", auth)
+        if at < prompt.created_at:
+            return ResumeRejected("confirmation precedes prompt", auth)
         if at >= prompt.expires_at:
             return ResumeRejected("prompt expired", auth)
         if (
@@ -136,4 +151,4 @@ class ResumeService:
         if prompt.clears_manual and self._pauses.clear(PauseKind.ENTRY_PAUSED_MANUAL):
             cleared.append(PauseKind.ENTRY_PAUSED_MANUAL)
         self._prompts.clear()
-        return ResumeRecord(prompt_id, actor_id, at, tuple(cleared), reset)
+        return ResumeRecord(prompt.prompt_id, actor_id, at, tuple(cleared), reset)
