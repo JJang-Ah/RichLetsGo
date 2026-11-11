@@ -59,9 +59,6 @@ resume_equity_tolerance_ratio = "0.01"
 bybit_demo_api = "richletsgo/bybit-demo"
 bybit_live_api = "richletsgo/bybit-live"
 telegram_bot = "richletsgo/telegram-bot"
-oracle_demo = "richletsgo/oracle-demo"
-oracle_live = "richletsgo/oracle-live"
-oracle_read = "richletsgo/oracle-read"
 
 # Future loader (M3): paths are relative to THIS config file, never cwd.
 # Example values; keep environments separate.
@@ -170,14 +167,16 @@ mode = "disabled"
 [telegram]
 allowed_user_ids = [1] # replace with actual numeric user IDs before connection
 
-[oracle]
+[storage]
 working_set_days = 7
-[oracle.backtest]
-dsn = "localhost:1521/FREEPDB1"
-schema = "RLG_BACKTEST"
-[oracle.demo]
-dsn = "localhost:1521/FREEPDB1"
-schema = "RLG_DEMO"
+busy_timeout_seconds = 5
+outcome_timeout_seconds = 10
+[storage.backtest]
+db_file = "data/backtest/trading.sqlite"
+[storage.demo]
+db_file = "data/demo/trading.sqlite"
+[storage.live]
+db_file = "data/live/trading.sqlite"
 
 [logging]
 retention_days = 14

@@ -41,7 +41,10 @@ def test_example_paths_immutability_hash_and_demo(tmp_path, monkeypatch):
         encoding="utf-8",
     )
     demo = load_config(path)
-    assert demo.environment is Environment.DEMO and demo.oracle.schema == "RLG_DEMO"
+    assert (
+        demo.environment is Environment.DEMO
+        and demo.storage.db_file == path.parent / "data/demo/trading.sqlite"
+    )
     assert demo.config_hash != first.config_hash
     assert demo.strategies[StrategyId.S1].source == "manual"
 
@@ -62,7 +65,7 @@ def test_example_paths_immutability_hash_and_demo(tmp_path, monkeypatch):
         ('mode = "disabled"', 'mode = "enabled"'),
         ("https://api-demo.bybit.com", "https://api.bybit.com"),
         ('bybit_live_api = "richletsgo/bybit-live"', 'bybit_live_api = "richletsgo/bybit-demo"'),
-        ('dsn = "localhost:1521/FREEPDB1"', 'dsn = "user/secret@localhost"'),
+        ('db_file = "data/demo/trading.sqlite"', 'db_file = "data/backtest/trading.sqlite"'),
         ("[risk]", '[risk]\napi_secret = "must-not-leak"'),
     ],
 )

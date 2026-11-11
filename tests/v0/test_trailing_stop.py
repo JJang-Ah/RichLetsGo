@@ -361,7 +361,6 @@ def test_three_daily_targets_then_stop_executes_at_latest_trigger(tmp_path):
 
 
 def test_db_failure_journal_restores_attempt_and_does_not_replay_trigger(tmp_path, monkeypatch):
-    from richletsgo.storage.memory import InMemoryUnitOfWork
 
     async def scenario():
         db, clock, svc, router, ex, sync = await account(tmp_path)
@@ -370,16 +369,17 @@ def test_db_failure_journal_restores_attempt_and_does_not_replay_trigger(tmp_pat
         async with db.unit_of_work() as u:
             action = next(a for a in u.portfolio.actions() if a.kind is ActionKind.AMEND_STOP)
             stop = u.orders.get(action.order_key)
-        original = InMemoryUnitOfWork.commit
+        uow_type = type(db.unit_of_work())
+        original = uow_type.commit
 
         async def broken(self):
             raise OSError("DB unavailable")
 
-        monkeypatch.setattr(InMemoryUnitOfWork, "commit", broken)
+        monkeypatch.setattr(uow_type, "commit", broken)
         await sync.sender.amend(
             stop, trigger=action.trigger, action_key=action.key, trail_attempt=0
         )
-        monkeypatch.setattr(InMemoryUnitOfWork, "commit", original)
+        monkeypatch.setattr(uow_type, "commit", original)
         assert await attempts(db) == ()
         sync = await restart(db, clock, svc, router, ex, sync, tmp_path)
         assert (await attempts(db))[0].attempts == 1

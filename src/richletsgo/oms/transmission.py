@@ -20,6 +20,7 @@ from richletsgo.portfolio.models import StopParameters
 from richletsgo.portfolio.trailing import ingest_trail_record
 from richletsgo.risk.pause import Pause, PauseKind, PauseState
 from richletsgo.storage.contracts import UnitOfWork
+from richletsgo.storage.errors import CommitOutcomeUnknown
 
 from .journal import JournalCorrupt, JournalRecord, ProtectiveJournal
 from .models import OrderRecord
@@ -86,6 +87,7 @@ class OrderSender:
         self.uow_factory, self.gateway, self.journal = uow_factory, gateway, journal
         self.clock, self.pauses, self.unique, self.alerts = clock, pauses, unique, alerts
         self._claimed: set[str] = set()
+        self.pending_entries: dict[str, OrderRecord] = {}
 
     def pause(self, reason: str, symbol: Symbol | None = None) -> None:
         self.pauses.add(
@@ -95,6 +97,8 @@ class OrderSender:
             self.alerts.append(reason)
 
     async def _save(self, record: JournalRecord) -> None:
+        if self.uow_factory().entry_paused:
+            raise OSError("storage outcome reconciliation pending; retained in local journal")
         async with self.uow_factory() as uow:
             store_record(uow, record)
             ingest_trail_record(uow, record)
@@ -117,6 +121,8 @@ class OrderSender:
         if action_key and action_key in self._claimed:
             return ExchangeError(ErrorCode.TIMEOUT, "operation already owned; reconcile")
         try:
+            if self.uow_factory().entry_paused:
+                raise OSError("storage outcome reconciliation pending")
             async with self.uow_factory() as uow:
                 current = uow.orders.get(order.key)
                 if current is None or current.state is not OrderState.CREATED:
@@ -135,6 +141,11 @@ class OrderSender:
                 if entry and action_key:
                     raise ValueError("entries do not use portfolio outbox")
                 await uow.commit()
+        except CommitOutcomeUnknown as error:
+            self.pause("storage")
+            if entry:
+                self.pending_entries[error.txn_id] = order
+                return ExchangeError(ErrorCode.TIMEOUT, "entry commit outcome unknown; not sent")
         except OSError:
             self.pause("db")
             if entry:
@@ -163,8 +174,36 @@ class OrderSender:
         await self.record_result(order, result)
         return result
 
+    async def resume_entry_commit(
+        self,
+        txn_id: str,
+        resolve: Callable[[str], Awaitable[bool]],
+    ) -> CommandResult:
+        """Continue the exact SUBMITTED entry after marker proof; never issue a new ID.
+
+        A process restart instead follows the existing UNKNOWN/REST reconciliation path.
+        Rolled-back input can be retried only after account storage recovery completes.
+        """
+        order = self.pending_entries.get(txn_id)
+        if order is None:
+            return ExchangeError(ErrorCode.REJECTED, "entry outcome already handled or unknown")
+        committed = await resolve(txn_id)
+        # Competing callers may have resolved the same marker while we awaited I/O.
+        if self.pending_entries.pop(txn_id, None) is None:
+            return ExchangeError(ErrorCode.TIMEOUT, "entry continuation already owned")
+        if not committed:
+            return ExchangeError(ErrorCode.REJECTED, "entry transaction rolled back; not sent")
+        try:
+            result = await self.gateway.place_order(OrderRequest.from_record(order))
+        except (OSError, TimeoutError):
+            result = ExchangeError(ErrorCode.TIMEOUT, "entry transport outcome unknown")
+        await self.record_result(order, result)
+        return result
+
     async def record_result(self, order: OrderRecord, result: CommandResult) -> None:
         try:
+            if self.uow_factory().entry_paused:
+                raise OSError("storage outcome reconciliation pending")
             async with self.uow_factory() as uow:
                 current = uow.orders.get(order.key)
                 if current is not None and current.state in (

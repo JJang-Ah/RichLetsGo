@@ -3,7 +3,7 @@
 import asyncio
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 
 from richletsgo.domain import (
@@ -24,6 +24,7 @@ from richletsgo.oms.exposure import exposure
 from richletsgo.oms.models import OrderRecord
 from richletsgo.portfolio.models import CloseState, StopParameters, entry_delta
 from richletsgo.storage.contracts import FillStatus, UnitOfWork
+from richletsgo.storage.working_set import signal_time
 
 from .checks import StrategyRiskInput, check_limits, evaluate_pauses
 from .equity import EquityTracker
@@ -110,6 +111,7 @@ class RiskGate:
         pauses: PauseState,
         clock: Clock,
         unique_factory: Callable[[], str],
+        working_set_days: int = 7,
     ) -> None:
         if not account_id:
             raise ValueError("account_id is required")
@@ -121,6 +123,9 @@ class RiskGate:
         self.pauses = pauses
         self._clock = clock
         self._unique = unique_factory
+        if working_set_days < 7:
+            raise ValueError("working set must cover at least seven days")
+        self.working_set_days = working_set_days
         self._lock = asyncio.Lock()
 
     def refresh_pauses(self, strategies: Mapping[StrategyId, StrategyRiskInput]) -> None:
@@ -142,8 +147,15 @@ class RiskGate:
         if market.instrument.symbol is not request.symbol:
             raise ValueError("instrument does not match the requested symbol")
         finite_decimal(market.leverage, "leverage")
+        bar_at = signal_time(request.signal_id)
+        if bar_at is not None and bar_at < self._clock.now() - timedelta(
+            days=self.working_set_days
+        ):
+            raise ValueError("signal candle predates the retained decision window")
         async with self._lock:
             async with self._uow() as uow:
+                if uow.entry_paused:
+                    raise OSError("ENTRY_PAUSED_SYSTEM(storage)")
                 # UoW acquisition may wait. Read current risk inputs only after that wait.
                 self.refresh_pauses(strategies)
                 existing = uow.decisions.get(request.signal_id)
