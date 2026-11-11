@@ -1,0 +1,27 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="card">
+  <h2>전략별 포지션</h2>
+  {% if positions %}
+  <div class="scroll">
+  <table>
+    <thead><tr>
+      <th scope="col">전략</th><th scope="col">계약</th><th scope="col">방향</th>
+      <th scope="col" class="r">수량</th><th scope="col" class="r">진입가</th><th scope="col" class="r">현재가</th>
+      <th scope="col" class="r">손절가</th><th scope="col" class="r">손절까지</th><th scope="col">거래소 손절</th>
+    </tr></thead>
+    <tbody>
+    {% for p in positions %}
+      <tr>
+        <td>{{ p.strategy }}</td><td>{{ p.symbol }}</td><td>{{ '매수' if p.side == 'Buy' else '매도' }}</td>
+        <td class="r">{{ p.quantity | num }}</td><td class="r">{{ p.entry_price | num }}</td><td class="r">{{ p.mark_price | num }}</td>
+        <td class="r">{{ p.stop_price | num }}</td><td class="r">{{ p.stop_distance | pct }}</td>
+        <td>{% if p.fully_protected %}<span class="pill ok">✓ {{ p.exchange_stop_quantity | num }} = 보유</span>{% else %}<span class="pill bad">! {{ p.exchange_stop_quantity | num }} / {{ p.quantity | num }}</span>{% endif %}</td>
+      </tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}<p class="empty">보유 포지션이 없습니다.</p>{% endif %}
+</section>
+{% endblock %}

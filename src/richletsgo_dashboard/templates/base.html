@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>RichLetsGo · {% for key, _, label in pages %}{% if key == page %}{{ label }}{% endif %}{% endfor %}</title>
+<link rel="stylesheet" href="/static/style.css">
+<script src="/static/app.js" defer></script>
+</head>
+<body class="env-{{ o.environment }}">
+<header class="top">
+  <div class="brand">
+    <span class="env-badge" aria-label="환경">{{ o.environment | upper }}</span>
+    <span class="name">RichLetsGo</span>
+    <span class="account">{{ o.account_id }}</span>
+  </div>
+  <div class="status" id="live-status">
+    <span class="pill pause-{{ o.pause_state | lower }}" data-field="pause">{{ pause_label }}</span>
+    <span class="pill {{ 'ok' if trader else 'off' }}" data-field="trader">Trader {{ '연결됨' if trader else '미연결' }}</span>
+  </div>
+</header>
+<nav class="tabs" aria-label="화면">
+  {% for key, href, label in pages %}
+  <a href="{{ href }}"{% if key == page %} aria-current="page"{% endif %}>{{ label }}</a>
+  {% endfor %}
+</nav>
+<main>
+{% block main %}{% endblock %}
+</main>
+<footer>시각은 모두 한국 시간(KST) · 이 화면은 이 PC에서만 열립니다</footer>
+</body>
+</html>

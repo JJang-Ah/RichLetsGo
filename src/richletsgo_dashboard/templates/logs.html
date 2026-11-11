@@ -1,0 +1,18 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="card">
+  <h2>알림·명령·정지 기록</h2>
+  {% if logs %}
+  <ul class="log">
+  {% for e in logs %}
+    <li>
+      <time>{{ e.at | kst("%m-%d %H:%M") }}</time>
+      <span class="pill kind-{{ e.kind }}">{{ {'alert': '알림', 'command': '명령', 'pause': '정지'}.get(e.kind, e.kind) }}</span>
+      <span class="muted">{{ e.source }}</span>
+      <span class="text">{{ e.text }}</span>
+    </li>
+  {% endfor %}
+  </ul>
+  {% else %}<p class="empty">기록이 없습니다.</p>{% endif %}
+</section>
+{% endblock %}

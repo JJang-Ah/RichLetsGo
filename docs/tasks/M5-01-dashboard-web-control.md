@@ -1,6 +1,6 @@
 # M5-01 웹 대시보드와 웹 제어
 
-- 상태: 명세 작성(2026-11-11), PR #63 Codex P2 6건 반영, 재검토 대기
+- 상태: 명세 확정(PR #63). M5-01a 화면 구현(가짜 데이터) PR 검토 대기, M5-01b 미착수
 - 구현: **M5-01a 화면(읽기)**은 Claude Code, **M5-01b 제어 API(Trader 쪽)**는 Codex. 검토는 서로 바꿔서 한다(D86·D100: 명세를 쓴 사람은 다른 사람의 검토를 거친 뒤에 구현한다)
 - 브랜치: `task/M5-01a-dashboard`, `task/M5-01b-control-api`
 - 근거: **D106**(웹 제어 허용), D73(FastAPI + 간단한 HTML), D27(명령 범위), D48·D84(재개 재확인), D54(`/resolve`), **D105**(SQLite, 읽기 전용 연결), 03 7장, M3-05 명령 표, M1-03 `authorize_command`·`ResumeService`

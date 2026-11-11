@@ -1,0 +1,26 @@
+{% extends "base.html" %}
+{% block main %}
+<nav class="filters" aria-label="기간">
+  {% for key in ranges %}
+  <a href="/equity?range={{ key }}"{% if key == current %} aria-current="true"{% endif %}>{{ {'1d': '1일', '7d': '7일', '30d': '30일', 'all': '전체'}[key] }}</a>
+  {% endfor %}
+</nav>
+{% for chart in charts %}
+<section class="card">{{ chart }}</section>
+{% endfor %}
+<section class="card">
+  <details>
+    <summary>표로 보기 (최근 48개)</summary>
+    <div class="scroll">
+    <table>
+      <thead><tr><th scope="col">시각</th><th scope="col" class="r">평가액</th><th scope="col" class="r">낙폭</th></tr></thead>
+      <tbody>
+      {% for p in points %}
+        <tr><td>{{ p.at | kst }}</td><td class="r">{{ p.equity | money }}</td><td class="r">{{ p.drawdown | pct }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    </div>
+  </details>
+</section>
+{% endblock %}

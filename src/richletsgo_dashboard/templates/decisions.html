@@ -1,0 +1,22 @@
+{% extends "base.html" %}
+{% block main %}
+<section class="card">
+  <h2>결정과 AI 점수</h2>
+  {% if o.ai_mode == 'disabled' %}
+  <p class="empty">AI 비활성 상태입니다(<span class="mono">ai.mode=disabled</span>). AI 점수와 비용은 M4 이후에 표시됩니다.</p>
+  {% endif %}
+  {% if decisions %}
+  <div class="scroll">
+  <table>
+    <thead><tr><th scope="col">시각</th><th scope="col">signal_id</th><th scope="col">전략</th><th scope="col">계약</th><th scope="col" class="r">AI 점수</th><th scope="col">근거</th><th scope="col" class="r">비용(USD)</th></tr></thead>
+    <tbody>
+    {% for d in decisions %}
+      <tr><td>{{ d.at | kst("%m-%d %H:%M") }}</td><td class="mono">{{ d.signal_id }}</td><td>{{ d.strategy }}</td><td>{{ d.symbol }}</td>
+      <td class="r">{{ d.ai_score | num }}</td><td class="text">{{ d.reason }}</td><td class="r">{{ d.cost_usd | num }}</td></tr>
+    {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</section>
+{% endblock %}
