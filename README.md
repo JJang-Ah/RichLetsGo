@@ -15,14 +15,14 @@
 | [docs/design/00_DECISIONS.md](docs/design/00_DECISIONS.md) | 확정된 결정, 설계 원칙, 남은 질문 |
 | [docs/design/01_STRATEGY_AND_AI.md](docs/design/01_STRATEGY_AND_AI.md) | 전략(S1 스윙 추세추종, S2 단기 평균회귀)과 AI 점수 |
 | [docs/design/02_RISK_MANAGEMENT.md](docs/design/02_RISK_MANAGEMENT.md) | 한도 계층, 크기 계산, 정지 상태, 텔레그램 명령 |
-| [docs/design/03_SYSTEM_ARCHITECTURE.md](docs/design/03_SYSTEM_ARCHITECTURE.md) | 프로세스, 모듈, 데이터 흐름, 주문 상태, Oracle 저장소 |
+| [docs/design/03_SYSTEM_ARCHITECTURE.md](docs/design/03_SYSTEM_ARCHITECTURE.md) | 프로세스, 모듈, 데이터 흐름, 주문 상태, SQLite 저장소, 대시보드·웹 제어 |
 | [docs/design/04_VALIDATION_AND_OPERATIONS.md](docs/design/04_VALIDATION_AND_OPERATIONS.md) | 백테스트 → 데모 → 실거래 단계, 운영 체크리스트 |
 | [docs/design/05_DEVELOPMENT_PROCESS.md](docs/design/05_DEVELOPMENT_PROCESS.md) | 역할 분담, PR 흐름, 마일스톤 |
 
 ## 범위 요약
 
 - 첫 대상: Bybit USDT 무기한 BTCUSDT·ETHUSDT, 단방향, 격리 마진, 레버리지 3~5배 범위.
-- 완전 자동매매, 사용자의 Windows PC에서 Windows 서비스로 실행, 주 저장소는 로컬 Oracle Database Free.
+- 완전 자동매매, 사용자의 Windows PC에서 Windows 서비스로 실행, 주 저장소는 환경별 로컬 SQLite 파일(D105). 대시보드에서 텔레그램과 같은 명령 실행 가능(D106).
 - AI 점수는 진입을 막거나 크기를 줄이기만 하며, 손절·한도는 규칙 엔진이 강제합니다.
 - 모든 거래는 Bybit에서 합니다(D103). 한국투자증권(KIS)은 범위에서 뺐고, Bybit의 주식·ETF·원자재·외환 USDT 무기한은 실현 가능성 점검(04 3.6) 뒤 검토합니다.
 
@@ -37,7 +37,7 @@
 
 1. Claude·사용자: 전략 재설계와 새 V1 검증
 2. Codex: M3-01 설정·자격 증명·로그, M3-03 Bybit 오프라인 단위 테스트
-3. Oracle 설치 뒤 M3-02, 새 전략 검증 통과 뒤 M3-07 데모 운영
+3. M3-02 SQLite 저장소(D105)와 M5-01 대시보드(화면은 가짜 데이터로 먼저), 새 전략 검증 통과 뒤 M3-07 데모 운영
 
 ## 개발 환경 (M0-01)
 
@@ -209,7 +209,7 @@ python -m richletsgo.keystore set richletsgo/oracle-demo
 
 `configure_logging(config.paths.log_dir, environment=config.environment, service="Trader", retention_days=config.log_retention_days, secrets=[credential.key, credential.secret])`는 UTC 일별 JSONL 회전과 기간 보관을 설정합니다. API 키·서명·토큰/비밀번호 필드, 등록된 비밀 문자열과 예외 본문을 마스킹합니다. 추가로 읽은 봇 토큰·DB 비밀번호도 secrets 목록에 넣어야 임의의 문장 안에서도 마스킹됩니다. 부모 로거로 전파하지 않습니다.
 
-Oracle 접속은 M3-02이며 사용자 설치 뒤 시작합니다. M3-01 로더는 DB에 연결하지 않습니다. Data Pump DIRECTORY 등록 요구는 03 6.3절에 이미 명시돼 있습니다.
+저장소는 D105로 SQLite로 바뀌었습니다. M3-02에서 `[oracle]` 설정과 `oracle_*` 키 항목을 `[storage]`로 바꾸며, 그 전까지 아래 Oracle 관련 예시는 쓰지 않습니다. M3-01 로더는 DB에 연결하지 않습니다.
 
 
 ## Bybit 데모 어댑터 (M3-03)

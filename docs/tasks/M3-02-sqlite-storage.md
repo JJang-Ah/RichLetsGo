@@ -1,0 +1,124 @@
+# M3-02 SQLite 저장소
+
+- 상태: D105로 Oracle → SQLite 전환(2026-11-11). 명세 재작성, Codex 검토 대기
+- 구현: Codex / 검토: Claude Code
+- 브랜치: `task/M3-02-sqlite-storage`
+- 근거: 03 5장(주문 상태·저널)·6장(저장소·테이블·백업), D44, D46, D60, D61, **D105**, M1-02·03·04 저장소 인터페이스
+- 이전 판: Oracle 명세(PR #15·#18 검토 반영본). 작업 집합, 커밋 결과 불명, 보호 작업 예외, 완료 조건의 의미는 그대로 두고 저장 기술만 바꿨다.
+
+## 목표
+
+M1의 `UnitOfWork` 프로토콜을 **환경별 SQLite 파일**로 구현해, 메모리 구현과 **같은 의미**(원자적 커밋, 유일성, 롤백)를 보장한다. 단, 메모리 구현에는 없는 **커밋 결과 불명** 상황을 따로 다룬다.
+
+## 사용자 준비
+
+- 없음. Python 표준 라이브러리 `sqlite3`만 쓰고, 별도 서버·계정·비밀번호가 없다(D105).
+- DB 파일은 이 PC의 로컬 디스크에 둔다. **OneDrive 같은 동기화 폴더와 네트워크 드라이브에는 두지 않는다.** WAL 파일이 함께 동기화되지 않아 DB가 깨질 수 있기 때문이다. 설정 검증에서 경로에 `OneDrive`가 들어가면 시작을 거부한다.
+- 조회 도구는 자유다(예: DB Browser for SQLite). 단, 운영 중인 DB 파일을 쓰기 모드로 열어 수정하지 않는다. 조회는 읽기 전용 모드로 연다.
+
+## 파일과 설정
+
+| 환경 | 파일(설정 `storage.<env>.db_file`) |
+|---|---|
+| backtest | `data/backtest/trading.sqlite` (테스트·백테스트용) |
+| demo | `data/demo/trading.sqlite` |
+| live | `data/live/trading.sqlite` |
+
+- 데모와 실거래는 **서로 다른 파일**이다(WORKING_RULES: 실거래와 데모 수치를 섞지 않는다). 각 파일의 `meta` 테이블에 `environment`를 기록하고, 시작 시 설정의 환경과 다르면 시작을 거부한다.
+- M3-01 설정 로더의 `[oracle]` 구간과 키 저장소 항목 `oracle_demo`·`oracle_live`·`oracle_read`를 없애고 `[storage]`(`working_set_days`, 환경별 `db_file`)로 바꾼다. `config.example.toml`과 README 안내도 함께 고친다.
+- 연결마다 적용하는 설정: `journal_mode=WAL`, `synchronous=FULL`(커밋이 돌아오면 디스크에 남음), `foreign_keys=ON`, `busy_timeout`(설정, 기본 5초).
+
+## 연결 방식 (PR #15 검토 2번의 결정 유지)
+
+M1의 저장소 함수(`get/find/all/put/add`)는 **동기**이고 위험 게이트·OMS 훅·포트폴리오 서비스가 await 없이 부른다. 순수 로직을 바꾸지 않기 위해 다음 방식으로 연결한다.
+
+1. **적재**: `__aenter__`에서 새 연결을 열고 `BEGIN IMMEDIATE`로 **쓰기 잠금을 먼저** 잡는다. 이것이 Oracle 판의 계좌 잠금 행(`SELECT … FOR UPDATE`) 자리를 대신한다. SQLite는 파일 전체에 쓰기 잠금이 하나라서 계좌 단위보다 범위가 넓지만, 기록하는 프로세스가 Trader 하나뿐이라 문제가 없다. 잠금을 얻은 **뒤에** 그 계좌의 작업 집합(아래)을 읽어 트랜잭션 내부 메모리 상태로 만든다. 잠금 전에 읽은 상태나 이전 트랜잭션의 메모리 상태를 다시 쓰지 않는다.
+2. **조작**: 저장소 객체는 그 메모리 상태를 동기로 읽고 바꾼다. 바뀐 행을 추적한다(새 행 / 바뀐 행).
+3. **반영**: `commit`에서 바뀐 행만 같은 연결·같은 트랜잭션으로 기록하고 COMMIT한다. 그 밖의 종료는 ROLLBACK이다. 연결은 커밋·롤백 후 닫는다.
+
+- `sqlite3` 호출은 동기다. 이벤트 루프를 오래 막지 않도록 적재·반영은 `asyncio.to_thread`로 실행한다. 한 트랜잭션의 모든 호출은 같은 스레드의 같은 연결에서 한다(`check_same_thread` 기본값 유지, 전용 단일 스레드 실행기 사용).
+- 쓰기 잠금 대기(`SQLITE_BUSY`)가 `busy_timeout`을 넘으면 롤백 예외로 올린다. 호출자는 같은 입력으로 다시 시도할 수 있다.
+
+**작업 집합** (계좌 단위로 적재하는 행). 메모리 구현도 같은 정의를 쓰도록 바꿔, M1 테스트가 작업 집합 규칙까지 검증하게 한다.
+
+| 저장소 | 적재 범위 |
+|---|---|
+| orders | 종결되지 않은 주문, 미반영 체결이 있는 주문, 종결되지 않은 에피소드·청산 의도·보호 복구가 참조하는 주문, 최근 N일(설정) 주문 |
+| fills | 귀속 보류·미반영 체결, 최근 N일 체결(exec_id 중복 판정용) |
+| decisions | signal_id의 봉 시각이 최근 N일 안인 결정. **N일보다 오래된 봉의 신호는 위험 게이트가 거절**(중복 판정 범위 밖이므로) |
+| episodes, close_intents, protection recovery, outbox | 종결되지 않은 것 전부 + 그것이 참조하는 것 |
+| books, risk_states, portfolio 정지·회차 | 전부(계좌당 행 수가 작음) |
+
+- exec_id·(계좌, signal_id) 유일성은 메모리 집합이 아니라 **DB 유일 제약이 최종 보장**한다. 작업 집합 밖의 중복이 커밋 시 유일 제약에 걸리면 도메인 예외로 바꿔 메모리 구현과 같은 경로로 처리한다.
+- N(설정, 기본 7일)은 데모 주문 보관 7일(M3-00)과 동기화 재조회 범위보다 짧으면 안 된다. 설정 검증에서 확인한다.
+- 이 방식 대신 저장소·호출부를 async로 바꾸는 편이 낫다고 판단되면 구현 전에 질문한다(별도 선행 작업 필요).
+
+**잠금 안 대기 규칙**: 쓰기 잠금 획득·작업 집합 적재·커밋 반영은 필수 DB I/O라 잠금 안에서 기다려도 된다. **거래소·AI·텔레그램 같은 외부 호출은 잠금 안에서 하지 않는다**(M1-06 주문 전송기는 SUBMITTED 커밋 후 잠금 밖에서 전송).
+
+## 커밋 결과 불명 (PR #15 검토 1번)
+
+로컬 파일이라 네트워크 끊김은 없지만, COMMIT 도중 디스크 오류(`SQLITE_IOERR`, `SQLITE_FULL`)나 프로세스 강제 종료가 나면 결과를 알 수 없다.
+
+| 장애 시점 | 판정 | 처리 |
+|---|---|---|
+| COMMIT 요청 전(적재·조작·반영 중) | 롤백 | 예외를 올리고 끝낸다. 호출자는 같은 입력으로 다시 시도할 수 있다 |
+| COMMIT 호출이 예외로 끝남 | **결과 불명** | 아래 절차. 결과 확인 전에는 새 ID 발급·재처리·거래소 전송 금지(아래 "보호 작업 예외" 제외) |
+
+결과 불명 절차:
+
+1. 모든 트랜잭션은 반영 단계에서 고유한 `txn_id`를 `uow_commits` 테이블에 같은 트랜잭션으로 넣는다.
+2. 결과 불명이면 `CommitOutcomeUnknown(txn_id)`를 올리고, 그 계좌의 신규 진입을 `ENTRY_PAUSED_SYSTEM(storage)`로 멈춘다(메모리 정지 + 알림, DB에 쓰지 않음).
+3. 새 연결로 `BEGIN IMMEDIATE`를 얻은 뒤 `uow_commits`에서 `txn_id`를 찾는다. 있으면 커밋됨(호출자는 커밋 성공으로 이어서 진행, 예: SUBMITTED 주문 전송), 없으면 롤백됨(같은 입력으로 다시 시도). 잠금을 얻은 뒤 조회하므로 진행 중인 커밋과 섞이지 않는다.
+4. 재연결·조회가 설정 시간 안에 안 되면 정지를 유지하고 알린다. 손절은 거래소에 있으므로 청산하지 않는다(P1).
+5. `uow_commits`는 N일이 지나면 정리한다.
+
+- 주문 전송기(M1-06)는 결과 불명인 **진입** SUBMITTED 커밋에 대해 위 3번 결과가 나오기 전에는 전송하지 않는다.
+
+**보호 작업 예외** (PR #18 재검토 3번): 보호·축소 작업(`CLOSE`·`REDUCE_UNPROTECTED`·`PROTECT`·취소·수량 변경)은 판정을 기다리지 않는다. 판정은 DB가 살아나야 끝나는데, 그동안 보호가 막히면 안 되기 때문이다(P1).
+
+1. 결과 불명이 나면 그 보호 작업은 저장소 장애와 같은 경로로 보낸다: 로컬 저널 `requested`(outbox `action_key` 포함) → 전송 → `result`(M1-06, D45·D65).
+2. 판정(위 3번)이 끝나면 **정상 전송기를 재개하기 전에** 먼저 저널을 DB에 합친다: 저널 레코드를 `protective_operations`에 반영하고, 저널로 이미 보낸 작업의 outbox 키를 acknowledge하고, 그 주문 상태를 저널 결과(또는 UNKNOWN)로 맞춘다.
+3. 그다음 정상 전송기를 재개한다. 이미 acknowledge된 작업은 다시 실행하지 않는다. 판정이 "커밋됨"이라 DB에 같은 주문이 `SUBMITTED`로 있어도, 2번에서 저널 결과가 먼저 들어가므로 다시 보내지 않는다.
+4. 작업 종류별 멱등성: create는 같은 orderLinkId라 거래소가 중복을 거절한다. cancel은 다시 보내도 "없음/늦음"으로 끝난다. amend는 다시 보내면 과거 목표를 덮어쓸 수 있으므로 **2번의 acknowledge 없이는 절대 재실행하지 않는다**(D90 재생 규칙).
+
+## 범위
+
+### 만들 것
+
+1. **마이그레이션** (`db/migrations/V001__init.sql` …, SQLite 문법)
+   - 03 6.2절 테이블과 M1에서 생긴 저장소 전부: `orders`, `order_events`, `fills`(exec_id 유일), `books`(전략 장부), `decisions`((계좌, signal_id) 유일), `episodes`(전략·계약당 비종결 1개: `WHERE closed_at IS NULL` 부분 유일 인덱스), `close_intents`, `protection_recoveries`, `portfolio_actions`(outbox, 작업 키 유일), `portfolio_symbol_state`(계약 정지·손절 조회 회차·조회 시각·마지막 체결 시각·정지 회차), `funding_applied`(펀딩 ID 유일), `protective_operations`((operation_id, phase) 유일, `group_id`·`step`·`attempt`·`action_key` 열: M1-06 D90), `risk_states`(정지 상태 JSON, 최고점 2개, 재설정 이력), `equity_snapshots`, `cash_flows`(flow_id 유일), `alerts`, `commands`(D106: `source` 열 = telegram / web), `config_versions`, `uow_commits`, `schema_version`, `meta`, 그리고 M3-04 경계 처리용 `boundary_inputs`·`boundary_outputs`·`boundary_checkpoints`·`position_snapshots`·`unallocated_funding`.
+   - M1-04 연결 계약(outbox 인수·acknowledge, `ProtectionRecovery`, `recover_system_pause`의 조건)을 그대로 저장할 수 있어야 한다.
+   - **금액·수량은 `TEXT`**에 Decimal의 정규 문자열로 저장한다. SQLite에는 Decimal 형이 없고 `REAL`은 정밀도를 잃기 때문이다. 금액 계산·비교는 SQL이 아니라 Python Decimal로 한다. **시각은 `INTEGER`(UTC epoch 밀리초)**로 저장한다.
+   - 모든 테이블은 `STRICT` 테이블로 만들어 형을 강제한다.
+   - 마이그레이션 실행 명령: 버전 순서대로 한 번씩만 적용하고 적용 기록을 남긴다. 시작 시 버전이 맞지 않으면 Trader가 시작을 거부한다(03 4.3절 2단계).
+2. **`SqliteUnitOfWork`** (`storage/sqlite.py`): 위 "연결 방식"과 "커밋 결과 불명" 그대로.
+   - 유일 제약 위반(`sqlite3.IntegrityError`)은 도메인 예외(`DuplicateExecId` 등)로 바꾼다.
+   - 장애 주입 훅: COMMIT 전 실패, COMMIT 예외(실제로는 커밋됨 / 롤백됨)를 테스트에서 흉내 낼 수 있게 한다.
+3. **메모리 구현 정리**: 작업 집합 정의를 메모리 구현에도 적용한다(오래된 종결 행은 `all()`에서 빠짐).
+4. **읽기 전용 접근**: 대시보드(M5-01)와 조회 도구가 쓸 `open_readonly(path)`. `file:…?mode=ro` URI로 열고 쓰기를 시도하면 실패하는지 테스트한다. 계정·권한 대신 이 방식으로 읽기 전용을 보장한다.
+5. **백업** (D105, D74 대체): SQLite 온라인 백업 API(`sqlite3.Connection.backup`)로 `paths.<env>.backup_dir`에 날짜별 파일을 만들고, 백업본에 `PRAGMA integrity_check`를 돌려 결과를 기록한다. 14일 지난 파일은 지운다. 매일 실행은 M3-06 작업 스케줄러에 등록한다.
+
+### 만들지 않을 것
+
+- 대시보드와 웹 제어(M5-01), 백테스트·연구 저장(기존 SQLite 그대로)
+
+## 완료 조건
+
+- [ ] **같은 계약 테스트를 두 구현에 돌린다**: M1-02·03·04의 저장소 관련 테스트를 메모리와 SQLite 양쪽에서 실행하는 매개변수화 테스트. SQLite는 임시 파일이라 **CI에서도 항상 실행**한다.
+- [ ] 작업 집합: N일보다 오래된 종결 주문이 `all()`에 없고, 종결되지 않은 에피소드가 참조하는 오래된 주문은 있음. N일보다 오래된 봉의 신호는 게이트가 거절. 작업 집합 밖 exec_id 중복은 커밋 시 도메인 예외.
+- [ ] 동시성: 두 작업이 같은 계좌로 동시에 위험 게이트를 통과하려 할 때 하나만 통과(M1-03 동시 진입 테스트를 SQLite로). 잠금 획득 전에 읽은 상태를 쓰지 않음. `busy_timeout` 초과는 롤백 예외.
+- [ ] **장애 지점을 따로 테스트**: (a) COMMIT 전 실패 → 아무것도 남지 않음, 같은 입력 재시도 가능. (b) COMMIT 예외인데 실제로는 커밋됨 → `CommitOutcomeUnknown`, 진입 정지, 새 ID 발급·전송 없음, 재조회 후 `txn_id`로 "커밋됨" 판정 → 같은 주문으로 이어서 진행. (b′) 같은 상황에서 실제로는 롤백된 경우 → "롤백됨" 판정 → 재시도. (c) 재조회 실패 지속 → 정지 유지·알림.
+- [ ] 보호 작업의 결과 불명: create·amend·cancel 각각에 대해 결과 불명 → 저널 경유 전송 → 늦은 판정(커밋됨 / 롤백됨) → 저널을 먼저 합친 뒤 전송기 재개 → 다시 보내지 않음, 최종 상태 = 거래소.
+- [ ] Decimal 왕복(`0.10000000`, 아주 작은 수량, 지수 표기 없음)과 UTC 밀리초 시각 왕복.
+- [ ] 마이그레이션 재실행이 아무것도 바꾸지 않음, 버전 불일치·환경 불일치 시 시작 거부.
+- [ ] 읽기 전용 연결로 쓰기 시도 시 실패. Trader가 쓰는 중에도 읽기 전용 연결이 막히지 않음(WAL).
+- [ ] 백업: 쓰는 중에 백업해도 백업본 `integrity_check`가 `ok`, 14일 정리.
+- [ ] 동기화 폴더 경로 거부.
+
+## 검토 포인트
+
+- 쓰기 잠금 → 적재 순서가 지켜지는지
+- 결과 불명에서 새 ID를 만들거나 전송하는 경로가 없는지("보호 작업 예외"의 저널 경로 제외)
+- 유일 제약과 예외 변환이 M1 로직의 기대와 맞는지
+- Decimal이 어디에서도 `float`/`REAL`을 거치지 않는지
+- 한 트랜잭션이 여러 스레드·연결로 나뉘지 않는지
