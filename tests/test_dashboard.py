@@ -273,3 +273,70 @@ def test_untrusted_text_is_escaped_everywhere() -> None:
         )
     )
     assert "<script>" not in chart and "&lt;script&gt;" in chart
+
+
+# --- PR #64 review cases -------------------------------------------------------------------
+
+
+def test_old_code_login_racing_a_code_change_cannot_survive(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import threading
+    import time
+
+    from richletsgo_dashboard import security
+
+    clock = Clock()
+    codes = {"value": "old code"}
+    auth = Auth(code=lambda: codes["value"], clock=clock)
+    assert auth.session(None) is None  # load the old digest
+    real = security._digest
+    verifying = threading.Event()
+
+    def slow_digest(text: str) -> bytes:
+        if text == "old code" and threading.current_thread().name == "login":
+            verifying.set()
+            time.sleep(0.2)  # login is mid-verification with the old code
+        return real(text)
+
+    monkeypatch.setattr(security, "_digest", slow_digest)
+    issued: list[object] = []
+    worker = threading.Thread(target=lambda: issued.append(auth.login("old code")), name="login")
+    worker.start()
+    assert verifying.wait(2)
+    codes["value"] = "new code"
+    clock.now += CODE_RECHECK_SECONDS
+    auth.session(None)  # another request notices the change and revokes
+    worker.join()
+    session = issued[0]
+    # Either the login finished first and was revoked, or it was refused; never alive.
+    assert session is None or auth.session(session.sid) is None  # type: ignore[attr-defined]
+    assert auth.sessions == {}
+
+
+def test_relogin_revokes_previous_session_but_failure_keeps_it() -> None:
+    client, auth, *_ = make()
+    first = login(client)
+    assert first
+    client.cookies.set(COOKIE, first)
+    old_csrf = csrf(client)
+    assert login(client, "wrong") is None
+    assert auth.session(first)  # failed attempt leaves the session alone
+    second = login(client)
+    assert second and second != first
+    assert auth.session(first) is None
+    client.cookies.set(COOKIE, first)
+    assert client.post("/control/pause", data={"csrf": old_csrf}, headers=ORIGIN).status_code == 401
+    client.cookies.set(COOKIE, second)
+    assert (
+        client.post("/control/pause", data={"csrf": csrf(client)}, headers=ORIGIN).status_code
+        == 503
+    )
+    client.post("/logout", data={"csrf": csrf(client)}, headers=ORIGIN)
+    assert auth.session(second) is None
+
+
+def test_sample_banner_marks_fake_data() -> None:
+    client, *_ = make(FakeSource(environment="live"))
+    for path in ("/", "/positions", "/control"):
+        assert "샘플 데이터입니다" in client.get(path).text

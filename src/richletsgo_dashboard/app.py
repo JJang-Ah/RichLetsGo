@@ -174,8 +174,8 @@ def create_app(
         )
 
     @app.post("/login")
-    def login(code: str = Form(...)) -> Response:
-        session = auth.login(code)
+    def login(request: Request, code: str = Form(...)) -> Response:
+        session = auth.login(code, previous=request.cookies.get(COOKIE))
         if session is None:
             return RedirectResponse("/control?login=failed", status_code=303)
         response = RedirectResponse("/control", status_code=303)

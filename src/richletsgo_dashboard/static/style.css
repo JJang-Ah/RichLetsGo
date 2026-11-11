@@ -169,3 +169,9 @@ form.inline { display: inline; margin-left: 8px; }
   svg.meter { width: 100%; }
   .meter-value { width: auto; text-align: left; }
 }
+
+.sample-banner {
+  padding: 8px 16px; text-align: center; font-weight: 600; font-size: 14px;
+  background: color-mix(in srgb, var(--warning) 22%, var(--surface)); color: var(--ink);
+  border-bottom: 1px solid var(--warning);
+}

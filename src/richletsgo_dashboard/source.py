@@ -33,6 +33,7 @@ class Overview:
     last_fill: datetime | None
     key_expires_in_days: int | None
     ai_mode: str
+    sample: bool = False  # True for FakeSource: shown as a banner on every screen
 
 
 @dataclass(frozen=True)
@@ -166,6 +167,7 @@ class FakeSource:
             last_fill=now - timedelta(hours=3, minutes=5),
             key_expires_in_days=41,
             ai_mode="disabled",
+            sample=True,
         )
         positions = [
             Position(

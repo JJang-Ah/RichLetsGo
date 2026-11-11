@@ -24,6 +24,9 @@
   <a href="{{ href }}"{% if key == page %} aria-current="page"{% endif %}>{{ label }}</a>
   {% endfor %}
 </nav>
+{% if o.sample %}
+<div class="sample-banner" role="status">샘플 데이터입니다. 실제 계좌·DB와 연결되지 않았습니다(M3-02 저장소 연결 전).</div>
+{% endif %}
 <main>
 {% block main %}{% endblock %}
 </main>

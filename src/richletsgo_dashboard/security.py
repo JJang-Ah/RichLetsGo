@@ -3,6 +3,7 @@
 import hashlib
 import hmac
 import secrets
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
@@ -58,6 +59,11 @@ class Auth:
 
     `code` returns the current access code from the credential store (None when unset,
     which disables login). Only a digest of it is kept in memory.
+
+    Sync FastAPI routes run in worker threads, so every state transition (digest
+    refresh, verification, issue, revoke, failure count) happens under one lock: a login
+    verified against an old code can never issue a session after that code's sessions
+    were revoked (PR #64 P2-1).
     """
 
     code: Callable[[], str | None]
@@ -68,6 +74,7 @@ class Auth:
     on_revoke: Callable[[str], None] = lambda _sid: None
     _code_digest: bytes | None = None
     _checked: float = float("-inf")
+    _lock: threading.RLock = field(default_factory=threading.RLock, repr=False)
 
     def _current_digest(self) -> bytes | None:
         now = self.clock()
@@ -76,49 +83,65 @@ class Auth:
             value = self.code()
             digest = _digest(value) if value else None
             if digest != self._code_digest:
-                self.revoke_all()
+                self._revoke_all()
                 self._code_digest = digest
         return self._code_digest
 
-    def revoke_all(self) -> None:
+    def _revoke_all(self) -> None:
         for sid in list(self.sessions):
-            self.revoke(sid)
+            self._revoke(sid)
 
-    def revoke(self, sid: str) -> None:
+    def _revoke(self, sid: str) -> None:
         if self.sessions.pop(sid, None) is not None:
             self.on_revoke(sid)
 
-    def locked(self) -> bool:
-        return self.clock() < self.locked_until
+    def revoke_all(self) -> None:
+        with self._lock:
+            self._revoke_all()
 
-    def login(self, attempt: str) -> Session | None:
-        """New session id on success (never reuses a pre-login id)."""
-        digest = self._current_digest()
-        if digest is None or self.locked():
-            return None
-        if not hmac.compare_digest(_digest(attempt), digest):
-            self.failures += 1
-            if self.failures >= MAX_FAILURES:
-                self.failures = 0
-                self.locked_until = self.clock() + LOCKOUT_SECONDS
-            return None
-        self.failures = 0
-        now = self.clock()
-        session = Session(secrets.token_urlsafe(32), secrets.token_urlsafe(32), now, now)
-        self.sessions[session.sid] = session
-        return session
+    def revoke(self, sid: str) -> None:
+        with self._lock:
+            self._revoke(sid)
+
+    def locked(self) -> bool:
+        with self._lock:
+            return self.clock() < self.locked_until
+
+    def login(self, attempt: str, previous: str | None = None) -> Session | None:
+        """Issue a new session id on success and revoke the caller's previous one.
+
+        A failed attempt leaves the existing session alone (PR #64 P2-2).
+        """
+        with self._lock:
+            digest = self._current_digest()
+            if digest is None or self.clock() < self.locked_until:
+                return None
+            if not hmac.compare_digest(_digest(attempt), digest):
+                self.failures += 1
+                if self.failures >= MAX_FAILURES:
+                    self.failures = 0
+                    self.locked_until = self.clock() + LOCKOUT_SECONDS
+                return None
+            self.failures = 0
+            if previous:
+                self._revoke(previous)
+            now = self.clock()
+            session = Session(secrets.token_urlsafe(32), secrets.token_urlsafe(32), now, now)
+            self.sessions[session.sid] = session
+            return session
 
     def session(self, sid: str | None) -> Session | None:
-        self._current_digest()
-        if not sid or sid not in self.sessions:
-            return None
-        session = self.sessions[sid]
-        now = self.clock()
-        if now - session.seen > IDLE_SECONDS or now - session.created > ABSOLUTE_SECONDS:
-            self.revoke(sid)
-            return None
-        session.seen = now
-        return session
+        with self._lock:
+            self._current_digest()
+            if not sid or sid not in self.sessions:
+                return None
+            session = self.sessions[sid]
+            now = self.clock()
+            if now - session.seen > IDLE_SECONDS or now - session.created > ABSOLUTE_SECONDS:
+                self._revoke(sid)
+                return None
+            session.seen = now
+            return session
 
     def csrf_ok(self, session: Session, token: str | None) -> bool:
         return token is not None and hmac.compare_digest(session.csrf, token)
