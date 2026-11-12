@@ -14,6 +14,7 @@ from typing import Any
 from richletsgo.backtest.codec import digest, primitive
 from richletsgo.domain import Environment, StrategyId, Symbol
 from richletsgo.risk.limits import RiskLimits
+from richletsgo.storage.paths import local_database_path
 from richletsgo.strategy.models import S1AParams, S1BParams, S2AParams, S2BParams, S2PParams
 
 
@@ -73,10 +74,11 @@ class BybitConfig:
 
 
 @dataclass(frozen=True)
-class OracleConfig:
-    dsn: str
-    schema: str
+class StorageConfig:
+    db_file: Path
     working_set_days: int
+    busy_timeout_seconds: int
+    outcome_timeout_seconds: int
 
 
 @dataclass(frozen=True)
@@ -96,7 +98,7 @@ class AppConfig:
     all_paths: Mapping[Environment, Paths]
     keystore: Mapping[str, str]
     api_created_at: datetime
-    oracle: OracleConfig
+    storage: StorageConfig
     telegram_users: tuple[int, ...]
     strategies: Mapping[StrategyId, StrategyConfig]
     log_retention_days: int
@@ -304,9 +306,6 @@ def _load(path: Path) -> AppConfig:
         "bybit_demo_api",
         "bybit_live_api",
         "telegram_bot",
-        "oracle_demo",
-        "oracle_live",
-        "oracle_read",
     }
     keys = data["keystore"]
     if set(keys) != key_names:
@@ -317,17 +316,21 @@ def _load(path: Path) -> AppConfig:
     created = datetime.fromisoformat(text(raw, "api_created_at").replace("Z", "+00:00"))
     if created.tzinfo is None or created.utcoffset() != timedelta(0):
         raise ConfigError("api_created_at must be UTC")
-    oracle_raw = data["oracle"][env.value]
-    oracle = OracleConfig(
-        text(oracle_raw, "dsn"),
-        text(oracle_raw, "schema"),
-        integer(data["oracle"], "working_set_days", 7),
+    if "oracle" in data:
+        raise ConfigError("replace obsolete oracle configuration with storage")
+    storage_raw = data["storage"]
+    db_files = {
+        e: local_database_path(path.parent / text(storage_raw[e.value], "db_file"))
+        for e in Environment
+    }
+    if len(set(db_files.values())) != len(Environment):
+        raise ConfigError("environment database files must differ")
+    storage = StorageConfig(
+        db_files[env],
+        integer(storage_raw, "working_set_days", 7),
+        integer({"seconds": storage_raw.get("busy_timeout_seconds", 5)}, "seconds"),
+        integer({"seconds": storage_raw.get("outcome_timeout_seconds", 10)}, "seconds"),
     )
-    if oracle.schema != {Environment.DEMO: "RLG_DEMO", Environment.BACKTEST: "RLG_BACKTEST"}[env]:
-        raise ConfigError("Oracle schema/environment mismatch")
-    # DSN is a host/service descriptor, never user/password@host.
-    if "@" in oracle.dsn or re.search(r"password\s*=", oracle.dsn, re.I):
-        raise ConfigError("credentials are forbidden in Oracle DSN")
     users = data["telegram"]["allowed_user_ids"]
     if (
         not isinstance(users, list)
@@ -355,7 +358,7 @@ def _load(path: Path) -> AppConfig:
         MappingProxyType(paths),
         MappingProxyType(names),
         created.astimezone(UTC),
-        oracle,
+        storage,
         tuple(users),
         MappingProxyType(strategies),
         integer(data["logging"], "retention_days"),

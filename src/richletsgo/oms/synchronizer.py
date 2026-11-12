@@ -800,6 +800,7 @@ class Synchronizer:
                         "stream",
                         "query",
                         "db",
+                        "storage",
                         "journal_uncertain",
                         "unknown",
                         "pending_attribution",

@@ -122,6 +122,9 @@ class RecoveryRepository(Protocol):
 
 
 class UnitOfWork(Protocol):
+    @property
+    def entry_paused(self) -> bool: ...
+
     recovery: RecoveryRepository
     environment: Environment
     portfolio: PortfolioRepository

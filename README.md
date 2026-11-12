@@ -152,7 +152,7 @@ py -3.14 -m venv .venv
 - `oms.synchronizer.Synchronizer`에 계좌 UoW, 게이트웨이, PortfolioService, 저널, 시계, 공유 PauseState, 재시작에도 고유한 ID 생성기, SyncPolicy, 계약 목록을 주입합니다. 계좌별 조정자·저널 작성자는 하나입니다.
 - 시작·재연결에 `await synchronize()`를 호출하고, False이면 진입 정지를 유지합니다. 정상 주문은 `submit(order)`, 이벤트·재시도 처리는 `tick()`, 종료는 `close()`입니다. 타이머와 재연결 자체는 M3 호출자가 담당합니다.
 - `ProtectiveJournal`에는 설정 로더가 설정 파일 기준으로 해석한 Path를 전달합니다. 파일 구간·보관·손상 꼬리 격리 위치는 모두 그 폴더 아래입니다. 실제 시계·운영 폴더 기본값은 없습니다.
-- `OrderSender`는 진입 SUBMITTED 커밋 뒤 전송합니다. 저장소 장애 시 이미 보유한 보호 주문 레코드는 같은 ID로 저널 전송할 수 있습니다. 새 정책 판단·장부 갱신은 저장소 복구 후 동기화가 맡습니다. Oracle 커밋 결과 불명 판정은 M3-02 계약을 따릅니다.
+- `OrderSender`는 진입 SUBMITTED 커밋 뒤 전송합니다. 저장소 장애 시 이미 보유한 보호 주문 레코드는 같은 ID로 저널 전송할 수 있습니다. 새 정책 판단·장부 갱신은 저장소 복구 후 동기화가 맡습니다. SQLite 커밋 결과 불명 판정은 M3-02 계약을 따릅니다.
 - D90 `amend_stop`은 trigger 또는 **부호 있는 전체 수량**을 받습니다. 수량 변경 미지원이면 새 보호를 먼저 발행하고 전체 조회로 전략별 보호를 검증한 뒤 기존 손절을 취소합니다. 교체 작업 ID·요청별 ID·재시도 간격과 한도를 보존합니다.
 - [V0 39행 대응표](docs/tasks/M1-06-v0-matrix.md), [M1-06 명세와 연결 계약](docs/tasks/M1-06-sync-journal-v0.md)을 함께 확인합니다. 실제 Bybit Partial 손절 수량 변경 가능 여부는 M3-07 C10에서 확인합니다.
 
@@ -195,25 +195,34 @@ python -m richletsgo.backtest.walkforward --config config.example.toml
 
 `richletsgo.config.load_config(Path(...))`는 불변 AppConfig와 비밀 없는 `public_dict()`/`config_hash`를 제공합니다. 경로는 설정 파일 기준으로 해석하며 환경 간 동일/상하위 폴더 중첩을 거부합니다. demo는 `[risk]` 필수 값을 사용하고 backtest만 `[backtest.research_risk]`를 사용합니다. 예시는 연구 수치를 demo에 명시한 것이며 live는 로더에서 거부합니다.
 
-`config.example.toml`을 `config.local.toml`로 복사하고 환경, 사용자 ID, 발급 시각, 경로, Oracle DSN을 직접 맞춥니다. 현재 `strategy.*.source="manual"`은 개발용이며 새 전략 V1 통과 또는 M3-07 승인으로 취급하지 않습니다. 운영 출처는 두 전략 모두 같은 `v1:<보고서 본문 해시>`로 지정합니다. `[strategy] report_path`는 설정 파일 기준 JSON 경로이며, 로더가 본문 해시·manifest/사전등록 연결·조합 PASS·같은 확인 구간의 S1×S2 매개변수 쌍을 검증합니다. 이전 `m2-04:` 출처는 거절합니다.
+`config.example.toml`을 `config.local.toml`로 복사하고 환경, 사용자 ID, 발급 시각, 경로, 환경별 SQLite 파일을 직접 맞춥니다. 현재 `strategy.*.source="manual"`은 개발용이며 새 전략 V1 통과 또는 M3-07 승인으로 취급하지 않습니다. 운영 출처는 두 전략 모두 같은 `v1:<보고서 본문 해시>`로 지정합니다. `[strategy] report_path`는 설정 파일 기준 JSON 경로이며, 로더가 본문 해시·manifest/사전등록 연결·조합 PASS·같은 확인 구간의 S1×S2 매개변수 쌍을 검증합니다. 이전 `m2-04:` 출처는 거절합니다.
 
 서비스를 실행할 Windows 계정으로 다음 명령을 **직접** 실행합니다. 값은 숨김 입력이며 채팅이나 설정 파일에 넣지 않습니다.
 
 ```powershell
 python -m richletsgo.keystore set richletsgo/bybit-demo --api
 python -m richletsgo.keystore set richletsgo/telegram-bot
-python -m richletsgo.keystore set richletsgo/oracle-demo
 ```
 
 키 저장은 keyring의 Windows WinVault 백엔드만 사용합니다(평문·대체 백엔드로 자동 전환하지 않음). 저장 규약은 service=설정의 항목 이름, username=`credential`; API 값은 key/secret JSON 묶음입니다. 읽을 때는 `KeyStore(windows_backend()).api(item, config.api_created_at)`를 씁니다. 아직 실제 키를 등록하거나 읽지 않았으며 서비스 계정 접근 확인은 키 준비 후 수동 검증합니다.
 
 `configure_logging(config.paths.log_dir, environment=config.environment, service="Trader", retention_days=config.log_retention_days, secrets=[credential.key, credential.secret])`는 UTC 일별 JSONL 회전과 기간 보관을 설정합니다. API 키·서명·토큰/비밀번호 필드, 등록된 비밀 문자열과 예외 본문을 마스킹합니다. 추가로 읽은 봇 토큰·DB 비밀번호도 secrets 목록에 넣어야 임의의 문장 안에서도 마스킹됩니다. 부모 로거로 전파하지 않습니다.
 
-저장소는 D105로 SQLite로 바뀌었습니다. M3-02에서 `[oracle]` 설정과 `oracle_*` 키 항목을 `[storage]`로 바꾸며, 그 전까지 아래 Oracle 관련 예시는 쓰지 않습니다. M3-01 로더는 DB에 연결하지 않습니다.
+저장소는 D105에 따라 `[storage]`를 사용합니다. `storage.<env>.db_file` 상대 경로는 설정 파일의 부모 폴더 기준입니다. Oracle DSN과 `oracle_*` 자격 증명 항목은 제거했습니다. `working_set_days`는 7일 이상이며 동기화 재조회 기간 이상으로 설정합니다. `busy_timeout_seconds` 기본값은 5초, `outcome_timeout_seconds`는 10초입니다. DB 파일은 로컬 디스크에 두세요. UNC·네트워크 드라이브·OneDrive/Dropbox/Google Drive/iCloud 폴더는 거부합니다. 자동 검사로 알아내지 못하는 다른 동기화 폴더도 사용하지 않아야 합니다.
+
+```powershell
+python -m richletsgo.storage migrate --config config.local.toml --account demo-account
+python -m richletsgo.storage backup --config config.local.toml --account demo-account
+```
+
+마이그레이션은 명시적으로 실행합니다. UoW 시작 시 스키마 버전과 환경을 확인하며, 파일별 전용 실행기·프로세스 잠금으로 쓰기를 직렬화합니다. 조회용 `open_readonly(path)`는 `mode=ro` 연결이고 운영 DB를 직접 수정하지 않습니다. 온라인 백업은 환경별 날짜 파일과 integrity 결과를 남기고 14일이 지난 백업을 정리합니다. 매일 실행 스케줄은 M3-06에서 연결합니다.
+
+커밋 결과 불명은 `CommitOutcomeUnknown.txn_id`로 확인합니다. `SqliteDatabase.resolve()`는 결과만 판정하며 신규 진입 정지를 풀지 않습니다. 보호 작업은 로컬 저널로 계속 기록하고, `database.recover(synchronizer.synchronize)`로 판정·저널 병합·상태 대조를 마친 뒤에만 정상 전송을 재개합니다. 결과 불명 주문을 새 ID로 재발급하지 않습니다.
+
 
 
 ## Bybit 데모 어댑터 (M3-03)
 
 `exchange.bybit`에 REST 서명/조회/주문과 개인·공개 WS를 구현했습니다. 생성 요청은 자동 재시도하지 않으며, 손절 정정은 D90의 부호 있는 전체 수량을 거래소 절대 수량으로 변환합니다. 연결 순서·오류/이벤트 매핑·서비스 수명과 남은 수동 검증은 [매핑 문서](src/richletsgo/exchange/bybit/MAPPING.md)를 참고합니다.
 
-현재 검증은 가짜 REST/WS 응답을 사용하는 오프라인 테스트까지입니다. 실제 키나 주문을 사용하지 않았으며, 서비스 조립·Oracle·새 전략 V1 통과와 M3-07은 별도 단계입니다. M3-03 PR은 M3-01 PR 위에 쌓아 설정 변경과 어댑터 변경을 따로 검토할 수 있게 했습니다.
+현재 검증은 가짜 REST/WS 응답을 사용하는 오프라인 테스트까지입니다. 실제 키나 주문을 사용하지 않았으며, 서비스 조립·SQLite·새 전략 V1 통과와 M3-07은 별도 단계입니다. M3-03 PR은 M3-01 PR 위에 쌓아 설정 변경과 어댑터 변경을 따로 검토할 수 있게 했습니다.

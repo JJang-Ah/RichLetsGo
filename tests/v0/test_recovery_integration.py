@@ -145,8 +145,8 @@ def test_unknown_keeps_reservation_and_periodic_cancel_across_restart(tmp_path):
         ]
         db, clock, svc, router, ex, sync = setup(tmp_path, faults)
         await start(sync)
-        ex.disconnect()
         order = await admit(router)
+        ex.disconnect()
         assert (await sync.sender.send(order)).code is ErrorCode.TIMEOUT
         # No stream OPEN, hidden REST; empty queries never assert absence.
         await sync.tick()

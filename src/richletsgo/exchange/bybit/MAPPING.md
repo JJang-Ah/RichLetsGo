@@ -9,7 +9,7 @@
 - `await gateway.initialize()`로 시각·계좌 설정·상품/위험 단계를 확인한다. 이후 `gateway.maintain()`을 서비스 task로 실행해 설정한 간격의 시각 검사와 하루 한 번 상품/tier 갱신을 유지한다. 실패·기한 경과 시 진입을 거부한다.
 - `StreamRunner.private(gateway, synchronizer.synchronize)`가 인증·구독 완료 후 이벤트 reader를 시작하고 **매 연결마다** 설정/시각 재확인과 M1-06 동기화를 호출한다. reader는 동기화 REST 조회와 동시에 실행되며 `private_events()` 큐를 통해 기존 동기화기로 전달한다. 동기화가 실패하면 다시 연결하고 진입 정지를 유지한다. 소비자는 하나다.
 - 연결 단절/종료 시 connected=false 및 `bybit_stream` 정지. 손절/청산 요청은 연결·진입 readiness 검사로 막지 않는다. 응답 유실은 성공으로 간주하지 않는다. 다른 위험 정지는 상위 위험 게이트/동기화기가 적용한다.
-- `StreamRunner.public(on_bar, on_connection)`은 확정 D/60 봉만 전달한다. 서비스는 연결 상태·봉 시각을 MarketDataGuard에 전달하고 공백 보충/펀딩 조회에 기존 `marketdata.bybit_public.BybitPublicClient`와 수집 경로를 사용한다. 동기 REST 수집을 서비스 이벤트 루프 안에서 직접 실행하지 않는다. 스케줄·Oracle 저장·서비스 조립은 M3-04 범위다.
+- `StreamRunner.public(on_bar, on_connection)`은 확정 D/60 봉만 전달한다. 서비스는 연결 상태·봉 시각을 MarketDataGuard에 전달하고 공백 보충/펀딩 조회에 기존 `marketdata.bybit_public.BybitPublicClient`와 수집 경로를 사용한다. 동기 REST 수집을 서비스 이벤트 루프 안에서 직접 실행하지 않는다. 스케줄·SQLite 저장·서비스 조립은 M3-04 범위다.
 - 서비스 종료 시 stream/maintain task 취소 → `Synchronizer.close()` → HTTP session close. WS heartbeat는 설정값(20초 이하), pong 대기는 같은 간격이며 실패하면 재연결한다. 지수 백오프는 최소 1초·설정 상한으로 한 프로세스에서 5분 500회 미만이다. 동일 계좌 서비스 중복 실행 금지는 M3-04/06에서 보장한다.
 
 ## 주문/오류
