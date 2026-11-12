@@ -14,8 +14,12 @@
   --good-text: #006300;
   --warning: #fab219;
   --critical: #d03b3b;
+  --critical-text: #b42f2f;
   --live: #d03b3b;
   --demo: #2a78d6;
+  /* Badge fills are darker steps so white text clears 4.5:1 in both modes. */
+  --badge-demo: #1d5fb0;
+  --badge-live: #b42f2f;
   --radius: 10px;
 }
 @media (prefers-color-scheme: dark) {
@@ -31,6 +35,7 @@
     --border: rgba(255, 255, 255, 0.10);
     --series: #3987e5;
     --good-text: #0ca30c;
+    --critical-text: #f07070;
     --demo: #3987e5;
   }
 }
@@ -38,10 +43,14 @@
   color-scheme: dark;
   --page: #0d0d0d; --surface: #1a1a19; --ink: #f0efec; --ink-2: #c3c2b7; --muted: #9a988f;
   --grid: #2c2c2a; --axis: #383835; --border: rgba(255, 255, 255, 0.10); --series: #3987e5;
-  --good-text: #0ca30c; --demo: #3987e5;
+  --good-text: #0ca30c; --critical-text: #f07070; --demo: #3987e5;
 }
 
 * { box-sizing: border-box; }
+.sr-only { position: absolute; width: 1px; height: 1px; margin: -1px; padding: 0; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: 8px; top: -48px; z-index: 10; padding: 8px 12px; border-radius: 8px; background: var(--ink); color: var(--surface); }
+.skip:focus { top: 8px; }
+main:focus { outline: none; }
 html { -webkit-text-size-adjust: 100%; }
 body {
   margin: 0; background: var(--page); color: var(--ink);
@@ -63,8 +72,8 @@ body.env-live .top { border-bottom: 3px solid var(--live); }
 .brand { display: flex; align-items: center; gap: 10px; min-width: 0; }
 .brand .name { font-weight: 700; }
 .brand .account { color: var(--muted); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.env-badge { font-weight: 800; letter-spacing: 0.06em; padding: 2px 10px; border-radius: 6px; color: #fff; background: var(--demo); }
-body.env-live .env-badge { background: var(--live); }
+.env-badge { font-weight: 800; letter-spacing: 0.06em; padding: 2px 10px; border-radius: 6px; color: #fff; background: var(--badge-demo); }
+body.env-live .env-badge { background: var(--badge-live); }
 .status { display: flex; flex-wrap: wrap; gap: 6px; }
 
 .tabs {
@@ -77,7 +86,7 @@ body.env-live .env-badge { background: var(--live); }
 }
 .tabs a:hover { color: var(--ink); }
 .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--series); font-weight: 600; }
-.tabs a:focus-visible, .filters a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+.tabs a:focus-visible, .filters a:focus-visible, .attention a:focus-visible, .skip:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
   outline: 2px solid var(--series); outline-offset: 2px;
 }
 
@@ -100,11 +109,14 @@ body.env-live .env-badge { background: var(--live); }
 .pill.ok { border-color: var(--good); }
 .pill.off, .pill.bad { border-color: var(--critical); }
 .pill.pause-active { border-color: var(--good); }
-.pill.pause-entry_paused_manual, .pill.pause-entry_paused_system, .pill.pause-entry_paused_risk { border-color: var(--warning); }
+.pill.pause-entry_paused_manual, .pill.pause-entry_paused_system, .pill.pause-entry_paused_risk {
+  border-color: var(--warning); background: color-mix(in srgb, var(--warning) 18%, var(--surface));
+}
+.pill.off, .pill.bad, .pill.pause-halted, .pill.status-unknown { background: color-mix(in srgb, var(--critical) 12%, var(--surface)); }
 .pill.pause-halted { border-color: var(--critical); font-weight: 700; }
 .pill.status-unknown { border-color: var(--critical); font-weight: 600; }
 .state-line { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin: 0; }
-.flag { color: var(--critical); font-weight: 600; font-size: 13px; }
+.flag { color: var(--critical-text); font-weight: 600; font-size: 13px; }
 
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { padding: 8px 10px; border-bottom: 1px solid var(--grid); text-align: left; vertical-align: middle; }
@@ -115,16 +127,17 @@ tbody th { font-weight: 500; white-space: nowrap; }
 .text { overflow-wrap: anywhere; }
 
 .limits td:nth-child(2) { width: 40%; min-width: 140px; }
-svg.meter { width: calc(100% - 80px); height: 8px; vertical-align: middle; }
+.meter-row { display: flex; align-items: center; gap: 10px; }
+svg.meter { flex: 1 1 auto; min-width: 60px; height: 8px; }
 svg.meter .track { fill: var(--grid); }
 svg.meter .fill { fill: var(--series); }
 svg.meter.warn .fill { fill: var(--critical); }
-.meter-value { display: inline-block; width: 76px; text-align: right; font-variant-numeric: tabular-nums; font-size: 13px; }
+.meter-value { flex: none; min-width: 44px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; font-size: 13px; }
 
 .filters { display: flex; flex-wrap: wrap; gap: 6px; }
 .filters a {
-  padding: 4px 12px; border-radius: 999px; border: 1px solid var(--border); background: var(--surface);
-  color: var(--ink-2); text-decoration: none; font-size: 13px;
+  display: inline-flex; align-items: center; min-height: 32px; padding: 4px 14px; border-radius: 999px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--ink-2); text-decoration: none; font-size: 13px;
 }
 .filters a[aria-current="true"] { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 
@@ -166,8 +179,9 @@ form.inline { display: inline; margin-left: 8px; }
 @media (max-width: 600px) {
   .stat .value { font-size: 24px; }
   th, td { padding: 6px 8px; }
-  svg.meter { width: 100%; }
-  .meter-value { width: auto; text-align: left; }
+  .hero { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 12px; }
+  .stat { padding: 12px; }
+  .tabs { mask-image: linear-gradient(to right, #000 calc(100% - 24px), transparent); }
 }
 
 .sample-banner {
@@ -175,3 +189,13 @@ form.inline { display: inline; margin-left: 8px; }
   background: color-mix(in srgb, var(--warning) 22%, var(--surface)); color: var(--ink);
   border-bottom: 1px solid var(--warning);
 }
+
+.attention .mark {
+  display: inline-grid; place-items: center; width: 20px; height: 20px; margin-right: 8px; border-radius: 50%;
+  font-size: 12px; font-weight: 800; color: #fff; background: var(--badge-live); flex: none;
+}
+.attention.has-items { border-left: 4px solid var(--critical); }
+.attention a { display: flex; align-items: center; min-height: 32px; color: var(--ink); text-decoration: none; }
+.attention a:hover { text-decoration: underline; }
+.all-clear { display: flex; align-items: center; margin: 0; color: var(--ink-2); }
+.all-clear .mark { background: var(--good-text); }
