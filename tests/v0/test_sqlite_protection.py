@@ -1,6 +1,7 @@
 """Late commit resolution must not replay journal-owned create/amend/cancel operations."""
 
 import asyncio
+import sqlite3
 from dataclasses import replace
 from decimal import Decimal as D
 
@@ -141,6 +142,67 @@ def test_protection_journal_precedes_dispatch_after_unknown(
                 r.operation_id for r in journal_before
             }
         finally:
+            await sync.close()
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "sql",
+    [
+        "INSERT INTO meta VALUES ('environment', 'duplicate')",
+        "INSERT INTO missing_table VALUES (1)",
+    ],
+)
+def test_sqlite_flush_error_still_sends_protection(tmp_path, monkeypatch, sql):
+    from richletsgo.exchange.contracts import Accepted
+
+    async def run():
+        db = SqliteDatabase(tmp_path / "failure.sqlite", "acct", Environment.DEMO, now=lambda: NOW)
+        await db.migrate()
+        monkeypatch.setattr(test_portfolio, "InMemoryDatabase", lambda *args: db)
+        _, _, _, _, ex, sync = await filled_account(tmp_path / "journal")
+        try:
+            async with db.unit_of_work() as uow:
+                attached = next(
+                    o for o in uow.orders.all() if o.purpose is OrderPurpose.ATTACHED_SL
+                )
+                stop = replace(
+                    attached,
+                    order_link_id="d-S1-PROTECT-error",
+                    exchange_order_id=None,
+                    purpose=OrderPurpose.PROTECT,
+                    state=OrderState.CREATED,
+                    qty=Qty(D(-1)),
+                    booked_qty=Qty(D(0)),
+                    exchange_cum_exec_qty=D(0),
+                    trigger_by="LastPrice",
+                )
+                uow.orders.put(stop)
+                await uow.commit()
+            await ex.cancel_order(attached.order_link_id or attached.exchange_order_id)
+            errors = []
+
+            def fault(stage, connection):
+                if stage == "before_flush":
+                    try:
+                        connection.execute(sql)
+                    except sqlite3.Error as error:
+                        errors.append(type(error))
+                        raise
+
+            db.fault = fault
+            result = await sync.sender.send(stop)
+            assert isinstance(result, Accepted)
+            assert errors and all(issubclass(e, sqlite3.Error) for e in errors)
+            assert [r.phase for r in sync.journal.read()] == ["requested", "result"]
+            assert any(o.order_link_id == stop.order_link_id for o in await ex.get_open_orders(BTC))
+            assert not db.entry_paused  # No COMMIT was submitted; not an uncertain transaction.
+            db.fault = None
+            async with db.unit_of_work() as uow:
+                assert uow.orders.get(stop.key).state is OrderState.CREATED
+        finally:
+            db.fault = None
             await sync.close()
 
     asyncio.run(run())

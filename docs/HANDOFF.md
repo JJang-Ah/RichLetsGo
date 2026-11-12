@@ -799,3 +799,11 @@
 - SQL 행의 payload는 허용된 도메인 타입만 복원하는 JSON이다. 명령/대상·저널·위험 상태는 조회용 전용 테이블에도 같은 트랜잭션으로 반영한다. SQL 마이그레이션은 저장소 배포 패키지에도 포함했다.
 - 검증: 전체 오프라인 테스트 1411 passed (178.57초), 추가 경계 테스트 포함 저장소 테스트 21 passed. M1-02/03/04 및 재시작·D90·추적 손절 계약을 memory/sqlite로 매개변수화했다. 보호 결과 불명 6가지 및 진입 결과 불명 2가지 통합 테스트 통과. ruff lint/format, mypy 통과.
 - 다음: Claude가 저장소 PR 검토. Codex는 이 브랜치 위에 `task/M5-01b-control-api`를 쌓아 제어 명령을 별도 PR로 구현한다. 실제 운영 DB·키·거래소·판정 풀은 사용하지 않았다.
+
+
+## 2026-11-12 — Codex (PR #66 재검토 P2 보완)
+
+- COMMIT 전 SQLite 오류를 StorageError/StorageBusy 또는 fills·decisions 중복 도메인 예외로 변환했다. rollback 오류에서도 연결·프로세스 잠금을 해제하고, COMMIT 이후 결과 불명은 정리 실패로 덮어쓰지 않는다.
+- 실제 SQL 중복 키/없는 테이블 오류를 주입해 부분 쓰기 롤백·다음 UoW 재사용과 보호 create의 requested → 전송 → result 저널 진행을 검증했다. 저장소·SQLite 보호 테스트 34 passed, 기존 추적 손절 42개 로컬 통과, mypy/변경 파일 lint 통과.
+- CI의 3.12 실패 위치는 delayed_application_and_failed_query_keep_single_attempt[sqlite-True]로 좁혔으나 로컬 3.14에서는 재현되지 않았다. 다음 CI에서 정확한 traceback을 확보한다.
+- CI 시간 제한은 10→20분으로 조정했다. 기존 3.12는 테스트 약9분19초에 작업 전체10분 제한으로 종료됐고 3.14 테스트는 약6분43초였다. FULL/WAL 내구성 설정과 SQLite 계약 테스트 범위는 유지하며, -vv/--durations=20으로 실패 이름과 느린 테스트를 기록한다. P3는 후속 관련 작업으로 유지한다.

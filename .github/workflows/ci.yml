@@ -12,7 +12,7 @@ jobs:
   checks:
     name: Checks (Python ${{ matrix.python-version }})
     runs-on: windows-latest
-    timeout-minutes: 10
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
@@ -33,4 +33,4 @@ jobs:
       - name: Type check
         run: python -m mypy
       - name: Test
-        run: python -m pytest
+        run: python -m pytest -ra --tb=short --durations=20 -vv

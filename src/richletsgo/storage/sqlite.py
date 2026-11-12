@@ -55,6 +55,18 @@ def open_readonly(path: Path) -> sqlite3.Connection:
     return connection
 
 
+def _storage_error(error: sqlite3.Error) -> StorageError | ValueError:
+    code = getattr(error, "sqlite_errorcode", 0)
+    if code & 0xFF in (sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED):
+        return StorageBusy("SQLite write lock unavailable")
+    if isinstance(error, sqlite3.IntegrityError):
+        message = str(error)
+        for table, exception in (("fills", DuplicateExecId), ("decisions", DuplicateSignalId)):
+            if message == f"UNIQUE constraint failed: {table}.account_id, {table}.key":
+                return exception("duplicate persistent identity")
+    return StorageError("SQLite transaction failed")
+
+
 async def _drain[T](future: asyncio.Future[T]) -> T:
     # A second cancel must not strand a worker holding a connection or a write lock.
     while not future.done():
@@ -368,12 +380,12 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 await _drain(future)
             except BaseException:
                 pass
-            await self._close()
-            self._release()
-            if isinstance(error, sqlite3.OperationalError) and "locked" in str(error):
-                raise StorageBusy("SQLite write lock timed out") from error
+            try:
+                await self._close()
+            finally:
+                self._release()
             if isinstance(error, sqlite3.Error):
-                raise StorageError("SQLite transaction initialization failed") from error
+                raise _storage_error(error) from error
             raise
         return self
 
@@ -510,11 +522,14 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         future = self.database._submit(self._flush)
         try:
             await asyncio.shield(future)
-        except BaseException:
+        except BaseException as error:
             try:
                 await _drain(future)
-            finally:
-                await self._close()
+            except BaseException:
+                pass
+            await self._close()
+            if isinstance(error, sqlite3.Error):
+                raise _storage_error(error) from error
             raise
         future = self.database._submit(self._commit)
         try:
@@ -525,21 +540,29 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 await _drain(future)
             except BaseException:
                 pass
-            await self._close()
+            try:
+                await self._close()
+            except StorageError:
+                pass  # Cleanup failure cannot turn an uncertain COMMIT into a safe retry.
             raise CommitOutcomeUnknown(self.txn_id) from error
         await self._close()
 
     def _close_worker(self) -> None:
-        if self._connection is not None:
+        connection, self._connection = self._connection, None
+        if connection is not None:
             try:
-                self._connection.rollback()
-            finally:
-                self._connection.close()
-                self._connection = None
+                try:
+                    connection.rollback()
+                finally:
+                    connection.close()
+            except sqlite3.Error as error:
+                raise _storage_error(error) from error
 
     async def _close(self) -> None:
-        await _drain(self.database._submit(self._close_worker))
-        self._working = None
+        try:
+            await _drain(self.database._submit(self._close_worker))
+        finally:
+            self._working = None
 
     async def rollback(self) -> None:
         await self._close()

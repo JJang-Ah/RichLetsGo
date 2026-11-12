@@ -394,3 +394,54 @@ def test_memory_phase_cancellation_and_backup_retention(tmp_path):
         assert not old.exists() and retained.exists()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "sql,exception",
+    [
+        ("INSERT INTO meta VALUES ('environment', 'duplicate')", sqlite3.IntegrityError),
+        ("INSERT INTO missing_table VALUES (1)", sqlite3.OperationalError),
+    ],
+)
+def test_flush_sqlite_failure_rolls_back_and_releases_lock(tmp_path, sql, exception):
+    from richletsgo.storage.errors import StorageError
+
+    async def run():
+        db = database(tmp_path)
+        await db.migrate()
+
+        def fault(stage, connection):
+            if stage == "before_commit":
+                connection.execute(sql)
+
+        db.fault = fault
+        with pytest.raises(StorageError) as error:
+            async with db.unit_of_work() as uow:
+                uow.recovery.put("key", "discarded")
+                await uow.commit()
+        assert isinstance(error.value.__cause__, exception)
+        assert not db.entry_paused
+        db.fault = None
+        async with db.unit_of_work() as uow:
+            assert uow.recovery.get("key") is None
+            uow.recovery.put("key", "recovered")
+            await uow.commit()
+
+    asyncio.run(run())
+
+
+def test_rollback_sqlite_failure_releases_process_lock(tmp_path):
+    from richletsgo.storage.errors import StorageError
+
+    async def run():
+        db = database(tmp_path)
+        await db.migrate()
+        with pytest.raises(StorageError) as error:
+            async with db.unit_of_work() as uow:
+                # A genuinely closed sqlite connection raises ProgrammingError on rollback.
+                await db._submit(lambda: uow._connection.close())
+        assert isinstance(error.value.__cause__, sqlite3.ProgrammingError)
+        async with db.unit_of_work() as uow:
+            await uow.commit()
+
+    asyncio.run(run())
