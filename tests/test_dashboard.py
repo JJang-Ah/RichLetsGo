@@ -365,3 +365,29 @@ def test_overview_all_clear_when_nothing_to_check() -> None:
 
     client, *_ = make(Calm())
     assert "확인할 항목이 없습니다." in client.get("/").text
+
+
+def test_refresh_api_carries_current_attention_items() -> None:
+    calm = True
+
+    class Switching(FakeSource):
+        def snapshot(self) -> Snapshot:
+            snap = super().snapshot()
+            if calm:
+                snap.orders = [r for r in snap.orders if r.status != "UNKNOWN"]
+                snap.positions = [p for p in snap.positions if p.fully_protected]
+                snap.overview = replace(
+                    snap.overview,
+                    limits=[replace(x, used=Decimal("0.1")) for x in snap.overview.limits],
+                )
+            return snap
+
+    client, *_ = make(Switching())
+    assert client.get("/api/overview").json()["attention"] == []
+    calm = False
+    items = client.get("/api/overview").json()["attention"]
+    assert {
+        "text": "UNKNOWN 주문 1건: 거래소에서 확인 필요",
+        "href": "/orders?status=unknown",
+    } in items
+    assert any(i["href"] == "/positions" for i in items)

@@ -178,9 +178,11 @@ def create_app(
 
     @app.get("/api/overview")
     def api_overview() -> JSONResponse:
-        o = source.snapshot().overview
+        snap = source.snapshot()
+        o = snap.overview
         return JSONResponse(
             {
+                "attention": [{"text": text, "href": href} for text, href in attention(snap, WARN)],
                 "pause": PAUSE_LABELS.get(o.pause_state, o.pause_state),
                 "equity": fmt.money(o.equity),
                 "today_pnl": fmt.signed(o.today_pnl),

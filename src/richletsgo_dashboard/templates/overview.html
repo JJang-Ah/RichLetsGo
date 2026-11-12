@@ -1,6 +1,6 @@
 {% extends "base.html" %}
 {% block main %}
-<section class="card attention{{ ' has-items' if attention else '' }}" aria-labelledby="attention-title">
+<section class="card attention{{ ' has-items' if attention else '' }}" id="attention" aria-labelledby="attention-title" aria-live="polite">
   <h2 id="attention-title">먼저 확인할 것</h2>
   {% if attention %}
   <ul class="plain">

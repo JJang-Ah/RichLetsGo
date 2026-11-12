@@ -6,6 +6,7 @@ function refreshOverview() {
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (!data) return;
+      if (Array.isArray(data.attention)) renderAttention(data.attention);
       for (const el of document.querySelectorAll("[data-field]")) {
         const key = el.getAttribute("data-field");
         if (key === "trader") el.textContent = "Trader " + data.trader;
@@ -13,6 +14,40 @@ function refreshOverview() {
       }
     })
     .catch(() => {});
+}
+
+// Rebuilds the "먼저 확인할 것" list so it never shows a stale all-clear (PR #65 P2).
+function renderAttention(items) {
+  const box = document.getElementById("attention");
+  if (!box) return;
+  for (const old of box.querySelectorAll("ul, .all-clear")) old.remove();
+  const mark = (symbol) => {
+    const span = document.createElement("span");
+    span.className = "mark";
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = symbol;
+    return span;
+  };
+  if (items.length === 0) {
+    const p = document.createElement("p");
+    p.className = "all-clear";
+    p.append(mark("✓"), document.createTextNode("확인할 항목이 없습니다."));
+    box.append(p);
+  } else {
+    const ul = document.createElement("ul");
+    ul.className = "plain";
+    for (const item of items) {
+      const href = String(item.href || "");
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.setAttribute("href", href.startsWith("/") || href.startsWith("#") ? href : "/");
+      a.append(mark("!"), document.createTextNode(String(item.text || "")));
+      li.append(a);
+      ul.append(li);
+    }
+    box.append(ul);
+  }
+  box.classList.toggle("has-items", items.length > 0);
 }
 
 function bindChart(figure) {
