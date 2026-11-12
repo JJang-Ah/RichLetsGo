@@ -789,3 +789,23 @@
 - 실행: `python -m richletsgo_dashboard --port 8765`, 접근 코드는 `python -m richletsgo.keystore set richletsgo/dashboard-access`.
 - 검증: 테스트 23개 추가(전체 1063 passed), ruff·mypy 통과. 앱 안 브라우저 창이 가려져 있어 스크린샷은 찍지 못했다. 대신 375px 폭에서 7개 화면 모두 가로 넘침 0, 그래프 툴팁 동작, 콘솔 오류 0, iframe 차단을 스크립트로 확인했다.
 - 다음 담당자: Codex가 M5-01a를 검토한다. M3-02 병합 뒤 SQLite 읽기 공급원을 붙인다. M5-01b는 Codex가 맡는다.
+
+## 2026-11-11 — Codex (M3-02 SQLite 저장소 구현)
+
+- 브랜치: `task/M3-02-sqlite-storage`. `[oracle]`·`oracle_*` 키를 제거하고 `[storage]` 환경별 파일·보관 기간·잠금/결과 판정 시간 설정으로 전환했다. 상대 경로는 설정 파일 부모 기준이다.
+- SQLite STRICT 마이그레이션, 환경 확인, WAL/FULL/FK, 파일별 실행기·프로세스 잠금, BEGIN 이후 작업 집합 적재, 변경 행 반영, Decimal 문자열·UTC 밀리초 직렬화, 읽기 전용 연결, 온라인 백업·integrity 기록·14일 정리를 추가했다.
+- 메모리 저장소는 `now`를 주입하면 동일한 작업 집합 규칙을 적용한다. 기존 연구 실행기는 자체 보관/집계 로직을 유지한다. SQLite는 항상 주입된 시계(기본 UTC 현재 시각)로 작업 집합을 제한한다.
+- 결과 불명은 txn 표식과 메모리 진입 정지를 유지한다. `resolve`는 판정만 하고, `recover(synchronizer.synchronize)`가 저널 병합·outbox acknowledge·상태 대조 후 정지를 해제한다. 진입은 `resume_entry_commit`으로 같은 ID만 이어 보낸다. 보호 create/amend/cancel은 저널을 거치며 결과 판정을 기다리지 않는다.
+- SQL 행의 payload는 허용된 도메인 타입만 복원하는 JSON이다. 명령/대상·저널·위험 상태는 조회용 전용 테이블에도 같은 트랜잭션으로 반영한다. SQL 마이그레이션은 저장소 배포 패키지에도 포함했다.
+- 검증: 전체 오프라인 테스트 1411 passed (178.57초), 추가 경계 테스트 포함 저장소 테스트 21 passed. M1-02/03/04 및 재시작·D90·추적 손절 계약을 memory/sqlite로 매개변수화했다. 보호 결과 불명 6가지 및 진입 결과 불명 2가지 통합 테스트 통과. ruff lint/format, mypy 통과.
+- 다음: Claude가 저장소 PR 검토. Codex는 이 브랜치 위에 `task/M5-01b-control-api`를 쌓아 제어 명령을 별도 PR로 구현한다. 실제 운영 DB·키·거래소·판정 풀은 사용하지 않았다.
+
+
+## 2026-11-12 — Codex (PR #66 재검토 P2 보완)
+
+- COMMIT 전 SQLite 오류를 StorageError/StorageBusy 또는 fills·decisions 중복 도메인 예외로 변환했다. rollback 오류에서도 연결·프로세스 잠금을 해제하고, COMMIT 이후 결과 불명은 정리 실패로 덮어쓰지 않는다.
+- 실제 SQL 중복 키/없는 테이블 오류를 주입해 부분 쓰기 롤백·다음 UoW 재사용과 보호 create의 requested → 전송 → result 저널 진행을 검증했다. 저장소·SQLite 보호 테스트 34 passed, 기존 추적 손절 42개 로컬 통과, mypy/변경 파일 lint 통과.
+- CI의 3.12 실패 위치는 delayed_application_and_failed_query_keep_single_attempt[sqlite-True]로 좁혔으나 로컬 3.14에서는 재현되지 않았다. 다음 CI에서 정확한 traceback을 확보한다.
+- CI 시간 제한은 10→20분으로 조정했다. 기존 3.12는 테스트 약9분19초에 작업 전체10분 제한으로 종료됐고 3.14 테스트는 약6분43초였다. FULL/WAL 내구성 설정과 SQLite 계약 테스트 범위는 유지하며, -vv/--durations=20으로 실패 이름과 느린 테스트를 기록한다. P3는 후속 관련 작업으로 유지한다.
+
+- 후속 확인: 로컬 전체 1418 passed/237.84초. 추가 실제 fills·decisions 유일 제약/COMMIT 후 연결 정리 실패 테스트 포함 저장소 27 passed. Python 3.12 CI(run 43226084906)는 1421 passed/355.40초이며 이전 실패 위치인 sqlite-True 추적 손절도 통과했다(CI는 최신 main과의 병합 결과라 대시보드 테스트 3개가 추가됨). 이전 취소 로그에 traceback이 없어 과거 일회성 실패 원인을 단정하지 않는다. 상세 테스트 이름·시간 기록과 충분한 작업 제한으로 재발 시 진단 정보를 남긴다.

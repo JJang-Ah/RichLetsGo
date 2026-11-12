@@ -1,1 +1,1 @@
-"""Provide Oracle and SQLite persistence adapters."""
+"""Transactional memory and SQLite persistence adapters."""

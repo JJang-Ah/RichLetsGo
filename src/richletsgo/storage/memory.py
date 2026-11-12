@@ -1,8 +1,9 @@
 """Serializable, account-scoped in-memory transactions for offline tests."""
 
 import asyncio
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from datetime import datetime
+from datetime import datetime, timedelta
 from decimal import Decimal
 from types import TracebackType
 from typing import Self
@@ -25,6 +26,7 @@ from .contracts import (
     RecoveryRepository,
     UnitOfWork,
 )
+from .errors import DuplicateExecId, DuplicateSignalId
 
 
 @dataclass
@@ -84,11 +86,22 @@ class _State:
 class InMemoryDatabase:
     """One database per account; transactions hold its lock until commit/rollback."""
 
-    def __init__(self, account_id: str, environment: Environment) -> None:
+    def __init__(
+        self,
+        account_id: str,
+        environment: Environment,
+        *,
+        now: Callable[[], datetime] | None = None,
+        working_set_days: int = 7,
+    ) -> None:
         if not account_id or not isinstance(environment, Environment):
             raise ValueError("account and environment are required")
         self.account_id = account_id
         self.environment = environment
+        if working_set_days < 7:
+            raise ValueError("working set must cover at least seven days")
+        self.now = now
+        self.working_set_days = working_set_days
         self._state = _State()
         self._lock = asyncio.Lock()
 
@@ -144,7 +157,7 @@ class _Fills:
 
     def add(self, fill: FillRecord) -> None:
         if self.get(fill.event.exec_id) is not None:
-            raise ValueError("duplicate exec_id")
+            raise DuplicateExecId("duplicate exec_id")
         self.owner.state.fills[fill.event.exec_id] = fill
 
     def replace(self, fill: FillRecord) -> None:
@@ -201,7 +214,7 @@ class _Decisions:
         if decision.account_id != self.owner.database.account_id:
             raise ValueError("decision belongs to another account")
         if decision.signal_id in self.owner.state.decisions:
-            raise ValueError("duplicate signal_id decision")
+            raise DuplicateSignalId("duplicate signal_id decision")
         self.owner.state.decisions[decision.signal_id] = decision
 
     def all(self) -> tuple[DecisionRecord, ...]:
@@ -387,6 +400,11 @@ class InMemoryUnitOfWork:
         self.decisions: DecisionRepository = _Decisions(self)
         self.episodes: EpisodeRepository = _Episodes(self)
         self._entered = False
+        self._baseline: _State | None = None
+
+    @property
+    def entry_paused(self) -> bool:
+        return False
 
     @property
     def state(self) -> _State:
@@ -404,11 +422,50 @@ class InMemoryUnitOfWork:
             self._entered = False
             raise
         self._working = self.database._state.clone()
+        if self.database.now is not None:
+            from .working_set import working_set
+
+            self._working = working_set(
+                self._working,
+                self.database.now() - timedelta(days=self.database.working_set_days),
+            )
+        self._baseline = self.state.clone()
         return self
 
     async def commit(self) -> None:
         # No await between publication and clearing staged state.
-        self.database._state = self.state.clone()
+        if self.database.now is None:
+            self.database._state = self.state.clone()
+            self._working = None
+            return
+        from dataclasses import fields
+
+        assert self._baseline is not None
+        merged = self.database._state.clone()
+        for descriptor in fields(_State):
+            before, after = (
+                getattr(self._baseline, descriptor.name),
+                getattr(self.state, descriptor.name),
+            )
+            if isinstance(after, dict):
+                target = getattr(merged, descriptor.name).copy()
+                for key in before.keys() - after.keys():
+                    target.pop(key, None)
+                for key, value in after.items():
+                    if key not in before or value != before[key]:
+                        if (
+                            key not in before
+                            and key in target
+                            and descriptor.name in ("fills", "decisions")
+                        ):
+                            raise (
+                                DuplicateExecId if descriptor.name == "fills" else DuplicateSignalId
+                            )("duplicate persistent identity")
+                        target[key] = value
+                setattr(merged, descriptor.name, target)
+            else:
+                setattr(merged, descriptor.name, after.copy())
+        self.database._state = merged
         self._working = None
 
     async def rollback(self) -> None:

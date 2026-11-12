@@ -32,6 +32,7 @@ include = ["richletsgo*"]
 namespaces = false
 
 [tool.setuptools.package-data]
+"richletsgo.storage" = ["migrations/*.sql"]
 richletsgo_dashboard = ["templates/*.html", "static/*"]
 
 [tool.ruff]
