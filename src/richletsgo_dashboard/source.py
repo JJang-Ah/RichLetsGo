@@ -1,8 +1,8 @@
 """Read model for the dashboard (M5-01a). Screens read only through `DashboardSource`.
 
 Money and quantities stay Decimal end to end; times are UTC and only formatted to KST
-at render time. The SQLite reader arrives after M3-02; until then `FakeSource` serves
-deterministic sample data.
+at render time. `SqliteSource` reads the Trader's database; `FakeSource` serves deterministic
+sample data for development and tests.
 """
 
 from dataclasses import dataclass, field
@@ -25,9 +25,9 @@ class Overview:
     account_id: str
     pause_state: str  # e.g. ACTIVE, ENTRY_PAUSED_MANUAL, HALTED
     pause_reasons: tuple[str, ...]
-    equity: Decimal
-    today_pnl: Decimal
-    drawdown: Decimal  # fraction below the risk peak, >= 0
+    equity: Decimal | None  # None: the Trader has not persisted it yet
+    today_pnl: Decimal | None
+    drawdown: Decimal | None  # fraction below the risk peak, >= 0
     limits: tuple[Limit, ...]
     last_closed_bar: datetime | None
     last_fill: datetime | None
@@ -42,14 +42,14 @@ class Position:
     symbol: str
     side: str
     quantity: Decimal
-    entry_price: Decimal
-    mark_price: Decimal
+    entry_price: Decimal | None
+    mark_price: Decimal | None  # marks are not persisted; live feed only
     stop_price: Decimal | None
     exchange_stop_quantity: Decimal
 
     @property
     def stop_distance(self) -> Decimal | None:
-        if self.stop_price is None or self.mark_price <= 0:
+        if self.stop_price is None or self.mark_price is None or self.mark_price <= 0:
             return None
         return abs(self.mark_price - self.stop_price) / self.mark_price
 
@@ -107,7 +107,7 @@ class Decision:
     symbol: str
     ai_score: Decimal | None
     reason: str  # untrusted
-    cost_usd: Decimal
+    cost_usd: Decimal | None
 
 
 @dataclass
@@ -119,6 +119,10 @@ class Snapshot:
     fills: list[Fill] = field(default_factory=list)
     logs: list[LogEntry] = field(default_factory=list)
     decisions: list[Decision] = field(default_factory=list)
+
+
+class SourceUnavailable(RuntimeError):
+    """The database is missing, unmigrated, or belongs to another environment."""
 
 
 class DashboardSource(Protocol):

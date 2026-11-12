@@ -31,7 +31,9 @@ def money(value: Decimal | None) -> str:
     return num(value.quantize(Decimal("0.01")))
 
 
-def signed(value: Decimal) -> str:
+def signed(value: Decimal | None) -> str:
+    if value is None:
+        return "-"
     return ("+" if value > 0 else "") + money(value)
 
 

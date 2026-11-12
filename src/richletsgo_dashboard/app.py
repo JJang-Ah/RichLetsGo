@@ -21,7 +21,7 @@ from . import fmt
 from .charts import Series, line_chart, sparkline
 from .control import COMMANDS, TraderClient
 from .security import HEADERS, Auth, allowed_hosts, same_origin
-from .source import DashboardSource, Snapshot
+from .source import DashboardSource, Snapshot, SourceUnavailable
 
 HERE = Path(__file__).parent
 COOKIE = "rlg_session"
@@ -96,6 +96,15 @@ def create_app(
         for key, value in HEADERS.items():
             response.headers[key] = value
         return response
+
+    @app.exception_handler(SourceUnavailable)
+    async def unavailable(request: Request, error: Exception) -> Response:
+        return Response(
+            f"대시보드가 DB를 읽지 못했습니다: {error}\n"
+            "--db 경로와 --environment가 Trader 설정과 같은지 확인하세요.",
+            status_code=503,
+            media_type="text/plain; charset=utf-8",
+        )
 
     def page(request: Request, name: str, snap: Snapshot, **extra: Any) -> HTMLResponse:
         session = auth.session(request.cookies.get(COOKIE))

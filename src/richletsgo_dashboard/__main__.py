@@ -1,9 +1,11 @@
-"""Run the local dashboard: python -m richletsgo_dashboard [--port 8765] [--environment demo].
+"""Run the local dashboard: python -m richletsgo_dashboard [--db FILE] [--environment demo].
 
-M5-01a serves the fake data source; the SQLite reader replaces it after M3-02.
+With --db it reads the Trader's SQLite file read-only; without it, sample data is shown
+(with the sample banner) so screens can be checked before a database exists.
 """
 
 import argparse
+from pathlib import Path
 
 import uvicorn
 
@@ -12,7 +14,8 @@ from richletsgo.keystore import CredentialError, KeyStore, windows_backend
 from .app import create_app, monotonic
 from .control import Disconnected
 from .security import LOOPBACK, Auth, require_loopback
-from .source import FakeSource
+from .source import DashboardSource, FakeSource
+from .sqlite_source import SqliteSource
 
 ACCESS_ITEM = "richletsgo/dashboard-access"
 
@@ -29,10 +32,16 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default=LOOPBACK)
     parser.add_argument("--environment", choices=("demo", "live"), default="demo")
+    parser.add_argument("--db", type=Path, help="Trader SQLite file (storage.<env>.db_file)")
     args = parser.parse_args()
     require_loopback(args.host, args.port)
+    source: DashboardSource = (
+        SqliteSource(args.db, args.environment)
+        if args.db
+        else FakeSource(environment=args.environment)
+    )
     app = create_app(
-        FakeSource(environment=args.environment),
+        source,
         Auth(code=access_code, clock=monotonic),
         Disconnected(),
         port=args.port,

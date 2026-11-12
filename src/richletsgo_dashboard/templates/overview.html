@@ -9,12 +9,12 @@
     <p class="equity">
       <span class="figure-label">평가액</span>
       <span class="figure figure-xl" data-field="equity">{{ o.equity | money }}</span>
-      <span class="unit">USDT</span>
+      <span class="unit">{% if o.equity is none %}Trader가 평가액을 저장하면 표시됩니다{% else %}USDT{% endif %}</span>
     </p>
     <dl class="sub-figures">
       <div>
         <dt>오늘 손익 <span class="note">UTC 00:00부터</span></dt>
-        <dd class="figure {{ 'up' if o.today_pnl > 0 else 'down' if o.today_pnl < 0 else '' }}" data-field="today_pnl">{{ o.today_pnl | signed }}</dd>
+        <dd class="figure {{ '' if o.today_pnl is none else 'up' if o.today_pnl > 0 else 'down' if o.today_pnl < 0 else '' }}" data-field="today_pnl">{{ o.today_pnl | signed }}</dd>
       </div>
       <div>
         <dt>낙폭 <span class="note">위험 기준 최고점 대비</span></dt>
@@ -41,6 +41,7 @@
 <div class="split">
   <section class="panel" id="limits">
     <h2>한도 사용률</h2>
+    {% if not o.limits %}<p class="empty">Trader가 한도 사용률을 저장하면 여기에 표시됩니다.</p>{% endif %}
     <ul class="gauges">
     {% for l in o.limits %}
       <li class="{{ 'hot' if l.used >= warn else '' }}">
