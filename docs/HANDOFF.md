@@ -807,3 +807,5 @@
 - 실제 SQL 중복 키/없는 테이블 오류를 주입해 부분 쓰기 롤백·다음 UoW 재사용과 보호 create의 requested → 전송 → result 저널 진행을 검증했다. 저장소·SQLite 보호 테스트 34 passed, 기존 추적 손절 42개 로컬 통과, mypy/변경 파일 lint 통과.
 - CI의 3.12 실패 위치는 delayed_application_and_failed_query_keep_single_attempt[sqlite-True]로 좁혔으나 로컬 3.14에서는 재현되지 않았다. 다음 CI에서 정확한 traceback을 확보한다.
 - CI 시간 제한은 10→20분으로 조정했다. 기존 3.12는 테스트 약9분19초에 작업 전체10분 제한으로 종료됐고 3.14 테스트는 약6분43초였다. FULL/WAL 내구성 설정과 SQLite 계약 테스트 범위는 유지하며, -vv/--durations=20으로 실패 이름과 느린 테스트를 기록한다. P3는 후속 관련 작업으로 유지한다.
+
+- 후속 확인: 로컬 전체 1418 passed/237.84초. 추가 실제 fills·decisions 유일 제약/COMMIT 후 연결 정리 실패 테스트 포함 저장소 27 passed. Python 3.12 CI(run 43226084906)는 1421 passed/355.40초이며 이전 실패 위치인 sqlite-True 추적 손절도 통과했다(CI는 최신 main과의 병합 결과라 대시보드 테스트 3개가 추가됨). 이전 취소 로그에 traceback이 없어 과거 일회성 실패 원인을 단정하지 않는다. 상세 테스트 이름·시간 기록과 충분한 작업 제한으로 재발 시 진단 정보를 남긴다.

@@ -445,3 +445,54 @@ def test_rollback_sqlite_failure_releases_process_lock(tmp_path):
             await uow.commit()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("table", ["fills", "decisions"])
+def test_real_identity_constraint_uses_domain_error(tmp_path, table):
+    from richletsgo.storage.errors import DuplicateExecId, DuplicateSignalId
+
+    async def run():
+        db = database(tmp_path)
+        await db.migrate()
+
+        def fault(stage, connection):
+            if stage == "before_commit":
+                sql = f"INSERT INTO {table} VALUES ('test', 'duplicate', '{{}}', 0, 0)"
+                connection.execute(sql)
+                connection.execute(sql)
+
+        db.fault = fault
+        expected = DuplicateExecId if table == "fills" else DuplicateSignalId
+        with pytest.raises(expected) as error:
+            async with db.unit_of_work() as uow:
+                await uow.commit()
+        assert isinstance(error.value.__cause__, sqlite3.IntegrityError)
+        assert not db.entry_paused
+        db.fault = None
+        async with db.unit_of_work() as uow:
+            await uow.commit()
+
+    asyncio.run(run())
+
+
+def test_cleanup_failure_does_not_mask_unknown_commit(tmp_path):
+    async def run():
+        db = database(tmp_path)
+        await db.migrate()
+
+        def fault(stage, connection):
+            if stage == "after_commit":
+                connection.close()
+                connection.execute("SELECT 1")
+
+        db.fault = fault
+        with pytest.raises(CommitOutcomeUnknown) as error:
+            async with db.unit_of_work() as uow:
+                uow.recovery.put("key", "committed")
+                await uow.commit()
+        assert db.entry_paused
+        assert isinstance(error.value.__cause__, sqlite3.ProgrammingError)
+        db.fault = None
+        assert await db.resolve(error.value.txn_id) is True
+
+    asyncio.run(run())
