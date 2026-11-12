@@ -391,3 +391,10 @@ def test_refresh_api_carries_current_attention_items() -> None:
         "href": "/orders?status=unknown",
     } in items
     assert any(i["href"] == "/positions" for i in items)
+
+
+def test_overview_band_shows_state_tone_and_equity_trace() -> None:
+    client, *_ = make()
+    text = client.get("/").text
+    assert 'class="band tone-warn"' in text  # sample is ENTRY_PAUSED_SYSTEM
+    assert 'class="spark"' in text and 'href="/equity?range=7d"' in text

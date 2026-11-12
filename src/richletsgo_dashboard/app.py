@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import fmt
-from .charts import Series, line_chart
+from .charts import Series, line_chart, sparkline
 from .control import COMMANDS, TraderClient
 from .security import HEADERS, Auth, allowed_hosts, same_origin
 from .source import DashboardSource, Snapshot
@@ -109,7 +109,19 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         snap = source.snapshot()
-        return page(request, "overview", snap, warn=WARN, attention=attention(snap, WARN))
+        pts = snap.equity
+        if pts:
+            pts = [p for p in pts if p.at >= pts[-1].at - timedelta(days=7)]
+        state = snap.overview.pause_state
+        return page(
+            request,
+            "overview",
+            snap,
+            warn=WARN,
+            attention=attention(snap, WARN),
+            spark=sparkline([(p.at, p.equity) for p in pts], "최근 7일 평가액 추이"),
+            tone="ok" if state == "ACTIVE" else "halt" if state == "HALTED" else "warn",
+        )
 
     @app.get("/positions", response_class=HTMLResponse)
     def positions(request: Request) -> HTMLResponse:
