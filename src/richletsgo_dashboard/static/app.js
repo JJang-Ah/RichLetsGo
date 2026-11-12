@@ -6,6 +6,8 @@ function refreshOverview() {
     .then((r) => (r.ok ? r.json() : null))
     .then((data) => {
       if (!data) return;
+      if (Array.isArray(data.attention)) renderAttention(data.attention);
+      renderBand(data.tone, data.pause_reasons);
       for (const el of document.querySelectorAll("[data-field]")) {
         const key = el.getAttribute("data-field");
         if (key === "trader") el.textContent = "Trader " + data.trader;
@@ -13,6 +15,54 @@ function refreshOverview() {
       }
     })
     .catch(() => {});
+}
+
+// Keeps the status band's colour and reasons in step with the state word (PR #68 P2).
+function renderBand(tone, reasons) {
+  const band = document.getElementById("band");
+  if (band && ["ok", "warn", "halt"].includes(tone)) {
+    band.classList.remove("tone-ok", "tone-warn", "tone-halt");
+    band.classList.add("tone-" + tone);
+  }
+  const why = document.getElementById("state-why");
+  if (why && Array.isArray(reasons)) {
+    why.textContent = reasons.length ? "이유: " + reasons.map(String).join(", ") : "";
+    why.hidden = reasons.length === 0;
+  }
+}
+
+// Rebuilds the "먼저 확인할 것" list so it never shows a stale all-clear (PR #65 P2).
+function renderAttention(items) {
+  const box = document.getElementById("attention");
+  if (!box) return;
+  for (const old of box.querySelectorAll("ul, .all-clear")) old.remove();
+  const mark = (symbol) => {
+    const span = document.createElement("span");
+    span.className = "mark";
+    span.setAttribute("aria-hidden", "true");
+    span.textContent = symbol;
+    return span;
+  };
+  if (items.length === 0) {
+    const p = document.createElement("p");
+    p.className = "all-clear";
+    p.append(mark("✓"), document.createTextNode("확인할 항목이 없습니다."));
+    box.append(p);
+  } else {
+    const ul = document.createElement("ul");
+    ul.className = "plain";
+    for (const item of items) {
+      const href = String(item.href || "");
+      const li = document.createElement("li");
+      const a = document.createElement("a");
+      a.setAttribute("href", href.startsWith("/") || href.startsWith("#") ? href : "/");
+      a.append(mark("!"), document.createTextNode(String(item.text || "")));
+      li.append(a);
+      ul.append(li);
+    }
+    box.append(ul);
+  }
+  box.classList.toggle("has-items", items.length > 0);
 }
 
 function bindChart(figure) {
@@ -66,5 +116,7 @@ function bindChart(figure) {
 
 document.addEventListener("DOMContentLoaded", () => {
   for (const fig of document.querySelectorAll("figure.chart[data-points]")) bindChart(fig);
+  const tab = document.querySelector('.tabs [aria-current="page"]');
+  if (tab) tab.parentElement.scrollLeft = tab.offsetLeft - 12;  // keep the current tab visible on narrow screens
   if (document.querySelector("[data-field]")) setInterval(refreshOverview, 10000);
 });

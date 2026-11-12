@@ -240,6 +240,8 @@ python -m richletsgo.keystore set richletsgo/control-token-demo
 python -m richletsgo_dashboard --config config.local.toml
 ```
 
+제어 연결 없이 DB 화면만 보려면 `python -m richletsgo_dashboard --db <DB파일> --environment demo`를 씁니다. `--db`와 `--config`는 동시에 지정할 수 없습니다. 두 경로는 같은 읽기 전용 공급원을 쓰며 환경을 확인하고, 미저장 평가액·한도·현재가는 `-`로 표시합니다.
+
 키 값은 위 대화형 입력에만 넣습니다. 설정 없이 대시보드를 실행하면 기존 샘플 화면이며, 샘플 공급원은 Trader가 연결되어 있어도 제어할 수 없습니다. SQLite 공급원은 `mode=ro`로 저장된 주문·체결·전략 장부·결정·명령·위험 상태를 읽습니다. 실시간 시세·한도 사용률·평가액 이력 적재와 Trader 전체 실행 서비스는 M3-04/06에서 연결해야 하며 이 PR로 실주문을 활성화하지 않습니다.
 
 Trader 조립 시 `control.runtime.build_control(config, database, gate, clock, keys, notify)`를 사용합니다. `notify`는 기존 Telegram 전송기에 연결할 비동기 함수입니다. `serve_control`은 같은 이벤트 루프에서 `127.0.0.1`로만 열고, 기존 `Synchronizer`의 WS/REST 대조 뒤 `runtime.service.tick()`을 호출합니다. Telegram 수신기는 인증된 update의 사용자/채팅 ID를 `TelegramCommands.handle`에 전달하며, 확인 콜백은 최초 명령 update ID를 멱등 키로 유지합니다. 실제 봇 polling·Windows 서비스 스케줄은 M3-05/06 조립 범위입니다.

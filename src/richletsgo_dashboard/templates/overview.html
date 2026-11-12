@@ -1,55 +1,71 @@
 {% extends "base.html" %}
 {% block main %}
-<section class="hero" aria-label="요약">
-  <div class="stat">
-    <div class="label">평가액</div>
-    <div class="value" data-field="equity">{{ o.equity | money }}</div>
-    <div class="unit">USDT</div>
+<section class="band tone-{{ tone }}" id="band" aria-label="현재 상태">
+  <div class="band-state">
+    <p class="state-word" data-field="pause">{{ pause_label }}</p>
+    <p class="state-why" id="state-why"{% if not o.pause_reasons %} hidden{% endif %}>{% if o.pause_reasons %}이유: {{ o.pause_reasons | join(", ") }}{% endif %}</p>
   </div>
-  <div class="stat">
-    <div class="label">오늘 손익</div>
-    <div class="value {{ 'up' if o.today_pnl > 0 else 'down' if o.today_pnl < 0 else '' }}" data-field="today_pnl">{{ o.today_pnl | signed }}</div>
-    <div class="unit">USDT · UTC 00:00 기준</div>
+  <div class="band-figures">
+    <p class="equity">
+      <span class="figure-label">평가액</span>
+      <span class="figure figure-xl" data-field="equity">{{ o.equity | money }}</span>
+      <span class="unit">{% if o.equity is none %}Trader가 평가액을 저장하면 표시됩니다{% else %}USDT{% endif %}</span>
+    </p>
+    <dl class="sub-figures">
+      <div>
+        <dt>오늘 손익 <span class="note">UTC 00:00부터</span></dt>
+        <dd class="figure {{ '' if o.today_pnl is none else 'up' if o.today_pnl > 0 else 'down' if o.today_pnl < 0 else '' }}" data-field="today_pnl">{{ o.today_pnl | signed }}</dd>
+      </div>
+      <div>
+        <dt>낙폭 <span class="note">위험 기준 최고점 대비</span></dt>
+        <dd class="figure" data-field="drawdown">{{ o.drawdown | pct }}</dd>
+      </div>
+    </dl>
   </div>
-  <div class="stat">
-    <div class="label">낙폭</div>
-    <div class="value" data-field="drawdown">{{ o.drawdown | pct }}</div>
-    <div class="unit">위험 기준 최고점 대비</div>
-  </div>
+  {% if spark %}<a class="band-trace" href="/equity?range=7d" aria-label="평가액 차트 열기">{{ spark }}</a>{% endif %}
 </section>
 
-<section class="card">
-  <h2>정지 상태</h2>
-  <p class="state-line"><span class="pill pause-{{ o.pause_state | lower }}">{{ pause_label }}</span>
-  {% if o.pause_reasons %}<span class="muted">이유: {{ o.pause_reasons | join(", ") }}</span>{% endif %}</p>
+<section class="panel attention{{ ' has-items' if attention else '' }}" id="attention" aria-labelledby="attention-title" aria-live="polite">
+  <h2 id="attention-title">먼저 확인할 것</h2>
+  {% if attention %}
+  <ul class="plain">
+  {% for text, href in attention %}
+    <li><a href="{{ href }}"><span class="mark" aria-hidden="true">!</span>{{ text }}</a></li>
+  {% endfor %}
+  </ul>
+  {% else %}
+  <p class="all-clear"><span class="mark" aria-hidden="true">✓</span>확인할 항목이 없습니다.</p>
+  {% endif %}
 </section>
 
-<section class="card">
-  <h2>한도 사용률</h2>
-  <table class="limits">
-    <thead><tr><th scope="col">한도</th><th scope="col">사용률</th><th scope="col">내용</th></tr></thead>
-    <tbody>
+<div class="split">
+  <section class="panel" id="limits">
+    <h2>한도 사용률</h2>
+    {% if not o.limits %}<p class="empty">Trader가 한도 사용률을 저장하면 여기에 표시됩니다.</p>{% endif %}
+    <ul class="gauges">
     {% for l in o.limits %}
-      <tr>
-        <th scope="row">{{ l.code }} {{ l.name }}</th>
-        <td>
-          <svg class="meter{{ ' warn' if l.used >= warn else '' }}" viewBox="0 0 100 8" preserveAspectRatio="none" role="meter" aria-label="{{ l.name }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ([l.used, 1] | min * 100) | round(0) | int }}">
-            <rect class="track" width="100" height="8" rx="4"/>
-            <rect class="fill" width="{{ ([l.used, 1] | min * 100) | round(1) }}" height="8" rx="4"/>
-          </svg>
-          <span class="meter-value">{{ l.used | pct(0) }}{% if l.used >= warn %} <span class="flag">주의</span>{% endif %}</span>
-        </td>
-        <td class="muted">{{ l.detail }}</td>
-      </tr>
+      <li class="{{ 'hot' if l.used >= warn else '' }}">
+        <span class="gauge-name"><span class="code">{{ l.code }}</span>{{ l.name }}</span>
+        <svg class="meter{{ ' warn' if l.used >= warn else '' }}" viewBox="0 0 100 6" preserveAspectRatio="none" role="meter" aria-label="{{ l.name }}" aria-valuemin="0" aria-valuemax="100" aria-valuenow="{{ ([l.used, 1] | min * 100) | round(0) | int }}">
+          <rect class="track" width="100" height="6" rx="3"/>
+          <rect class="fill" width="{{ ([l.used, 1] | min * 100) | round(1) }}" height="6" rx="3"/>
+          <line class="limit-mark" x1="{{ (warn * 100) | int }}" x2="{{ (warn * 100) | int }}" y1="0" y2="6"/>
+        </svg>
+        <span class="meter-value figure">{{ l.used | pct(0) }}{% if l.used >= warn %} <span class="flag">주의</span>{% endif %}</span>
+        <span class="gauge-detail">{{ l.detail }}</span>
+      </li>
     {% endfor %}
-    </tbody>
-  </table>
-</section>
+    </ul>
+  </section>
 
-<section class="card grid2">
-  <div><h2>마지막 확정 봉</h2><p data-field="last_closed_bar">{{ o.last_closed_bar | kst }}</p></div>
-  <div><h2>마지막 체결</h2><p>{{ o.last_fill | kst }}</p></div>
-  <div><h2>API 키 만료까지</h2><p>{% if o.key_expires_in_days is none %}-{% else %}{{ o.key_expires_in_days }}일{% if o.key_expires_in_days <= 14 %} <span class="flag">갱신 필요</span>{% endif %}{% endif %}</p></div>
-  <div><h2>AI 모드</h2><p>{{ '비활성' if o.ai_mode == 'disabled' else '활성' }}</p></div>
-</section>
+  <section class="panel">
+    <h2>시스템</h2>
+    <dl class="facts">
+      <div><dt>마지막 확정 봉</dt><dd class="figure" data-field="last_closed_bar">{{ o.last_closed_bar | kst }}</dd></div>
+      <div><dt>마지막 체결</dt><dd class="figure">{{ o.last_fill | kst }}</dd></div>
+      <div><dt>API 키 만료까지</dt><dd>{% if o.key_expires_in_days is none %}-{% else %}<span class="figure">{{ o.key_expires_in_days }}</span>일{% if o.key_expires_in_days <= 14 %} <span class="flag">갱신 필요</span>{% endif %}{% endif %}</dd></div>
+      <div><dt>AI 모드</dt><dd>{{ '비활성' if o.ai_mode == 'disabled' else '활성' }}</dd></div>
+    </dl>
+  </section>
+</div>
 {% endblock %}

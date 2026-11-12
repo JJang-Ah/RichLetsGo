@@ -342,3 +342,87 @@ def test_sample_banner_marks_fake_data() -> None:
     client, *_ = make(FakeSource(environment="live"))
     for path in ("/", "/positions", "/control"):
         assert "샘플 데이터입니다" in client.get(path).text
+
+
+def test_overview_lists_what_to_check_first() -> None:
+    client, *_ = make()
+    text = client.get("/").text
+    assert "먼저 확인할 것" in text
+    assert "UNKNOWN 주문 1건" in text and 'href="/orders?status=unknown"' in text
+    assert "거래소 손절이 보유 수량과 다른 포지션 1개" in text
+    assert '<h1 class="sr-only">개요</h1>' in text and 'href="#main"' in text
+
+
+def test_overview_all_clear_when_nothing_to_check() -> None:
+    class Calm(FakeSource):
+        def snapshot(self) -> Snapshot:
+            snap = super().snapshot()
+            snap.orders = [r for r in snap.orders if r.status != "UNKNOWN"]
+            snap.positions = [p for p in snap.positions if p.fully_protected]
+            snap.overview = replace(
+                snap.overview,
+                limits=[replace(limit, used=Decimal("0.1")) for limit in snap.overview.limits],
+            )
+            return snap
+
+    client, *_ = make(Calm())
+    assert "확인할 항목이 없습니다." in client.get("/").text
+
+
+def test_refresh_api_carries_current_attention_items() -> None:
+    calm = True
+
+    class Switching(FakeSource):
+        def snapshot(self) -> Snapshot:
+            snap = super().snapshot()
+            if calm:
+                snap.orders = [r for r in snap.orders if r.status != "UNKNOWN"]
+                snap.positions = [p for p in snap.positions if p.fully_protected]
+                snap.overview = replace(
+                    snap.overview,
+                    limits=[replace(x, used=Decimal("0.1")) for x in snap.overview.limits],
+                )
+            return snap
+
+    client, *_ = make(Switching())
+    assert client.get("/api/overview").json()["attention"] == []
+    calm = False
+    items = client.get("/api/overview").json()["attention"]
+    assert {
+        "text": "UNKNOWN 주문 1건: 거래소에서 확인 필요",
+        "href": "/orders?status=unknown",
+    } in items
+    assert any(i["href"] == "/positions" for i in items)
+
+
+def test_overview_band_shows_state_tone_and_equity_trace() -> None:
+    client, *_ = make()
+    text = client.get("/").text
+    assert 'class="band tone-warn"' in text  # sample is ENTRY_PAUSED_SYSTEM
+    assert 'class="spark"' in text and 'href="/equity?range=7d"' in text
+
+
+def test_refresh_api_carries_band_tone_and_reasons() -> None:
+    state: list[tuple[str, tuple[str, ...]]] = [("ACTIVE", ())]
+
+    class Switching(FakeSource):
+        def snapshot(self) -> Snapshot:
+            snap = super().snapshot()
+            code, reasons = state[0]
+            snap.overview = replace(snap.overview, pause_state=code, pause_reasons=reasons)
+            return snap
+
+    client, *_ = make(Switching())
+    page = client.get("/").text
+    assert 'class="band tone-ok" id="band"' in page
+    assert '<p class="state-why" id="state-why" hidden></p>' in page  # refresh target exists
+    seen = []
+    for code, reasons in (("ACTIVE", ()), ("HALTED", ("daily_loss",)), ("ACTIVE", ())):
+        state[0] = (code, reasons)
+        data = client.get("/api/overview").json()
+        seen.append((data["pause_state"], data["tone"], data["pause_reasons"]))
+    assert seen == [
+        ("ACTIVE", "ok", []),
+        ("HALTED", "halt", ["daily_loss"]),
+        ("ACTIVE", "ok", []),
+    ]

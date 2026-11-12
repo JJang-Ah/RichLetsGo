@@ -446,7 +446,7 @@ def test_dashboard_readonly_forwarding_confirmation_escaping_and_revoke(tmp_path
 
     db, service, ctx, _, _ = asyncio.run(setup(tmp_path))
     asyncio.run(service.request(ctx, "pause"))
-    source = SqliteSource(db.path)
+    source = SqliteSource(db.path, "demo")
     assert source.snapshot().overview.account_id == "acct"
 
     class Client:
@@ -482,6 +482,7 @@ def test_dashboard_readonly_forwarding_confirmation_escaping_and_revoke(tmp_path
             data={"csrf": csrf(client), "request_id": "web-cancel"},
         )
         assert response.status_code == 200
+        assert "명령 결과 - RichLetsGo DEMO" in response.text
         assert "<img src=x" not in response.text and "&lt;img" in response.text
         assert 'value="confirm"' in response.text
         assert trader.calls[0][1]["account_id"] == "acct"

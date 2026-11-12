@@ -810,3 +810,21 @@
 - 저장소 보완: 계좌 전체 복구가 끝난 뒤에도 진행 중 명령이 이미 판정된 txn 결과를 조회할 수 있게 계좌별 판정 결과를 보존했다. 실제 봇 polling, Trader 전체 서비스 조립, 실시간 시세·한도·평가액 이력 적재는 M3-04/05/06 연결 범위다. 이 PR은 이를 임의로 시작하거나 실주문을 활성화하지 않는다.
 - 검증: 전체 1442 passed / 181.71초. 마지막 보완 후 제어·실제 outbox/가상 거래소 취소 복구·저장소 테스트 50 passed. ruff lint/format·mypy 통과. 실제 키/운영 DB/거래소/판정 풀 접근 없음.
 - 다음 담당자: Claude가 PR #66 저장소를 먼저 검토하고 이 제어 PR을 이어서 검토한다. 런타임은 `build_control`/`serve_control`과 동기화 후 `service.tick()`을 연결하며, 위험 상태 관측/게시에도 같은 계좌 잠금을 사용해야 한다.
+
+
+## 2026-11-12 — Codex (PR #66 재검토 P2 보완)
+
+- COMMIT 전 SQLite 오류를 StorageError/StorageBusy 또는 fills·decisions 중복 도메인 예외로 변환했다. rollback 오류에서도 연결·프로세스 잠금을 해제하고, COMMIT 이후 결과 불명은 정리 실패로 덮어쓰지 않는다.
+- 실제 SQL 중복 키/없는 테이블 오류를 주입해 부분 쓰기 롤백·다음 UoW 재사용과 보호 create의 requested → 전송 → result 저널 진행을 검증했다. 저장소·SQLite 보호 테스트 34 passed, 기존 추적 손절 42개 로컬 통과, mypy/변경 파일 lint 통과.
+- CI의 3.12 실패 위치는 delayed_application_and_failed_query_keep_single_attempt[sqlite-True]로 좁혔으나 로컬 3.14에서는 재현되지 않았다. 다음 CI에서 정확한 traceback을 확보한다.
+- CI 시간 제한은 10→20분으로 조정했다. 기존 3.12는 테스트 약9분19초에 작업 전체10분 제한으로 종료됐고 3.14 테스트는 약6분43초였다. FULL/WAL 내구성 설정과 SQLite 계약 테스트 범위는 유지하며, -vv/--durations=20으로 실패 이름과 느린 테스트를 기록한다. P3는 후속 관련 작업으로 유지한다.
+
+- 후속 확인: 로컬 전체 1418 passed/237.84초. 추가 실제 fills·decisions 유일 제약/COMMIT 후 연결 정리 실패 테스트 포함 저장소 27 passed. Python 3.12 CI(run 43226084906)는 1421 passed/355.40초이며 이전 실패 위치인 sqlite-True 추적 손절도 통과했다(CI는 최신 main과의 병합 결과라 대시보드 테스트 3개가 추가됨). 이전 취소 로그에 traceback이 없어 과거 일회성 실패 원인을 단정하지 않는다. 상세 테스트 이름·시간 기록과 충분한 작업 제한으로 재발 시 진단 정보를 남긴다.
+
+
+## 2026-11-13 — Codex (PR #67 main 통합·충돌 해결)
+
+- PR base를 main으로 변경하고 #66·#68·#69 병합 결과를 합쳤다. HANDOFF 양쪽 기록을 보존했고 control.html의 request_id/CSRF와 보조 버튼 스타일을 함께 유지했다.
+- SQLite 공급원은 #69 구현 하나로 통일했다. 환경 확인, 요청별 read-only 연결·deferred BEGIN, active 주문 무제한·종결 200행, 미저장 수치 None을 유지한다. --db는 조회 전용, --config는 같은 공급원에 기존 제어 클라이언트를 연결하며 둘은 상호 배타다.
+- command_result에 명시적인 page_label을 넣어 메뉴 목록 밖 이름 때문에 500이 나는 문제를 해결했다. 제어 결과 제목 회귀와 두 CLI 경로 합성 테스트를 추가했다.
+- 검증: 전체 1463 passed/261.35초, 마지막 CLI 모형 보완 뒤 SQLite 화면 테스트 8 passed. ruff lint/format·mypy 통과. 임시 합성 DB 및 모형만 사용하며 실주문은 활성화하지 않는다. 다음: 사용자/Claude가 #67 검토. #70은 별도 검토 통과(73 passed), 아직 병합하지 않았다.

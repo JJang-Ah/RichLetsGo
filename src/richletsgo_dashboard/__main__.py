@@ -1,6 +1,7 @@
-"""Run the local dashboard: python -m richletsgo_dashboard [--port 8765] [--environment demo].
+"""Run the local dashboard: python -m richletsgo_dashboard [--db FILE] [--environment demo].
 
-M5-01a serves the fake data source; the SQLite reader replaces it after M3-02.
+With --db it reads the Trader's SQLite file read-only; without it, sample data is shown
+(with the sample banner) so screens can be checked before a database exists.
 """
 
 import argparse
@@ -32,18 +33,24 @@ def main() -> None:
     parser.add_argument("--port", type=int, default=8765)
     parser.add_argument("--host", default=LOOPBACK)
     parser.add_argument("--environment", choices=("demo", "live"), default="demo")
-    parser.add_argument(
+    sources = parser.add_mutually_exclusive_group()
+    sources.add_argument("--db", type=Path, help="Read-only Trader database without control")
+    sources.add_argument(
         "--config", type=Path, help="Read-only SQLite source and control configuration"
     )
     args = parser.parse_args()
     require_loopback(args.host, args.port)
-    source: DashboardSource = FakeSource(environment=args.environment)
+    source: DashboardSource = (
+        SqliteSource(args.db, args.environment)
+        if args.db
+        else FakeSource(environment=args.environment)
+    )
     trader: TraderClient = Disconnected()
     code = access_code
     if args.config:
         config = load_config(args.config)
         args.port = config.control.dashboard_port
-        source = SqliteSource(config.storage.db_file)
+        source = SqliteSource(config.storage.db_file, config.environment.value)
         identity = source.snapshot().overview
         if identity.environment != config.environment.value:
             raise ValueError("dashboard configuration/database environment mismatch")

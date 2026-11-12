@@ -19,10 +19,10 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import fmt
-from .charts import Series, line_chart
+from .charts import Series, line_chart, sparkline
 from .control import COMMANDS, TraderClient
 from .security import HEADERS, Auth, allowed_hosts, same_origin
-from .source import DashboardSource, Snapshot
+from .source import DashboardSource, Snapshot, SourceUnavailable
 
 HERE = Path(__file__).parent
 COOKIE = "rlg_session"
@@ -45,6 +45,27 @@ PAUSE_LABELS = {
     "ENTRY_PAUSED_RISK": "신규 진입 정지(위험 한도)",
     "HALTED": "중단(HALTED)",
 }
+WARN = Decimal("0.8")
+
+
+def tone(state: str) -> str:
+    """Band colour for a pause state: green when trading, red when halted, amber otherwise."""
+    return "ok" if state == "ACTIVE" else "halt" if state == "HALTED" else "warn"
+
+
+def attention(snap: Snapshot, warn: Decimal) -> list[tuple[str, str]]:
+    """Things the operator should look at first, as (text, link) pairs."""
+    items = []
+    unknown = sum(1 for r in snap.orders if r.status == "UNKNOWN")
+    if unknown:
+        items.append((f"UNKNOWN 주문 {unknown}건: 거래소에서 확인 필요", "/orders?status=unknown"))
+    exposed = sum(1 for p in snap.positions if not p.fully_protected)
+    if exposed:
+        items.append((f"거래소 손절이 보유 수량과 다른 포지션 {exposed}개", "/positions"))
+    hot = [limit.code for limit in snap.overview.limits if limit.used >= warn]
+    if hot:
+        items.append((f"한도 {int(warn * 100)}% 이상 사용: {', '.join(hot)}", "#limits"))
+    return items
 
 
 def create_app(
@@ -85,11 +106,25 @@ def create_app(
             response.headers[key] = value
         return response
 
+    @app.exception_handler(SourceUnavailable)
+    async def unavailable(request: Request, error: Exception) -> Response:
+        return Response(
+            f"대시보드가 DB를 읽지 못했습니다: {error}\n"
+            "--db 경로와 --environment가 Trader 설정과 같은지 확인하세요.",
+            status_code=503,
+            media_type="text/plain; charset=utf-8",
+        )
+
     def page(request: Request, name: str, snap: Snapshot, **extra: Any) -> HTMLResponse:
         session = auth.session(request.cookies.get(COOKIE))
         context = {
             "page": name,
             "pages": PAGES,
+            "page_label": (
+                "명령 결과"
+                if name == "command_result"
+                else next(label for key, _, label in PAGES if key == name)
+            ),
             "o": snap.overview,
             "pause_label": PAUSE_LABELS.get(snap.overview.pause_state, snap.overview.pause_state),
             "trader": trader.connected() and not snap.overview.sample,
@@ -101,7 +136,18 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         snap = source.snapshot()
-        return page(request, "overview", snap, warn=Decimal("0.8"))
+        pts = snap.equity
+        if pts:
+            pts = [p for p in pts if p.at >= pts[-1].at - timedelta(days=7)]
+        return page(
+            request,
+            "overview",
+            snap,
+            warn=WARN,
+            attention=attention(snap, WARN),
+            spark=sparkline([(p.at, p.equity) for p in pts], "최근 7일 평가액 추이"),
+            tone=tone(snap.overview.pause_state),
+        )
 
     @app.get("/positions", response_class=HTMLResponse)
     def positions(request: Request) -> HTMLResponse:
@@ -170,10 +216,15 @@ def create_app(
 
     @app.get("/api/overview")
     def api_overview() -> JSONResponse:
-        o = source.snapshot().overview
+        snap = source.snapshot()
+        o = snap.overview
         return JSONResponse(
             {
+                "attention": [{"text": text, "href": href} for text, href in attention(snap, WARN)],
                 "pause": PAUSE_LABELS.get(o.pause_state, o.pause_state),
+                "pause_state": o.pause_state,
+                "tone": tone(o.pause_state),
+                "pause_reasons": list(o.pause_reasons),
                 "equity": fmt.money(o.equity),
                 "today_pnl": fmt.signed(o.today_pnl),
                 "drawdown": fmt.pct(o.drawdown),
