@@ -1,9 +1,9 @@
 {% extends "base.html" %}
 {% block main %}
-<section class="band tone-{{ tone }}" aria-label="현재 상태">
+<section class="band tone-{{ tone }}" id="band" aria-label="현재 상태">
   <div class="band-state">
     <p class="state-word" data-field="pause">{{ pause_label }}</p>
-    {% if o.pause_reasons %}<p class="state-why">이유: {{ o.pause_reasons | join(", ") }}</p>{% endif %}
+    <p class="state-why" id="state-why"{% if not o.pause_reasons %} hidden{% endif %}>{% if o.pause_reasons %}이유: {{ o.pause_reasons | join(", ") }}{% endif %}</p>
   </div>
   <div class="band-figures">
     <p class="equity">
