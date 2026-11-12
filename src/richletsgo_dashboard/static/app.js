@@ -7,6 +7,7 @@ function refreshOverview() {
     .then((data) => {
       if (!data) return;
       if (Array.isArray(data.attention)) renderAttention(data.attention);
+      renderBand(data.tone, data.pause_reasons);
       for (const el of document.querySelectorAll("[data-field]")) {
         const key = el.getAttribute("data-field");
         if (key === "trader") el.textContent = "Trader " + data.trader;
@@ -14,6 +15,20 @@ function refreshOverview() {
       }
     })
     .catch(() => {});
+}
+
+// Keeps the status band's colour and reasons in step with the state word (PR #68 P2).
+function renderBand(tone, reasons) {
+  const band = document.getElementById("band");
+  if (band && ["ok", "warn", "halt"].includes(tone)) {
+    band.classList.remove("tone-ok", "tone-warn", "tone-halt");
+    band.classList.add("tone-" + tone);
+  }
+  const why = document.getElementById("state-why");
+  if (why && Array.isArray(reasons)) {
+    why.textContent = reasons.length ? "이유: " + reasons.map(String).join(", ") : "";
+    why.hidden = reasons.length === 0;
+  }
 }
 
 // Rebuilds the "먼저 확인할 것" list so it never shows a stale all-clear (PR #65 P2).

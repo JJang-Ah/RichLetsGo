@@ -47,6 +47,11 @@ PAUSE_LABELS = {
 WARN = Decimal("0.8")
 
 
+def tone(state: str) -> str:
+    """Band colour for a pause state: green when trading, red when halted, amber otherwise."""
+    return "ok" if state == "ACTIVE" else "halt" if state == "HALTED" else "warn"
+
+
 def attention(snap: Snapshot, warn: Decimal) -> list[tuple[str, str]]:
     """Things the operator should look at first, as (text, link) pairs."""
     items = []
@@ -112,7 +117,6 @@ def create_app(
         pts = snap.equity
         if pts:
             pts = [p for p in pts if p.at >= pts[-1].at - timedelta(days=7)]
-        state = snap.overview.pause_state
         return page(
             request,
             "overview",
@@ -120,7 +124,7 @@ def create_app(
             warn=WARN,
             attention=attention(snap, WARN),
             spark=sparkline([(p.at, p.equity) for p in pts], "최근 7일 평가액 추이"),
-            tone="ok" if state == "ACTIVE" else "halt" if state == "HALTED" else "warn",
+            tone=tone(snap.overview.pause_state),
         )
 
     @app.get("/positions", response_class=HTMLResponse)
@@ -196,6 +200,9 @@ def create_app(
             {
                 "attention": [{"text": text, "href": href} for text, href in attention(snap, WARN)],
                 "pause": PAUSE_LABELS.get(o.pause_state, o.pause_state),
+                "pause_state": o.pause_state,
+                "tone": tone(o.pause_state),
+                "pause_reasons": list(o.pause_reasons),
                 "equity": fmt.money(o.equity),
                 "today_pnl": fmt.signed(o.today_pnl),
                 "drawdown": fmt.pct(o.drawdown),
