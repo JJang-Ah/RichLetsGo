@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
 from . import fmt
-from .charts import Series, line_chart
+from .charts import Series, line_chart, sparkline
 from .control import COMMANDS, TraderClient
 from .security import HEADERS, Auth, allowed_hosts, same_origin
 from .source import DashboardSource, Snapshot
@@ -45,6 +45,11 @@ PAUSE_LABELS = {
     "HALTED": "중단(HALTED)",
 }
 WARN = Decimal("0.8")
+
+
+def tone(state: str) -> str:
+    """Band colour for a pause state: green when trading, red when halted, amber otherwise."""
+    return "ok" if state == "ACTIVE" else "halt" if state == "HALTED" else "warn"
 
 
 def attention(snap: Snapshot, warn: Decimal) -> list[tuple[str, str]]:
@@ -109,7 +114,18 @@ def create_app(
     @app.get("/", response_class=HTMLResponse)
     def overview(request: Request) -> HTMLResponse:
         snap = source.snapshot()
-        return page(request, "overview", snap, warn=WARN, attention=attention(snap, WARN))
+        pts = snap.equity
+        if pts:
+            pts = [p for p in pts if p.at >= pts[-1].at - timedelta(days=7)]
+        return page(
+            request,
+            "overview",
+            snap,
+            warn=WARN,
+            attention=attention(snap, WARN),
+            spark=sparkline([(p.at, p.equity) for p in pts], "최근 7일 평가액 추이"),
+            tone=tone(snap.overview.pause_state),
+        )
 
     @app.get("/positions", response_class=HTMLResponse)
     def positions(request: Request) -> HTMLResponse:
@@ -184,6 +200,9 @@ def create_app(
             {
                 "attention": [{"text": text, "href": href} for text, href in attention(snap, WARN)],
                 "pause": PAUSE_LABELS.get(o.pause_state, o.pause_state),
+                "pause_state": o.pause_state,
+                "tone": tone(o.pause_state),
+                "pause_reasons": list(o.pause_reasons),
                 "equity": fmt.money(o.equity),
                 "today_pnl": fmt.signed(o.today_pnl),
                 "drawdown": fmt.pct(o.drawdown),

@@ -391,3 +391,36 @@ def test_refresh_api_carries_current_attention_items() -> None:
         "href": "/orders?status=unknown",
     } in items
     assert any(i["href"] == "/positions" for i in items)
+
+
+def test_overview_band_shows_state_tone_and_equity_trace() -> None:
+    client, *_ = make()
+    text = client.get("/").text
+    assert 'class="band tone-warn"' in text  # sample is ENTRY_PAUSED_SYSTEM
+    assert 'class="spark"' in text and 'href="/equity?range=7d"' in text
+
+
+def test_refresh_api_carries_band_tone_and_reasons() -> None:
+    state: list[tuple[str, tuple[str, ...]]] = [("ACTIVE", ())]
+
+    class Switching(FakeSource):
+        def snapshot(self) -> Snapshot:
+            snap = super().snapshot()
+            code, reasons = state[0]
+            snap.overview = replace(snap.overview, pause_state=code, pause_reasons=reasons)
+            return snap
+
+    client, *_ = make(Switching())
+    page = client.get("/").text
+    assert 'class="band tone-ok" id="band"' in page
+    assert '<p class="state-why" id="state-why" hidden></p>' in page  # refresh target exists
+    seen = []
+    for code, reasons in (("ACTIVE", ()), ("HALTED", ("daily_loss",)), ("ACTIVE", ())):
+        state[0] = (code, reasons)
+        data = client.get("/api/overview").json()
+        seen.append((data["pause_state"], data["tone"], data["pause_reasons"]))
+    assert seen == [
+        ("ACTIVE", "ok", []),
+        ("HALTED", "halt", ["daily_loss"]),
+        ("ACTIVE", "ok", []),
+    ]

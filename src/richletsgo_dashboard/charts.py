@@ -97,3 +97,39 @@ def line_chart(series: Series) -> Markup:
         parts=Markup("").join(parts),
         path=path,
     )
+
+
+SPARK_W, SPARK_H = 600, 96
+
+
+def sparkline(points: Sequence[tuple[datetime, Decimal]], label: str) -> Markup:
+    """Axis-free equity trace for the overview band; the full chart lives on /equity."""
+    pts = list(points)
+    if len(pts) < 2:
+        return Markup("")
+    t0, t1 = pts[0][0].timestamp(), pts[-1][0].timestamp()
+    values = [v for _, v in pts]
+    lo, hi = min(values), max(values)
+    if lo == hi:
+        lo, hi = lo - 1, hi + 1
+    pad = 6
+
+    def x(t: datetime) -> float:
+        return (t.timestamp() - t0) / (t1 - t0 or 1) * (SPARK_W - pad)  # keep the end dot inside
+
+    def y(v: Decimal) -> float:
+        return pad + float((hi - v) / (hi - lo)) * (SPARK_H - 2 * pad)
+
+    line = " ".join(
+        f"{'M' if i == 0 else 'L'}{x(t):.1f},{y(v):.1f}" for i, (t, v) in enumerate(pts)
+    )
+    area = f"{line} L{SPARK_W},{SPARK_H} L0,{SPARK_H} Z"
+    end_x, end_y = x(pts[-1][0]), y(pts[-1][1])
+    return Markup(
+        '<svg class="spark" viewBox="0 0 {w} {h}" preserveAspectRatio="none" role="img" '
+        'aria-label="{label}">'
+        '<path class="spark-area" d="{area}"/>'
+        '<path class="spark-line" d="{line}"/>'
+        '<circle class="spark-end" cx="{ex:.1f}" cy="{ey:.1f}" r="3.5"/>'
+        "</svg>"
+    ).format(w=SPARK_W, h=SPARK_H, label=label, area=area, line=line, ex=end_x, ey=end_y)
