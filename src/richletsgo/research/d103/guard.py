@@ -45,7 +45,7 @@ class EmptyResponse(BybitApiError):
 
 
 class LiveWindowClosed(Exception):
-    """An orderbook request was about to start at or after T0 + 14 days."""
+    """An orderbook request was about to start at or after T0 + LIVE_SPAN (7 days)."""
 
 
 class StructureTransport:
@@ -59,7 +59,7 @@ class StructureTransport:
         self.inner = inner
         self.launches = dict(launches)
         self.clock = clock
-        self.book_until: int | None = None  # set by live collection: [T0, T0 + 14d)
+        self.book_until: int | None = None  # set by live collection: [T0, T0 + LIVE_SPAN)
 
     def _symbol(self, p: dict[str, str]) -> str:
         symbol = p.get("symbol")
