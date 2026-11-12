@@ -23,6 +23,7 @@ from richletsgo.risk.records import (
 )
 from richletsgo.storage.contracts import FillRecord, FillStatus
 from richletsgo.storage.sqlite import SqliteDatabase
+from richletsgo_dashboard import sqlite_source
 from richletsgo_dashboard.app import create_app
 from richletsgo_dashboard.control import Disconnected
 from richletsgo_dashboard.security import Auth
@@ -146,3 +147,50 @@ def test_reader_sees_commits_while_a_writer_holds_the_file(db_path):
     finally:
         writer.rollback()
         writer.close()
+
+
+def test_snapshot_reads_one_consistent_moment(db_path, monkeypatch):
+    async def close_position() -> None:
+        # One Trader transaction touching two tables: a new order and the book going flat.
+        db = SqliteDatabase(db_path, "demo-sub-1", Environment.DEMO, now=lambda: NOW)
+        async with db.unit_of_work() as uow:
+            uow.orders.put(order("D-S1-X-1", OrderPurpose.CLOSE, "-0.050", OrderState.FILLED))
+            uow.portfolio.put_book(StrategyBook(StrategyId.S1, Symbol.BTCUSDT))
+            await uow.commit()
+
+    real, fired = sqlite_source.decode, []
+
+    def decode_then_commit(payload):
+        if not fired:  # the Trader commits while the dashboard is midway through its reads
+            fired.append(True)
+            asyncio.run(close_position())
+        return real(payload)
+
+    monkeypatch.setattr(sqlite_source, "decode", decode_then_commit)
+    snap = SqliteSource(db_path, "demo").snapshot()
+    assert fired
+    assert (len(snap.orders), len(snap.positions)) == (3, 1)  # all before, never half of each
+    monkeypatch.setattr(sqlite_source, "decode", real)
+    after = SqliteSource(db_path, "demo").snapshot()
+    assert (len(after.orders), len(after.positions)) == (4, 0)
+
+
+def test_unresolved_orders_survive_the_row_limit(db_path):
+    async def settle_many() -> None:
+        db = SqliteDatabase(db_path, "demo-sub-1", Environment.DEMO, now=lambda: NOW)
+        async with db.unit_of_work() as uow:
+            for i in range(sqlite_source.ROWS + 1):
+                uow.orders.put(
+                    order(f"D-S1-E-c{i}", OrderPurpose.ENTRY, "0.001", OrderState.CANCELLED)
+                )
+            await uow.commit()
+
+    asyncio.run(settle_many())
+    snap = SqliteSource(db_path, "demo").snapshot()
+    states = [r.status for r in snap.orders]
+    assert states.count("UNKNOWN") == 1 and states.count("OPEN") == 1
+    assert states.count("CANCELLED") == sqlite_source.ROWS
+    c = client(SqliteSource(db_path, "demo"))
+    assert "UNKNOWN 주문 1건" in c.get("/").text
+    assert "D-S1-E-2" in c.get("/orders?status=unknown").text
+    assert "D-S1-SL-1" in c.get("/orders?status=open").text

@@ -1,7 +1,11 @@
 """Dashboard read model over the Trader's SQLite file (M5-01, D105).
 
 Opens a fresh `mode=ro` connection per snapshot, so the dashboard can never write and
-never holds a lock across requests; WAL lets it read while the Trader commits. Rows are
+never holds a lock across requests; WAL lets it read while the Trader commits. Every
+SELECT of one snapshot runs inside a single read transaction, so a screen never mixes
+rows from before and after a Trader commit (orders from one moment, books from the
+next). Unresolved orders (UNKNOWN, open, partially booked) are always shown; only
+settled history is cut to the newest rows. Rows are
 decoded with the storage codec (allow-listed domain types only) and mapped to display
 records. Figures the Trader does not persist yet (equity history, limit usage, marks)
 stay None and render as "-" rather than as invented numbers.
@@ -35,7 +39,7 @@ from .source import (
 )
 
 PURPOSES = {"E": "진입", "X": "청산", "P": "보호", "ATTACHED_SL": "손절"}
-ROWS = 200  # newest rows per screen; older history belongs to reports, not the live view
+ROWS = 200  # newest settled rows per screen; older history belongs to reports, not the live view
 
 # Most severe account-wide pause wins the headline; the rest become reasons.
 SEVERITY = (
@@ -63,10 +67,15 @@ class SqliteSource:
         except sqlite3.Error as error:
             raise SourceUnavailable("database cannot be opened read-only") from error
         with closing(connection):
-            meta = dict(connection.execute("SELECT key, value FROM meta").fetchall())
-            if meta.get("environment") != self.environment:
-                raise SourceUnavailable("database environment does not match the dashboard")
-            yield connection
+            # Deferred BEGIN: a read snapshot, no write lock (WAL readers never block the Trader).
+            connection.execute("BEGIN")
+            try:
+                meta = dict(connection.execute("SELECT key, value FROM meta").fetchall())
+                if meta.get("environment") != self.environment:
+                    raise SourceUnavailable("database environment does not match the dashboard")
+                yield connection
+            finally:
+                connection.rollback()
 
     def snapshot(self) -> Snapshot:
         with self._connect() as c:
@@ -114,6 +123,19 @@ class SqliteSource:
                 )
             ]
 
+        # Unresolved orders (active=1) are never cut off by the row limit: an old UNKNOWN
+        # must keep its warning however many settled orders follow it.
+        orders = [
+            decode(payload)
+            for (payload,) in c.execute(
+                "SELECT payload FROM orders WHERE account_id=? AND (active=1 OR rowid IN ("
+                "SELECT rowid FROM orders WHERE account_id=? AND active=0 "
+                "ORDER BY updated_at DESC, rowid DESC LIMIT ?)) "
+                "ORDER BY updated_at DESC, rowid DESC",
+                (account, account, ROWS),
+            )
+        ]
+
         pause_row = c.execute(
             "SELECT payload FROM risk_states WHERE account_id=? AND key='pauses'", (account,)
         ).fetchone()
@@ -126,7 +148,7 @@ class SqliteSource:
             )
         ]
         return {
-            "orders": newest("orders"),
+            "orders": orders,
             "fills": newest("fills"),
             "decisions": newest("decisions"),
             "books": [
