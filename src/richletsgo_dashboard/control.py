@@ -7,6 +7,7 @@ recording all happen in the Trader's CommandService.
 import hashlib
 import json
 import threading
+import time
 from typing import Any, Protocol
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -68,6 +69,8 @@ class HttpTraderClient:
         self.url, self.origin = f"http://127.0.0.1:{port}", f"http://127.0.0.1:{dashboard_port}"
         self.token, self.timeout = token, timeout_seconds
         self.environment, self.account_id = environment, account_id
+        self._health_until = 0.0
+        self._health_value = False
         self._revoked: set[str] = set()
         self._lock = threading.RLock()
 
@@ -101,11 +104,24 @@ class HttpTraderClient:
                     return result
             except (ValueError, OSError):
                 pass
+            if 400 <= error.code < 500:
+                return {
+                    "state": "rejected",
+                    "message": "요청 형식 거절 (HTTP " + str(error.code) + ")",
+                }
             raise OSError("Trader control response unreadable") from None
         except (URLError, ValueError, OSError):
             raise OSError("Trader control request failed") from None
 
     def connected(self) -> bool:
+        with self._lock:
+            if time.monotonic() < self._health_until:
+                return self._health_value
+            self._health_value = self._health()
+            self._health_until = time.monotonic() + 1.0
+            return self._health_value
+
+    def _health(self) -> bool:
         try:
             health = self._call("/health")
             return (
