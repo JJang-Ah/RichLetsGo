@@ -56,6 +56,8 @@ class CommandService:
         if any(not v.startswith(("telegram:", "web:")) for v in self.allowed_ids):
             raise ValueError("source-qualified allowed actors required")
         self.lock, self.notify, self.resolve_commit = account_lock, notify, resolve_commit
+        self._initial_tracker_state = tracker.state
+        self._startup_complete = False
         self._notifications = asyncio.Lock()
         self.prompts: dict[str, Confirmation] = {}
         self.revoked: set[tuple[str, str]] = set()
@@ -515,9 +517,19 @@ class CommandService:
                         self._save(uow, record)
                 await uow.commit()
                 if restored_pauses:
-                    self.pauses.publish(restored_pauses)
-                if restored_tracker:
+                    for pause in restored_pauses.active():
+                        self.pauses.add(pause)
+                # Restore only an untouched, pristine bootstrap seed, never live observations.
+                current = self.tracker.state
+                if (
+                    restored_tracker
+                    and not self._startup_complete
+                    and current is self._initial_tracker_state
+                    and current == EquityTracker.open(current.latest).state
+                    and restored_tracker.state.latest.at >= current.latest.at
+                ):
                     self.tracker.publish(restored_tracker)
+                self._startup_complete = True
         await self.tick()
 
     async def deliver_notifications(self) -> None:

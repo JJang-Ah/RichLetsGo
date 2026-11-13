@@ -289,9 +289,18 @@ def create_app(
                 manually_checked=manually_checked,
             )
         except OSError:
-            return Response(
-                "Trader 응답 확인 필요: 같은 요청 ID로 다시 확인하세요", status_code=503
-            )
+            result = {
+                "state": "response_unknown",
+                "message": "Trader 응답 확인 필요: 같은 요청 ID로 다시 확인하세요",
+            }
+        result = {
+            "command": command,
+            "request_id": request_id,
+            "target": order_link_id or None,
+            "confirmation_id": confirmation_id or None,
+            "manually_checked": manually_checked,
+            **result,
+        }
         return page(request, "command_result", snap, result=result)
 
     return app

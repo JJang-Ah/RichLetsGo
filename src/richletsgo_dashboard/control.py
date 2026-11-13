@@ -8,7 +8,7 @@ import hashlib
 import json
 import threading
 from typing import Any, Protocol
-from urllib.error import URLError
+from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from richletsgo.keystore import Secret
@@ -89,6 +89,19 @@ class HttpTraderClient:
             with urlopen(request, timeout=self.timeout) as response:
                 raw = response.read(1_000_000)
                 return dict(json.loads(raw)) if raw else {}
+        except HTTPError as error:
+            try:
+                with error:
+                    result = json.loads(error.read(1_000_000))
+                if (
+                    isinstance(result, dict)
+                    and isinstance(result.get("state"), str)
+                    and isinstance(result.get("message"), str)
+                ):
+                    return result
+            except (ValueError, OSError):
+                pass
+            raise OSError("Trader control response unreadable") from None
         except (URLError, ValueError, OSError):
             raise OSError("Trader control request failed") from None
 
@@ -104,7 +117,9 @@ class HttpTraderClient:
 
     def _flush_revocations(self) -> None:
         for hashed in tuple(self._revoked):
-            self._call("/sessions/revoke", {"session_id": hashed})
+            result = self._call("/sessions/revoke", {"session_id": hashed})
+            if result.get("state") in ("rejected", "unavailable"):
+                raise OSError("Trader session revocation not acknowledged")
             self._revoked.remove(hashed)
 
     def revoke(self, session_id: str) -> None:

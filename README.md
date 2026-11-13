@@ -247,3 +247,8 @@ python -m richletsgo_dashboard --config config.local.toml
 Trader 조립 시 `control.runtime.build_control(config, database, gate, clock, keys, notify)`를 사용합니다. `notify`는 기존 Telegram 전송기에 연결할 비동기 함수입니다. `serve_control`은 같은 이벤트 루프에서 `127.0.0.1`로만 열고, 기존 `Synchronizer`의 WS/REST 대조 뒤 `runtime.service.tick()`을 호출합니다. Telegram 수신기는 인증된 update의 사용자/채팅 ID를 `TelegramCommands.handle`에 전달하며, 확인 콜백은 최초 명령 update ID를 멱등 키로 유지합니다. 실제 봇 polling·Windows 서비스 스케줄은 M3-05/06 조립 범위입니다.
 
 위험 게이트와 제어 처리는 `gate.account_lock`을 공유합니다. Trader의 평가액·정지 상태 게시도 이 잠금 아래에서 수행해야 합니다. 외부 거래소/알림 호출은 DB 잠금 밖에서 실행합니다. 커밋 결과 불명 때는 명령을 자동 재실행하지 않고 "결과 확인 중"으로 표시합니다. 저장소 복구 후 같은 요청 ID로 결과를 확인합니다. 재시작은 확정된 상태를 복원하고 취소 대상 추적만 이어 가며 과거 `/resume`을 다시 실행하지 않습니다.
+
+
+제어 서비스의 `startup()`은 저장 정지를 현재 메모리에 추가하며 부팅 중 새 정지를 제거하지 않습니다. 평가액 추적기는 서비스 생성 때의 초기 `EquityTracker.open` 상태가 그대로이고, 저장 관측 시각이 그 초기값보다 오래되지 않은 경우에만 첫 startup에서 복원합니다. 저장 추적기 복원이 필요한 조립에서는 초기 추적기/제어 서비스를 만든 뒤 시장 관측을 시작하기 전에 startup을 완료해야 합니다. 이미 갱신된 추적기는 그대로 유지합니다. 반복 startup은 추적기를 다시 복원하지 않습니다.
+
+Trader의 명시적 HTTP 오류 JSON은 상태와 사유를 결과 화면에 표시합니다. 응답을 확인할 수 없는 전송 실패에는 같은 요청 ID·대상·확인 번호로 다시 확인하는 폼을 표시합니다.

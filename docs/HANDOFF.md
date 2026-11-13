@@ -828,3 +828,11 @@
 - SQLite 공급원은 #69 구현 하나로 통일했다. 환경 확인, 요청별 read-only 연결·deferred BEGIN, active 주문 무제한·종결 200행, 미저장 수치 None을 유지한다. --db는 조회 전용, --config는 같은 공급원에 기존 제어 클라이언트를 연결하며 둘은 상호 배타다.
 - command_result에 명시적인 page_label을 넣어 메뉴 목록 밖 이름 때문에 500이 나는 문제를 해결했다. 제어 결과 제목 회귀와 두 CLI 경로 합성 테스트를 추가했다.
 - 검증: 전체 1463 passed/261.35초, 마지막 CLI 모형 보완 뒤 SQLite 화면 테스트 8 passed. ruff lint/format·mypy 통과. 임시 합성 DB 및 모형만 사용하며 실주문은 활성화하지 않는다. 다음: 사용자/Claude가 #67 검토. #70은 별도 검토 통과(73 passed), 아직 병합하지 않았다.
+
+
+## 2026-11-13 — Codex (PR #67 검토 P2 두 건)
+
+- startup의 정지 publish 교체를 제거하고 저장 정지를 add로 합친다. 부팅 전에 생긴 HALTED/시스템 정지는 보존한다. 추적기는 서비스 생성 시의 pristine open 상태가 변경되지 않았고 저장 시각이 더 오래되지 않을 때 첫 startup에서만 복원한다. 시장 관측 전 복원이 필요한 조립 순서/조건을 README에 명시했다.
+- HttpTraderClient는 HTTPError의 유효 state/message JSON을 반환한다. 대시보드는 이를 결과 화면에 이스케이프해 표시한다. 확정 거절/저장소 확인 응답에는 재확인 폼을 만들지 않는다. 전송 실패/읽을 수 없는 응답은 response_unknown으로 동일 request_id·대상·확인 번호·수동 확인 여부를 유지하는 폼을 만든다. 세션 회수 거절/불가 응답은 회수 대기열에 남긴다.
+- 추가 테스트: memory/sqlite × 초기/갱신된 추적기에서 startup 전 HALTED 보존·저장 정지 병합·추적기 복원 조건·반복 startup 보존; 실제 urllib HTTPError 403/503 JSON 표시 및 XSS 이스케이프·폼 부재; 전송 실패 재확인의 동일 문맥 유지.
+- 검증: 제어/실제 outbox 복구/대시보드/SQLite 화면/위험 테스트 263 passed(8.00초), ruff lint/format·mypy 통과. 합성 모형/임시 DB만 사용했다. P3 여섯 건은 요청대로 후속 관련 작업으로 남긴다. 다음: Claude 재검토, 병합하지 않음.

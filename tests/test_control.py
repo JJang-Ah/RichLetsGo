@@ -520,3 +520,121 @@ def test_http_client_only_forwards_session_hash_and_environment_identity(monkeyp
     assert "raw-session" not in str(calls)
     client.revoke("raw-session")
     assert calls[-1][0] == "/sessions/revoke"
+
+
+@pytest.mark.parametrize("backend", ["memory", "sqlite"])
+@pytest.mark.parametrize("observed", [False, True])
+def test_startup_merges_pauses_and_only_restores_untouched_seed(tmp_path, backend, observed):
+    from richletsgo.storage.codec import encode
+
+    async def run():
+        db, service, ctx, clock, _ = await setup(tmp_path, backend)
+        stored = EquityTracker.open(AccountSnapshot(NOW, D(1000), D(0)))
+        stored.observe(AccountSnapshot(NOW, D(1000), D(-100)))
+        pauses = PauseState((Pause(PauseKind.ENTRY_PAUSED_MANUAL, "saved", NOW),))
+        async with db.unit_of_work() as uow:
+            uow.recovery.put("pauses", json.dumps(pauses.to_json()))
+            uow.recovery.put("equity_tracker", encode(stored.state))
+            await uow.commit()
+        service.pauses.add(Pause(PauseKind.HALTED, "new-live-halt", NOW))
+        if observed:
+            # Equal timestamp observations also count as live state and must survive.
+            service.tracker.observe(AccountSnapshot(NOW, D(1000), D(-200)))
+        before = service.tracker.state
+        await service.startup()
+        assert service.pauses.has(PauseKind.HALTED)
+        assert service.pauses.has(PauseKind.ENTRY_PAUSED_MANUAL)
+        assert service.tracker.state == (before if observed else stored.state)
+        service.tracker.observe(AccountSnapshot(NOW + timedelta(seconds=1), D(1000), D(-250)))
+        latest = service.tracker.state
+        await service.startup()
+        assert service.tracker.state == latest
+        assert service.pauses.has(PauseKind.HALTED)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "status,state", [(403, "rejected"), (503, "unavailable"), (None, "response_unknown")]
+)
+def test_http_error_result_and_transport_retry_screen(tmp_path, monkeypatch, status, state):
+    import io
+    from urllib.error import HTTPError, URLError
+
+    from test_dashboard import BASE, CODE, ORIGIN, csrf, login
+
+    from richletsgo_dashboard import control
+    from richletsgo_dashboard.app import create_app
+    from richletsgo_dashboard.security import Auth
+    from richletsgo_dashboard.source import FakeSource
+
+    class Source(FakeSource):
+        def snapshot(self):
+            snap = super().snapshot()
+            snap.overview = replace(snap.overview, sample=False)
+            return snap
+
+    calls = []
+
+    def urlopen(request, **kwargs):
+        calls.append(json.loads(request.data))
+        if status is None:
+            raise URLError("synthetic timeout")
+        raise HTTPError(
+            request.full_url,
+            status,
+            "synthetic",
+            {},
+            io.BytesIO(
+                json.dumps(
+                    {"state": state, "message": "denied <img src=x onerror=alert(1)>"}
+                ).encode()
+            ),
+        )
+
+    monkeypatch.setattr(control, "urlopen", urlopen)
+    trader = control.HttpTraderClient(
+        port=8766,
+        dashboard_port=8765,
+        token=Secret("synthetic"),
+        environment="demo",
+        account_id="acct",
+    )
+    monkeypatch.setattr(trader, "connected", lambda: True)
+    auth = Auth(code=lambda: CODE, clock=lambda: 1000)
+    with TestClient(create_app(Source(), auth, trader, port=8765), base_url=BASE) as c:
+        login(c)
+        response = c.post(
+            "/control/resolve",
+            headers=ORIGIN,
+            data={
+                "csrf": csrf(c),
+                "request_id": "same-id",
+                "order_link_id": "same-order",
+                "confirmation_id": "same-confirmation",
+                "manually_checked": "true",
+            },
+        )
+        assert response.status_code == 200
+        text = response.text
+        if status is not None:
+            assert "denied &lt;img" in text and "<img src=x" not in text
+            assert "응답 확인 필요" not in text
+            assert '<form method="post"' not in text
+        else:
+            assert "응답 확인 필요" in text
+            for value in ("same-id", "same-order", "same-confirmation"):
+                assert f'value="{value}"' in text
+            assert 'name="manually_checked" value="true"' in text
+            c.post(
+                "/control/resolve",
+                headers=ORIGIN,
+                data={
+                    "csrf": csrf(c),
+                    "request_id": "same-id",
+                    "order_link_id": "same-order",
+                    "confirmation_id": "same-confirmation",
+                    "manually_checked": "true",
+                },
+            )
+            assert calls[0] == calls[1]
