@@ -32,9 +32,19 @@ function renderBand(tone, reasons) {
 }
 
 // Rebuilds the "먼저 확인할 것" list so it never shows a stale all-clear (PR #65 P2).
+// An unchanged list is left alone, so keyboard focus and the live region stay put (P3).
 function renderAttention(items) {
   const box = document.getElementById("attention");
   if (!box) return;
+  const safe = (href) => (href.startsWith("/") || href.startsWith("#") ? href : "/");
+  const wanted = items.map((i) => [safe(String(i.href || "")), String(i.text || "")]);
+  const shown = [...box.querySelectorAll("ul a")].map((a) => [
+    a.getAttribute("href"),
+    a.lastChild ? a.lastChild.textContent : "",
+  ]);
+  const clear = box.querySelector(".all-clear") !== null;
+  const same = items.length === 0 ? clear : JSON.stringify(wanted) === JSON.stringify(shown);
+  if (same) return;
   for (const old of box.querySelectorAll("ul, .all-clear")) old.remove();
   const mark = (symbol) => {
     const span = document.createElement("span");
@@ -55,7 +65,7 @@ function renderAttention(items) {
       const href = String(item.href || "");
       const li = document.createElement("li");
       const a = document.createElement("a");
-      a.setAttribute("href", href.startsWith("/") || href.startsWith("#") ? href : "/");
+      a.setAttribute("href", safe(href));
       a.append(mark("!"), document.createTextNode(String(item.text || "")));
       li.append(a);
       ul.append(li);
