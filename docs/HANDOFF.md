@@ -800,6 +800,17 @@
 - 검증: 전체 오프라인 테스트 1411 passed (178.57초), 추가 경계 테스트 포함 저장소 테스트 21 passed. M1-02/03/04 및 재시작·D90·추적 손절 계약을 memory/sqlite로 매개변수화했다. 보호 결과 불명 6가지 및 진입 결과 불명 2가지 통합 테스트 통과. ruff lint/format, mypy 통과.
 - 다음: Claude가 저장소 PR 검토. Codex는 이 브랜치 위에 `task/M5-01b-control-api`를 쌓아 제어 명령을 별도 PR로 구현한다. 실제 운영 DB·키·거래소·판정 풀은 사용하지 않았다.
 
+## 2026-11-11 — Codex (M5-01b 공통 명령·웹 제어 API)
+
+- 브랜치: `task/M5-01b-control-api`, 기준: M3-02 PR #66 (`0a1fd0b`). 저장소와 제어 API를 별도 PR로 검토한다.
+- 공통 `CommandService`를 만들고 웹 API와 `TelegramCommands`가 같은 권한·확인·실행 경로를 사용하게 했다. 웹 actor는 Trader의 operator 설정으로 만들며 환경별 토큰·DB 메타 환경/계좌를 대조한다. 계좌 잠금은 `RiskGate.account_lock`을 공유한다.
+- 60초 확인 번호는 출처·actor·세션·환경·계좌·명령·대상을 고정한다. `/resume`은 기존 ResumePrompt 검사와 적용값 기록을 재사용한다. `/pause`·`/resume`·`/resolve`는 명령 기록과 도메인 변경을 한 UoW로 저장하고 알려진 커밋 뒤 메모리에 게시한다. 결과 불명은 같은 요청으로 결과만 재조회하며 재실행하지 않는다.
+- `/cancel`은 최초 대상 목록과 outbox 작업을 함께 저장한다. 대상별 pending/requested/confirmed/failed, 새 시도별 작업 키, 영구 거절·시간 초과·상한을 처리하며 FILLED는 "취소 전에 체결됨"으로 남긴다. acknowledge만으로 완료하지 않는다. 재시작은 취소 추적을 이어 가고 비정상 미종결 명령은 interrupted로 끝낸다.
+- Dashboard 확인 화면·세션 회수 전달·HTTP 클라이언트·SQLite 읽기 공급원을 연결했다. 샘플 데이터는 제어를 차단한다. 제어 서버는 localhost Host/Origin·환경별 bearer 토큰을 확인하고 127.0.0.1만 바인딩한다. 명령 알림은 DB 영속 큐에 남기고 DB 잠금 밖에서 주입된 Telegram 전송 함수로 보낸다.
+- 저장소 보완: 계좌 전체 복구가 끝난 뒤에도 진행 중 명령이 이미 판정된 txn 결과를 조회할 수 있게 계좌별 판정 결과를 보존했다. 실제 봇 polling, Trader 전체 서비스 조립, 실시간 시세·한도·평가액 이력 적재는 M3-04/05/06 연결 범위다. 이 PR은 이를 임의로 시작하거나 실주문을 활성화하지 않는다.
+- 검증: 전체 1442 passed / 181.71초. 마지막 보완 후 제어·실제 outbox/가상 거래소 취소 복구·저장소 테스트 50 passed. ruff lint/format·mypy 통과. 실제 키/운영 DB/거래소/판정 풀 접근 없음.
+- 다음 담당자: Claude가 PR #66 저장소를 먼저 검토하고 이 제어 PR을 이어서 검토한다. 런타임은 `build_control`/`serve_control`과 동기화 후 `service.tick()`을 연결하며, 위험 상태 관측/게시에도 같은 계좌 잠금을 사용해야 한다.
+
 
 ## 2026-11-12 — Codex (PR #66 재검토 P2 보완)
 
@@ -809,3 +820,19 @@
 - CI 시간 제한은 10→20분으로 조정했다. 기존 3.12는 테스트 약9분19초에 작업 전체10분 제한으로 종료됐고 3.14 테스트는 약6분43초였다. FULL/WAL 내구성 설정과 SQLite 계약 테스트 범위는 유지하며, -vv/--durations=20으로 실패 이름과 느린 테스트를 기록한다. P3는 후속 관련 작업으로 유지한다.
 
 - 후속 확인: 로컬 전체 1418 passed/237.84초. 추가 실제 fills·decisions 유일 제약/COMMIT 후 연결 정리 실패 테스트 포함 저장소 27 passed. Python 3.12 CI(run 43226084906)는 1421 passed/355.40초이며 이전 실패 위치인 sqlite-True 추적 손절도 통과했다(CI는 최신 main과의 병합 결과라 대시보드 테스트 3개가 추가됨). 이전 취소 로그에 traceback이 없어 과거 일회성 실패 원인을 단정하지 않는다. 상세 테스트 이름·시간 기록과 충분한 작업 제한으로 재발 시 진단 정보를 남긴다.
+
+
+## 2026-11-13 — Codex (PR #67 main 통합·충돌 해결)
+
+- PR base를 main으로 변경하고 #66·#68·#69 병합 결과를 합쳤다. HANDOFF 양쪽 기록을 보존했고 control.html의 request_id/CSRF와 보조 버튼 스타일을 함께 유지했다.
+- SQLite 공급원은 #69 구현 하나로 통일했다. 환경 확인, 요청별 read-only 연결·deferred BEGIN, active 주문 무제한·종결 200행, 미저장 수치 None을 유지한다. --db는 조회 전용, --config는 같은 공급원에 기존 제어 클라이언트를 연결하며 둘은 상호 배타다.
+- command_result에 명시적인 page_label을 넣어 메뉴 목록 밖 이름 때문에 500이 나는 문제를 해결했다. 제어 결과 제목 회귀와 두 CLI 경로 합성 테스트를 추가했다.
+- 검증: 전체 1463 passed/261.35초, 마지막 CLI 모형 보완 뒤 SQLite 화면 테스트 8 passed. ruff lint/format·mypy 통과. 임시 합성 DB 및 모형만 사용하며 실주문은 활성화하지 않는다. 다음: 사용자/Claude가 #67 검토. #70은 별도 검토 통과(73 passed), 아직 병합하지 않았다.
+
+
+## 2026-11-13 — Codex (PR #67 검토 P2 두 건)
+
+- startup의 정지 publish 교체를 제거하고 저장 정지를 add로 합친다. 부팅 전에 생긴 HALTED/시스템 정지는 보존한다. 추적기는 서비스 생성 시의 pristine open 상태가 변경되지 않았고 저장 시각이 더 오래되지 않을 때 첫 startup에서만 복원한다. 시장 관측 전 복원이 필요한 조립 순서/조건을 README에 명시했다.
+- HttpTraderClient는 HTTPError의 유효 state/message JSON을 반환한다. 대시보드는 이를 결과 화면에 이스케이프해 표시한다. 확정 거절/저장소 확인 응답에는 재확인 폼을 만들지 않는다. 전송 실패/읽을 수 없는 응답은 response_unknown으로 동일 request_id·대상·확인 번호·수동 확인 여부를 유지하는 폼을 만든다. 세션 회수 거절/불가 응답은 회수 대기열에 남긴다.
+- 추가 테스트: memory/sqlite × 초기/갱신된 추적기에서 startup 전 HALTED 보존·저장 정지 병합·추적기 복원 조건·반복 startup 보존; 실제 urllib HTTPError 403/503 JSON 표시 및 XSS 이스케이프·폼 부재; 전송 실패 재확인의 동일 문맥 유지.
+- 검증: 제어/실제 outbox 복구/대시보드/SQLite 화면/위험 테스트 263 passed(8.00초), ruff lint/format·mypy 통과. 합성 모형/임시 DB만 사용했다. P3 여섯 건은 요청대로 후속 관련 작업으로 남긴다. 다음: Claude 재검토, 병합하지 않음.

@@ -186,13 +186,15 @@ def test_control_needs_login_csrf_and_trader() -> None:
     assert page.count("disabled") >= 3 and "로그아웃" in page
 
 
-def test_connected_trader_enables_buttons_but_forwarding_waits_for_m5_01b() -> None:
+def test_sample_source_cannot_enable_real_controls() -> None:
     client, *_ = make(trader=Connected())
     client.cookies.set(COOKIE, login(client) or "")
     page = client.get("/control").text
-    assert "Trader 미연결" not in page and " disabled" not in page
-    r = client.post("/control/pause", data={"csrf": csrf(client)}, headers=ORIGIN)
-    assert r.status_code == 501
+    assert " disabled" in page
+    r = client.post(
+        "/control/pause", data={"csrf": csrf(client), "request_id": "sample"}, headers=ORIGIN
+    )
+    assert r.status_code == 403
 
 
 def test_login_rotates_session_and_locks_after_failures() -> None:

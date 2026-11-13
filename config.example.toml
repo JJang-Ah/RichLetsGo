@@ -59,6 +59,9 @@ resume_equity_tolerance_ratio = "0.01"
 bybit_demo_api = "richletsgo/bybit-demo"
 bybit_live_api = "richletsgo/bybit-live"
 telegram_bot = "richletsgo/telegram-bot"
+dashboard_access = "richletsgo/dashboard-access"
+control_token_demo = "richletsgo/control-token-demo"
+control_token_live = "richletsgo/control-token-live"
 
 # Future loader (M3): paths are relative to THIS config file, never cwd.
 # Example values; keep environments separate.
@@ -200,3 +203,15 @@ max_attempts = 5
 backoff_seconds = 1.0
 timeout_seconds = 10.0
 workers = 4
+
+# Both listeners are local only. Tokens belong in the Windows credential store.
+[dashboard]
+host = "127.0.0.1"
+port = 8765
+operator_id = "operator"
+[control]
+host = "127.0.0.1"
+port = 8766
+allowed_ids = ["web:operator", "telegram:1"]
+cancel_retry_seconds = 5
+cancel_max_attempts = 3

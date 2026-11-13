@@ -226,3 +226,29 @@ python -m richletsgo.storage backup --config config.local.toml --account demo-ac
 `exchange.bybit`에 REST 서명/조회/주문과 개인·공개 WS를 구현했습니다. 생성 요청은 자동 재시도하지 않으며, 손절 정정은 D90의 부호 있는 전체 수량을 거래소 절대 수량으로 변환합니다. 연결 순서·오류/이벤트 매핑·서비스 수명과 남은 수동 검증은 [매핑 문서](src/richletsgo/exchange/bybit/MAPPING.md)를 참고합니다.
 
 현재 검증은 가짜 REST/WS 응답을 사용하는 오프라인 테스트까지입니다. 실제 키나 주문을 사용하지 않았으며, 서비스 조립·SQLite·새 전략 V1 통과와 M3-07은 별도 단계입니다. M3-03 PR은 M3-01 PR 위에 쌓아 설정 변경과 어댑터 변경을 따로 검토할 수 있게 했습니다.
+
+
+## 웹 제어 API (M5-01b)
+
+`CommandService`가 웹과 텔레그램의 `/pause`, `/resume`, `/cancel`, `/resolve`를 함께 처리합니다. 주문 생성·전체 청산·설정 변경·서비스 시작/종료 API는 없습니다. 재개·취소·UNKNOWN 확정은 60초 확인 번호가 필요하며, 출처·운영자·세션·환경·계좌·명령·대상이 고정됩니다. 취소는 최초 목록 안에서만 재시도하고, outbox acknowledge가 아니라 주문 종결 확인으로 완료합니다. FILLED 경합은 "취소 전에 체결됨", 상한/영구 거절은 대상별 실패로 표시합니다.
+
+설정은 `[dashboard]`의 `operator_id`, 로컬 포트와 `[control]`의 출처가 붙은 `allowed_ids`, `cancel_retry_seconds`, `cancel_max_attempts`입니다. 웹 운영자 ID는 Trader가 정하며 요청 본문의 actor는 사용하지 않습니다. 토큰은 `[keystore]`가 가리키는 환경별 항목에 따로 저장합니다.
+
+```powershell
+python -m richletsgo.keystore set richletsgo/dashboard-access
+python -m richletsgo.keystore set richletsgo/control-token-demo
+python -m richletsgo_dashboard --config config.local.toml
+```
+
+제어 연결 없이 DB 화면만 보려면 `python -m richletsgo_dashboard --db <DB파일> --environment demo`를 씁니다. `--db`와 `--config`는 동시에 지정할 수 없습니다. 두 경로는 같은 읽기 전용 공급원을 쓰며 환경을 확인하고, 미저장 평가액·한도·현재가는 `-`로 표시합니다.
+
+키 값은 위 대화형 입력에만 넣습니다. 설정 없이 대시보드를 실행하면 기존 샘플 화면이며, 샘플 공급원은 Trader가 연결되어 있어도 제어할 수 없습니다. SQLite 공급원은 `mode=ro`로 저장된 주문·체결·전략 장부·결정·명령·위험 상태를 읽습니다. 실시간 시세·한도 사용률·평가액 이력 적재와 Trader 전체 실행 서비스는 M3-04/06에서 연결해야 하며 이 PR로 실주문을 활성화하지 않습니다.
+
+Trader 조립 시 `control.runtime.build_control(config, database, gate, clock, keys, notify)`를 사용합니다. `notify`는 기존 Telegram 전송기에 연결할 비동기 함수입니다. `serve_control`은 같은 이벤트 루프에서 `127.0.0.1`로만 열고, 기존 `Synchronizer`의 WS/REST 대조 뒤 `runtime.service.tick()`을 호출합니다. Telegram 수신기는 인증된 update의 사용자/채팅 ID를 `TelegramCommands.handle`에 전달하며, 확인 콜백은 최초 명령 update ID를 멱등 키로 유지합니다. 실제 봇 polling·Windows 서비스 스케줄은 M3-05/06 조립 범위입니다.
+
+위험 게이트와 제어 처리는 `gate.account_lock`을 공유합니다. Trader의 평가액·정지 상태 게시도 이 잠금 아래에서 수행해야 합니다. 외부 거래소/알림 호출은 DB 잠금 밖에서 실행합니다. 커밋 결과 불명 때는 명령을 자동 재실행하지 않고 "결과 확인 중"으로 표시합니다. 저장소 복구 후 같은 요청 ID로 결과를 확인합니다. 재시작은 확정된 상태를 복원하고 취소 대상 추적만 이어 가며 과거 `/resume`을 다시 실행하지 않습니다.
+
+
+제어 서비스의 `startup()`은 저장 정지를 현재 메모리에 추가하며 부팅 중 새 정지를 제거하지 않습니다. 평가액 추적기는 서비스 생성 때의 초기 `EquityTracker.open` 상태가 그대로이고, 저장 관측 시각이 그 초기값보다 오래되지 않은 경우에만 첫 startup에서 복원합니다. 저장 추적기 복원이 필요한 조립에서는 초기 추적기/제어 서비스를 만든 뒤 시장 관측을 시작하기 전에 startup을 완료해야 합니다. 이미 갱신된 추적기는 그대로 유지합니다. 반복 startup은 추적기를 다시 복원하지 않습니다.
+
+Trader의 명시적 HTTP 오류 JSON은 상태와 사유를 결과 화면에 표시합니다. 응답을 확인할 수 없는 전송 실패에는 같은 요청 ID·대상·확인 번호로 다시 확인하는 폼을 표시합니다.

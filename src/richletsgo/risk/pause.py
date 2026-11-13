@@ -132,6 +132,11 @@ class PauseState:
     def active(self) -> tuple[Pause, ...]:
         return tuple(sorted(self._pauses.values(), key=lambda p: (p.since, p.key[0], p.reason)))
 
+    def publish(self, committed: "PauseState") -> None:
+        """Publish a transaction's staged state after known commit, under the account lock."""
+        self._pauses = committed._pauses.copy()
+        self._revision = committed.revision
+
     def to_json(self) -> list[dict[str, Any]]:
         return [
             {
@@ -146,8 +151,8 @@ class PauseState:
         ]
 
     @classmethod
-    def from_json(cls, data: list[dict[str, Any]]) -> "PauseState":
-        return cls(
+    def from_json(cls, data: list[dict[str, Any]], *, revision: int | None = None) -> "PauseState":
+        result = cls(
             tuple(
                 Pause(
                     PauseKind(item["kind"]),
@@ -160,3 +165,8 @@ class PauseState:
                 for item in data
             )
         )
+        if revision is not None:
+            if revision < 0:
+                raise ValueError("pause revision must be nonnegative")
+            result._revision = revision
+        return result

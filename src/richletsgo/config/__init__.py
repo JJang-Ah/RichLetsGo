@@ -82,6 +82,16 @@ class StorageConfig:
 
 
 @dataclass(frozen=True)
+class ControlConfig:
+    dashboard_port: int
+    trader_port: int
+    operator_id: str
+    allowed_ids: tuple[str, ...]
+    cancel_retry_seconds: int
+    cancel_max_attempts: int
+
+
+@dataclass(frozen=True)
 class StrategyConfig:
     candidate: str
     params: S1AParams | S1BParams | S2AParams | S2BParams | S2PParams
@@ -103,6 +113,7 @@ class AppConfig:
     strategies: Mapping[StrategyId, StrategyConfig]
     log_retention_days: int
     report_path: Path | None
+    control: ControlConfig
 
     def public_dict(self) -> dict[str, Any]:
         return dict(primitive(self))
@@ -306,6 +317,9 @@ def _load(path: Path) -> AppConfig:
         "bybit_demo_api",
         "bybit_live_api",
         "telegram_bot",
+        "dashboard_access",
+        "control_token_demo",
+        "control_token_live",
     }
     keys = data["keystore"]
     if set(keys) != key_names:
@@ -349,6 +363,27 @@ def _load(path: Path) -> AppConfig:
         raise ConfigError("configured leverage exceeds risk limit")
     strategies = {s: strategy(data["strategy"][s.value], s) for s in StrategyId}
     report = validate_report(data["strategy"], strategies, path.parent)
+    dashboard, control_raw = data["dashboard"], data["control"]
+    control = ControlConfig(
+        integer(dashboard, "port", 1024),
+        integer(control_raw, "port", 1024),
+        text(dashboard, "operator_id"),
+        tuple(control_raw["allowed_ids"]),
+        integer(control_raw, "cancel_retry_seconds"),
+        integer(control_raw, "cancel_max_attempts"),
+    )
+    if (
+        text(dashboard, "host") != "127.0.0.1"
+        or text(control_raw, "host") != "127.0.0.1"
+        or control.dashboard_port == control.trader_port
+        or max(control.dashboard_port, control.trader_port) > 65535
+        or not control.allowed_ids
+        or any(
+            not isinstance(v, str) or re.fullmatch(r"(?:web|telegram):[^\s:]+", v) is None
+            for v in control.allowed_ids
+        )
+    ):
+        raise ConfigError("invalid local control configuration")
     return AppConfig(
         env,
         bybit,
@@ -363,6 +398,7 @@ def _load(path: Path) -> AppConfig:
         MappingProxyType(strategies),
         integer(data["logging"], "retention_days"),
         report,
+        control,
     )
 
 

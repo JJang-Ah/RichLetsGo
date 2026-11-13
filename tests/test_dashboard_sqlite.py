@@ -194,3 +194,41 @@ def test_unresolved_orders_survive_the_row_limit(db_path):
     assert "UNKNOWN 주문 1건" in c.get("/").text
     assert "D-S1-E-2" in c.get("/orders?status=unknown").text
     assert "D-S1-SL-1" in c.get("/orders?status=open").text
+
+
+@pytest.mark.parametrize("configured", [False, True])
+def test_cli_uses_shared_readonly_source(db_path, monkeypatch, configured):
+    import sys
+    from types import SimpleNamespace
+
+    from richletsgo_dashboard import __main__ as cli
+
+    monkeypatch.setattr(cli, "access_code", lambda: None)
+    captured = []
+    monkeypatch.setattr(cli.uvicorn, "run", lambda app, **kwargs: captured.append((app, kwargs)))
+    if configured:
+        config = SimpleNamespace(
+            environment=Environment.DEMO,
+            storage=SimpleNamespace(db_file=db_path),
+            control=SimpleNamespace(dashboard_port=PORT),
+            keystore={"dashboard_access": "test-only"},
+        )
+        monkeypatch.setattr(cli, "load_config", lambda path: config)
+        monkeypatch.setattr(cli, "windows_backend", lambda: None)
+        monkeypatch.setattr(
+            cli,
+            "KeyStore",
+            lambda backend: SimpleNamespace(get=lambda item: SimpleNamespace(reveal=lambda: None)),
+        )
+        arguments = ["--config", str(db_path.parent / "synthetic.toml")]
+    else:
+        arguments = ["--db", str(db_path), "--environment", "demo"]
+    monkeypatch.setattr(sys, "argv", ["dashboard", *arguments])
+    cli.main()
+    app, options = captured[0]
+    assert options["host"] == "127.0.0.1" and options["port"] == PORT
+    with TestClient(app, base_url=f"http://127.0.0.1:{PORT}") as c:
+        response = c.get("/")
+        assert response.status_code == 200
+        assert "demo-sub-1" in response.text
+        assert c.get("/api/overview").json()["equity"] == "-"

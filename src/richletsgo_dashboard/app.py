@@ -5,6 +5,7 @@ a logged-in session, a matching CSRF token and a same-origin POST, and are forwa
 to the Trader (disabled until M5-01b).
 """
 
+import secrets
 import time
 from collections.abc import Awaitable, Callable
 from datetime import timedelta
@@ -75,8 +76,16 @@ def create_app(
     port: int,
 ) -> FastAPI:
     app = FastAPI(docs_url=None, redoc_url=None, openapi_url=None)
+    previous_revoke = auth.on_revoke
+
+    def revoke(session_id: str) -> None:
+        previous_revoke(session_id)
+        trader.revoke(session_id)
+
+    auth.on_revoke = revoke
     templates = Jinja2Templates(directory=HERE / "templates")
     env = templates.env
+    env.globals["new_request_id"] = lambda: secrets.token_urlsafe(24)
     env.filters.update(kst=fmt.kst, num=fmt.num, money=fmt.money, signed=fmt.signed, pct=fmt.pct)
     app.mount("/static", StaticFiles(directory=HERE / "static"), name="static")
     hosts = allowed_hosts(port)
@@ -111,10 +120,14 @@ def create_app(
         context = {
             "page": name,
             "pages": PAGES,
-            "page_label": next(label for key, _, label in PAGES if key == name),
+            "page_label": (
+                "명령 결과"
+                if name == "command_result"
+                else next(label for key, _, label in PAGES if key == name)
+            ),
             "o": snap.overview,
             "pause_label": PAUSE_LABELS.get(snap.overview.pause_state, snap.overview.pause_state),
-            "trader": trader.connected(),
+            "trader": trader.connected() and not snap.overview.sample,
             "session": session,
             **extra,
         }
@@ -239,7 +252,15 @@ def create_app(
         return response
 
     @app.post("/control/{command}")
-    def run(request: Request, command: str, csrf: str = Form("")) -> Response:
+    def run(
+        request: Request,
+        command: str,
+        csrf: str = Form(""),
+        request_id: str = Form(""),
+        order_link_id: str = Form(""),
+        confirmation_id: str = Form(""),
+        manually_checked: bool = Form(False),
+    ) -> Response:
         if command not in COMMANDS:
             return Response("unknown command", status_code=404)
         session = auth.session(request.cookies.get(COOKIE))
@@ -251,7 +272,36 @@ def create_app(
             return Response(
                 "Trader 미연결: 제어 API(M5-01b) 이후 사용할 수 있습니다", status_code=503
             )
-        return Response("not implemented until M5-01b", status_code=501)
+        if not request_id or len(request_id) > 256:
+            return Response("request ID required", status_code=400)
+        snap = source.snapshot()
+        if snap.overview.sample:
+            return Response("sample data cannot control a Trader", status_code=403)
+        try:
+            result = trader.command(
+                command,
+                session_id=session.sid,
+                environment=snap.overview.environment,
+                account_id=snap.overview.account_id,
+                request_id=request_id,
+                target=order_link_id or None,
+                confirmation_id=confirmation_id or None,
+                manually_checked=manually_checked,
+            )
+        except OSError:
+            result = {
+                "state": "response_unknown",
+                "message": "Trader 응답 확인 필요: 같은 요청 ID로 다시 확인하세요",
+            }
+        result = {
+            "command": command,
+            "request_id": request_id,
+            "target": order_link_id or None,
+            "confirmation_id": confirmation_id or None,
+            "manually_checked": manually_checked,
+            **result,
+        }
+        return page(request, "command_result", snap, result=result)
 
     return app
 
