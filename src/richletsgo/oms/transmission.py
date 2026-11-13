@@ -86,8 +86,11 @@ class OrderSender:
     ) -> None:
         self.uow_factory, self.gateway, self.journal = uow_factory, gateway, journal
         self.clock, self.pauses, self.unique, self.alerts = clock, pauses, unique, alerts
+        self.entry_ready: Callable[[], bool] = lambda: True
+        self.entry_allowed: Callable[[OrderRecord], bool] = lambda order: self.entry_ready()
         self._claimed: set[str] = set()
         self.pending_entries: dict[str, OrderRecord] = {}
+        self.proven_entries: set[str] = set()
 
     def pause(self, reason: str, symbol: Symbol | None = None) -> None:
         self.pauses.add(
@@ -116,7 +119,7 @@ class OrderSender:
         attempt: int | None = None,
     ) -> CommandResult:
         entry = order.purpose is OrderPurpose.ENTRY
-        if entry and self.pauses.blocking(order.strategy, order.symbol):
+        if entry and (not self.entry_ready() or self.pauses.blocking(order.strategy, order.symbol)):
             return ExchangeError(ErrorCode.REJECTED, "entries paused")
         if action_key and action_key in self._claimed:
             return ExchangeError(ErrorCode.TIMEOUT, "operation already owned; reconcile")
@@ -151,6 +154,11 @@ class OrderSender:
             if entry:
                 return ExchangeError(ErrorCode.REJECTED, "entry commit failed; not sent")
         if entry:
+            self.proven_entries.discard(order.key)
+            if not self.entry_allowed(order):
+                rejected = ExchangeError(ErrorCode.REJECTED, "entry paused before transport")
+                await self.record_result(order, rejected)
+                return rejected
             try:
                 result = await self.gateway.place_order(OrderRequest.from_record(order))
             except (OSError, TimeoutError):
@@ -184,13 +192,18 @@ class OrderSender:
         A process restart instead follows the existing UNKNOWN/REST reconciliation path.
         Rolled-back input can be retried only after account storage recovery completes.
         """
+        if not self.entry_ready():
+            return ExchangeError(ErrorCode.TIMEOUT, "entry readiness pending")
         order = self.pending_entries.get(txn_id)
         if order is None:
             return ExchangeError(ErrorCode.REJECTED, "entry outcome already handled or unknown")
         committed = await resolve(txn_id)
+        if committed and not self.entry_allowed(order):
+            return ExchangeError(ErrorCode.TIMEOUT, "entry readiness changed during resolution")
         # Competing callers may have resolved the same marker while we awaited I/O.
         if self.pending_entries.pop(txn_id, None) is None:
             return ExchangeError(ErrorCode.TIMEOUT, "entry continuation already owned")
+        self.proven_entries.discard(order.key)
         if not committed:
             return ExchangeError(ErrorCode.REJECTED, "entry transaction rolled back; not sent")
         try:

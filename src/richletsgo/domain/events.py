@@ -136,6 +136,7 @@ class PositionSnapshot:
     qty: Qty
     avg_price: Price | None
     snapshot_time: datetime
+    liquidation_price: Price | None = None
 
     def __post_init__(self) -> None:
         if not isinstance(self.symbol, Symbol) or not isinstance(self.qty, Qty):

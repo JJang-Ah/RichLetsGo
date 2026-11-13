@@ -46,10 +46,12 @@ retMsg/요청/인증 원문을 오류에 넣지 않는다. 시각 오차는 왕�
 | order 이벤트 | symbol, 부호 qty, orderType, timeInForce, limit/triggerPrice, reduceOnly, stop_kind, 원문 및 ID 전부 변환 |
 | execution Trade/AdlTrade/BustTrade | ExecutionEvent, 수수료 음수 리베이트 보존. Funding은 체결 수량으로 처리하지 않음 |
 | position | positionIdx=0만 허용; REST avgPrice / WS entryPrice, 빈 포지션은 Qty(0)·평단 None |
+| position.liqPrice | 양수이면 PositionSnapshot.liquidation_price. 공백/0은 None. 보유 중 값이 없으면 진입 보류, 실제 값이 D62 부등식을 깨면 전략별 CloseIntent로 축소 |
 | account/info.marginMode | ISOLATED_MARGIN 확인. position.tradeMode 사용하지 않음 |
 | position/list.leverage | 설정 레버리지와 일치 검사. 자동 설정 변경 없음 |
 | wallet UNIFIED.coin[USDT] | walletBalance와 unrealisedPnl 각각 AccountSnapshot. USD 계좌 전체 totals는 격리 마진에서 사용하지 않음. 차입 잔액 거절 |
 | transaction-log TRANSFER_IN/OUT | USDT change의 부호를 보존한 CashFlow. category 필터를 걸어 이체를 누락하지 않음 |
+| transaction-log SETTLEMENT | LiveInputs.funding: 계좌 ID·symbol·transactionTime(UTC settled_at), cost = -funding. V5 funding은 양수가 수취·음수가 지급이므로 비용 부호로 뒤집음. 고정 범위의 모든 페이지를 조회하고 공개 펀딩율을 사용하지 않음 |
 | TRADE/SETTLEMENT/LIQUIDATION/ADL/DELIVERY/FEE_REFUND | 입출금에서 제외. 모르는 자산 이동 종류는 QUERY_FAILED·정지하여 일손익 기준을 임의로 보정하지 않음 |
 
 중복/역순 이벤트를 제거하거나 정렬하지 않는다. 주문 원문은 불변 `OrderEvent.raw`, 체결은 execId로 기존 OMS가 멱등 처리한다. private wallet 알림은 `wallet_events` 별도 큐이며 `PrivateEvent` 계약을 바꾸지 않는다. WS 지갑 알림만으로 매 시세의 미실현 손익을 갱신할 수 없으므로 서비스의 REST 계좌 조회가 여전히 필요하다.

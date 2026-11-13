@@ -11,6 +11,7 @@ import secrets
 from collections.abc import Awaitable, Callable, Collection
 from datetime import timedelta
 from typing import Any
+from uuid import uuid4
 
 from richletsgo.backtest.codec import primitive
 from richletsgo.domain import Clock, Environment, OrderPurpose, OrderState
@@ -59,6 +60,7 @@ class CommandService:
         self._initial_tracker_state = tracker.state
         self._startup_complete = False
         self._notifications = asyncio.Lock()
+        self._keys: dict[str, str] = {}
         self.prompts: dict[str, Confirmation] = {}
         self.revoked: set[tuple[str, str]] = set()
         self.pending: dict[
@@ -120,6 +122,9 @@ class CommandService:
     ) -> dict[str, Any]:
         return {
             **context.identity(),
+            "storage_key": self._keys.get(
+                encode((context.source, context.request_id)), context.request_id
+            ),
             "command": command,
             "target": target,
             "state": state,
@@ -130,9 +135,13 @@ class CommandService:
 
     def _save(self, uow: UnitOfWork, record: dict[str, Any]) -> None:
         raw = json.dumps(record, ensure_ascii=False, sort_keys=True)
-        uow.recovery.put("command:" + record["request_id"], raw)
+        storage = record.get("storage_key", record["request_id"])
+        uow.recovery.put(
+            "command_identity:" + encode((record["source"], record["request_id"])), storage
+        )
+        uow.recovery.put("command:" + storage, raw)
         # Durable delivery queue; notification I/O never runs under the database lock.
-        uow.recovery.put("notification:" + record["request_id"] + ":" + record["state"], raw)
+        uow.recovery.put("notification:" + storage + ":" + record["state"], raw)
 
     async def request(
         self,
@@ -143,13 +152,35 @@ class CommandService:
         confirmation_id: str | None = None,
         manually_checked: bool = False,
     ) -> dict[str, Any]:
+        identity = encode((context.source, context.request_id))
         async with self.lock:
             self._authorize(context, command)
-            result = await self._request(
-                context, command, target, confirmation_id, manually_checked
-            )
+            self._expire_prompts(confirmation_id)
+            pending = self.pending.get(identity)
+            if pending:
+                self._matches(pending[1], context, command, target)
+        committed = None
+        if pending:
+            try:
+                committed = await self.resolve_commit(pending[0])
+            except (OSError, TimeoutError):
+                return {**pending[1], "state": "confirming", "message": "결과 확인 중"}
+        async with self.lock:
+            self._authorize(context, command)
+            if pending is not None and self.pending.get(identity) is pending:
+                result = await self._resolve(context, command, target, bool(committed))
+            else:
+                result = await self._request(
+                    context, command, target, confirmation_id, manually_checked
+                )
+            self._expire_prompts()
         await self.deliver_notifications()
         return result
+
+    def _expire_prompts(self, keep: str | None = None) -> None:
+        self.prompts = {
+            k: p for k, p in self.prompts.items() if k == keep or p.expires_at > self.clock.now()
+        }
 
     async def _request(
         self,
@@ -159,11 +190,16 @@ class CommandService:
         confirmation_id: str | None,
         manually_checked: bool,
     ) -> dict[str, Any]:
-        if context.request_id in self.pending:
-            return await self._resolve(context, command, target)
+        identity = encode((context.source, context.request_id))
         prompt = self.prompts.get(confirmation_id or "")
         async with self.uow() as uow:
-            saved = uow.recovery.get("command:" + context.request_id)
+            storage = uow.recovery.get("command_identity:" + identity) or self._keys.get(identity)
+            if storage is None:
+                storage = "cmd-v2-" + uuid4().hex
+                while uow.recovery.get("command:" + storage):
+                    storage = "cmd-v2-" + uuid4().hex
+            self._keys[identity] = storage
+            saved = uow.recovery.get("command:" + storage)
             if saved:
                 record: dict[str, Any] = json.loads(saved)
                 self._matches(record, context, command, target)
@@ -184,7 +220,10 @@ class CommandService:
                     return prompt.result
             if command != "pause" and not confirmation_id:
                 for existing in self.prompts.values():
-                    if existing.context.request_id == context.request_id:
+                    if (existing.context.source, existing.context.request_id) == (
+                        context.source,
+                        context.request_id,
+                    ):
                         if (
                             existing.context != context
                             or existing.command != command
@@ -261,7 +300,7 @@ class CommandService:
                     if order.state.is_terminal:
                         self._terminal(item, order)
                     else:
-                        self._enqueue(uow, context.request_id, item, order)
+                        self._enqueue(uow, storage, item, order)
                     targets.append(item)
                 record.update(targets=targets, state="accepted", message="취소 확인 중")
                 self._finish(record)
@@ -273,7 +312,7 @@ class CommandService:
             try:
                 await uow.commit()
             except CommitOutcomeUnknown as error:
-                self.pending[context.request_id] = (
+                self.pending[encode((context.source, context.request_id))] = (
                     error.txn_id,
                     record,
                     staged_pauses,
@@ -347,16 +386,16 @@ class CommandService:
             else "내용을 확인한 뒤 실행하세요",
         }
 
-    async def _resolve(self, context: Context, command: str, target: str | None) -> dict[str, Any]:
-        txn, record, pauses, tracker, revision, prior = self.pending[context.request_id]
+    async def _resolve(
+        self, context: Context, command: str, target: str | None, committed: bool
+    ) -> dict[str, Any]:
+        txn, record, pauses, tracker, revision, prior = self.pending[
+            encode((context.source, context.request_id))
+        ]
         self._matches(record, context, command, target)
-        try:
-            committed = await self.resolve_commit(txn)
-        except (OSError, TimeoutError):
-            return {**record, "state": "confirming", "message": "결과 확인 중"}
         async with self.uow() as uow:
             if committed:
-                raw = uow.recovery.get("command:" + context.request_id)
+                raw = uow.recovery.get("command:" + record.get("storage_key", context.request_id))
                 if raw is None:
                     raise RuntimeError("committed command missing")
                 record = json.loads(raw)
@@ -371,7 +410,7 @@ class CommandService:
                 try:
                     await uow.commit()
                 except CommitOutcomeUnknown as error:
-                    self.pending[context.request_id] = (
+                    self.pending[encode((context.source, context.request_id))] = (
                         error.txn_id,
                         record,
                         pauses,
@@ -382,7 +421,7 @@ class CommandService:
                     return {**record, "state": "confirming", "message": "결과 확인 중"}
         if committed and record["state"] == "completed" and command in ("pause", "resume"):
             self._publish(pauses, tracker, revision, prior)
-        del self.pending[context.request_id]
+        del self.pending[encode((context.source, context.request_id))]
         for prompt in self.prompts.values():
             if prompt.context == context:
                 prompt.result = record
@@ -420,6 +459,11 @@ class CommandService:
             record["message"] = (
                 "대상별 처리 종료 (실패 포함)"
                 if any(t["state"] == "failed" for t in record["targets"])
+                else "취소 전에 전부 체결됨"
+                if record["targets"]
+                and all(t.get("final_status") == "FILLED" for t in record["targets"])
+                else "일부 선체결 포함: 대상 주문 종결 확인"
+                if any(t.get("final_status") == "FILLED" for t in record["targets"])
                 else "대상 주문 종결 확인"
             )
 
@@ -428,6 +472,7 @@ class CommandService:
         from datetime import datetime
 
         async with self.lock:
+            self._expire_prompts()
             async with self.uow() as uow:
                 actions = {a.key for a in uow.portfolio.actions()}
                 for _, raw in uow.recovery.active("command:"):
@@ -472,11 +517,17 @@ class CommandService:
                                     final_status=order.state.value if order else None,
                                 )
                             else:
-                                self._enqueue(uow, record["request_id"], target, order)
+                                self._enqueue(
+                                    uow,
+                                    record.get("storage_key", record["request_id"]),
+                                    target,
+                                    order,
+                                )
                     self._finish(record)
                     # Save progress every time; enqueue a final notification only at completion.
                     uow.recovery.put(
-                        "command:" + record["request_id"], json.dumps(record, ensure_ascii=False)
+                        "command:" + record.get("storage_key", record["request_id"]),
+                        json.dumps(record, ensure_ascii=False),
                     )
                     if record["state"] == "completed":
                         self._save(uow, record)
