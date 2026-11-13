@@ -148,12 +148,21 @@ def coverage(store: Store, expected: frozenset[str]) -> dict[str, Any]:
         for slot in schedule
         if slot not in done and (books["book_top"].get(slot) or books["book_depth"].get(slot))
     ]
+    # Live failures carry a slot; history failures carry a page key instead. Only live
+    # failures on a schedule label are counted per slot; the rest are counted apart.
     missing_events: Counter[tuple[int, str]] = Counter()
+    missing_other = {"history": 0, "outside_schedule": 0}
     events: list[dict[str, Any]] = []
     for (content,) in store.rows("SELECT content FROM log ORDER BY id"):
         event = json.loads(content)
         if event.get("event") == "missing":
-            missing_events[(int(event["slot"]), str(event.get("error", "")))] += 1
+            slot = event.get("slot")
+            if slot is None:
+                missing_other["history"] += 1
+            elif int(slot) not in in_schedule:
+                missing_other["outside_schedule"] += 1
+            else:
+                missing_events[(int(slot), str(event.get("error", "")))] += 1
         elif event.get("event") in EVENTS:
             events.append(event)
     return {
@@ -174,5 +183,6 @@ def coverage(store: Store, expected: frozenset[str]) -> dict[str, Any]:
             {"slot": stamp(slot), "error": error, "symbols": count}
             for (slot, error), count in sorted(missing_events.items())
         ],
+        "missing_events_not_counted": missing_other,
         "events": events,
     }

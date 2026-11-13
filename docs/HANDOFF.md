@@ -853,3 +853,4 @@
     - 완료 체크포인트와 실제 표본을 구분한다. top/depth 부분 슬롯, 정각 편측, 체크포인트 없는 행, 일정 밖 행, 결측 구간(끝은 T0 + 7일로 자름)을 출력한다.
     - SQLite authorizer로 가격·수량 열과 bars/funding 읽기를 막고, data_hash를 부르지 않는다.
 - 검증: D103 테스트 41 passed(신규 5). ruff check/format, mypy 통과. 합성 DB로 도구 실행 확인(실제 수집 DB는 열지 않음).
+- PR #71 Codex 재검토(P2 1건) 반영: 과거 수집의 `missing` 로그(`page`만 있고 `slot` 없음)가 coverage를 KeyError로 멈추게 했다. 일정 안 live 슬롯 실패만 슬롯별로 세고, history와 일정 밖 slot은 `missing_events_not_counted`에 따로 센다. 합성 테스트에 두 경우를 추가했다.

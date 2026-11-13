@@ -62,6 +62,9 @@ def store(tmp_path: Path) -> Iterator[Store]:
     s.log({"event": "missing", "slot": SLOT0 + STEP, "symbol": B, "error": "http 403"})
     s.log({"event": "live_expired_in_slot", "slot": last, "unsampled": [A, B]})
     s.log({"event": "history_start", "note": "not a live event"})
+    # History failures carry a page key, not a slot; one live failure is off-schedule.
+    s.log({"event": "missing", "page": encode(["bars", A]), "error": "http 500"})
+    s.log({"event": "missing", "slot": SLOT0 - STEP, "symbol": A, "error": "timeout"})
     yield s
     s.close()
 
@@ -99,6 +102,7 @@ def test_coverage_separates_checkpoints_from_actual_samples(store: Store) -> Non
     assert result["missing_events"] == [
         {"slot": stamp(SLOT0 + STEP), "error": "http 403", "symbols": 1}
     ]
+    assert result["missing_events_not_counted"] == {"history": 1, "outside_schedule": 1}
     assert [e["event"] for e in result["events"]] == ["live_start", "live_expired_in_slot"]
 
 
