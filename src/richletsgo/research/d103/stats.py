@@ -151,6 +151,17 @@ def flat_runs(bars: dict[int, tuple[Decimal, ...]], sessions: Sessions) -> list[
     return runs
 
 
+def flat_summary(runs: Sequence[int]) -> dict[str, Any]:
+    """Run count and nearest-rank median/p95/max of flat-run lengths in hours."""
+    lengths = [D(r) for r in runs]
+    return {
+        "runs": len(runs),
+        "max_hours": max(runs, default=0),
+        "median_hours": quantile(lengths, D("0.5")),
+        "p95_hours": quantile(lengths, D("0.95")),
+    }
+
+
 def funding_summary(rates: Sequence[Decimal], upper: str) -> dict[str, Any]:
     absolute = [abs(r) for r in rates]
     cap = D(upper) if upper else None
@@ -214,12 +225,7 @@ def summarize(
                     (kind, symbol),
                 )
             }
-            runs = flat_runs(bars, sessions)
-            flat[kind] = {
-                "runs": len(runs),
-                "max_hours": max(runs, default=0),
-                "median_hours": quantile([D(r) for r in runs], D("0.5")),
-            }
+            flat[kind] = flat_summary(flat_runs(bars, sessions))
         spreads: dict[str, list[Decimal]] = defaultdict(list)
         empty: dict[str, int] = defaultdict(int)
         for requested, ts, bid, ask in store.rows(
