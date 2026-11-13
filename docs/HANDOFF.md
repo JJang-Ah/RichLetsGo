@@ -836,3 +836,21 @@
 - HttpTraderClient는 HTTPError의 유효 state/message JSON을 반환한다. 대시보드는 이를 결과 화면에 이스케이프해 표시한다. 확정 거절/저장소 확인 응답에는 재확인 폼을 만들지 않는다. 전송 실패/읽을 수 없는 응답은 response_unknown으로 동일 request_id·대상·확인 번호·수동 확인 여부를 유지하는 폼을 만든다. 세션 회수 거절/불가 응답은 회수 대기열에 남긴다.
 - 추가 테스트: memory/sqlite × 초기/갱신된 추적기에서 startup 전 HALTED 보존·저장 정지 병합·추적기 복원 조건·반복 startup 보존; 실제 urllib HTTPError 403/503 JSON 표시 및 XSS 이스케이프·폼 부재; 전송 실패 재확인의 동일 문맥 유지.
 - 검증: 제어/실제 outbox 복구/대시보드/SQLite 화면/위험 테스트 263 passed(8.00초), ruff lint/format·mypy 통과. 합성 모형/임시 DB만 사용했다. P3 여섯 건은 요청대로 후속 관련 작업으로 남긴다. 다음: Claude 재검토, 병합하지 않음.
+
+
+## 2026-11-13 — Claude Code (M2-10c D103 보고서 사전 준비)
+
+- 실시간 수집 종료(약 2026-11-18 15:03 KST) 전에 결과를 보지 않고 틀만 만든다. 수집 자료·통계는 열지 않았다.
+- `docs/reports/D103-halts.template.json`: 공지된 거래 중단 파일 템플릿. `checked_at`이 비어 있으면 `load_halts`가 거절하는 것을 확인했다(채우기 전에는 통계 실행 불가).
+- `docs/reports/D103-structure.md`: 2차 보고서 뼈대. 작성 순서, 관측 범위·공백 기록 칸, 계획 5절 표(도구 세션 라벨 그대로), 6절 질문, 한계. 심볼 간 집계 규칙(심볼별 값의 분포, symbolType·marketRegion 묶음)을 결과 전에 확인받도록 적었다.
+- 수집 운영: 2026-11-13 약 08:36~12:01 KST 수집 프로세스가 오류 기록 없이 종료됐다(세션 백그라운드 셸로 실행한 탓으로 추정). 12:01에 같은 명령을 독립 프로세스로 재시작했고, 같은 T0로 이어서 저장됨을 확인했다. 공백은 보고서에 공개한다.
+- 다음: Codex/사용자가 PR의 명세 해석 목록(집계 규칙, 공백 점검 도구)을 확인하면 `tools/d103_coverage.py`와 합성 테스트를 추가한다.
+- PR #71 Codex 검토(P2 3건) 반영:
+  - 보고서 집계 규칙을 고정했다. 심볼 동일 가중, nearest-rank 분위, 열 이름에 집계 방식 표기, 비율은 심볼별 비율의 중앙값, 배수는 같은 심볼 안의 배수 중앙값(정규장 > 0), 결측은 0으로 넣지 않고 지표별 유효·제외 수 표기.
+  - `stats.flat_summary`를 분리하고 `p95_hours`를 추가했다.
+  - `research/d103/coverage.py`와 `tools/d103_coverage.py`를 추가했다.
+    - 기대 심볼은 보존 원문에 수집 기록의 held를 적용하고 digest와 맞춘다.
+    - 완료 체크포인트와 실제 표본을 구분한다. top/depth 부분 슬롯, 정각 편측, 체크포인트 없는 행, 일정 밖 행, 결측 구간(끝은 T0 + 7일로 자름)을 출력한다.
+    - SQLite authorizer로 가격·수량 열과 bars/funding 읽기를 막고, data_hash를 부르지 않는다.
+- 검증: D103 테스트 41 passed(신규 5). ruff check/format, mypy 통과. 합성 DB로 도구 실행 확인(실제 수집 DB는 열지 않음).
+- PR #71 Codex 재검토(P2 1건) 반영: 과거 수집의 `missing` 로그(`page`만 있고 `slot` 없음)가 coverage를 KeyError로 멈추게 했다. 일정 안 live 슬롯 실패만 슬롯별로 세고, history와 일정 밖 slot은 `missing_events_not_counted`에 따로 센다. 합성 테스트에 두 경우를 추가했다.

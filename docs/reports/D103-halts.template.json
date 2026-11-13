@@ -1,0 +1,13 @@
+{
+  "checked_at": "",
+  "halts": {},
+  "procedure": [
+    "Copy this file to docs/reports/D103-halts.json only after live collection ends (T0 + 7d).",
+    "checked_at: UTC ISO-8601 time the announcements were last checked. Left empty, load_halts rejects the file, so statistics cannot run on an unfilled template.",
+    "halts: symbol -> list of {start, end, source}. start/end are epoch milliseconds UTC, end exclusive, start < end. source is the announcement URL (required).",
+    "Include only allowlist symbols and only announced trading suspensions (splits, delistings, maintenance). Do not add intervals inferred from prices or gaps in the data.",
+    "No suspensions found: keep halts as {} and still fill checked_at.",
+    "List every announcement source checked, including ones with no suspension, in sources_checked."
+  ],
+  "sources_checked": []
+}
