@@ -854,3 +854,12 @@
     - SQLite authorizer로 가격·수량 열과 bars/funding 읽기를 막고, data_hash를 부르지 않는다.
 - 검증: D103 테스트 41 passed(신규 5). ruff check/format, mypy 통과. 합성 DB로 도구 실행 확인(실제 수집 DB는 열지 않음).
 - PR #71 Codex 재검토(P2 1건) 반영: 과거 수집의 `missing` 로그(`page`만 있고 `slot` 없음)가 coverage를 KeyError로 멈추게 했다. 일정 안 live 슬롯 실패만 슬롯별로 세고, history와 일정 밖 slot은 `missing_events_not_counted`에 따로 센다. 합성 테스트에 두 경우를 추가했다.
+
+
+## 2026-11-13 — Codex (M3-04 구현 전 해석 목록)
+
+- 사용자 요청으로 최신 main(6682407)에서 task/M3-04-trader-assembly를 만들고 docs/tasks/M3-04-interpretation.md를 추가했다. 이번 커밋은 문서만이며 구현 코드는 쓰지 않았다.
+- 부팅·재연결, 공통 경계 처리, D97, 정산 시각 펀딩/자정 불변 준비, 위험·커밋 결과 불명, 주기 루프/제어 tick, health/종료 해석과 합성 검증 계획을 정리했다.
+- #66 P3 4건과 #67 P3 8건을 출처별 표로 모두 포함했다. 특히 동기화 뒤 CommandService.tick을 주기 호출하고 경계/펀딩 대기 중에도 보호·취소가 진행되는 조건을 명시했다. 이미 일부 구현된 판정 캐시는 조립 순서까지 검증한다.
+- D103 22:12 KST 재시작 및 11/18 약15:03 KST 종료 예정 기록을 인계받았다. 수집 DB·통계·판정 자료와 수집 프로세스는 접근하지 않았다.
+- 검증: 명세·기존 코드·PR #66/#67 댓글 대조와 문서 diff 확인. 실행 코드 변경이 없어 테스트는 실행하지 않았다. 다음: 같은 draft PR의 해석 목록을 Claude/사용자가 검토한 뒤 동일 PR에서 구현한다.
