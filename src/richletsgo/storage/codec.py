@@ -8,10 +8,14 @@ from decimal import Decimal
 from enum import Enum
 from typing import Any
 
+from richletsgo.backtest.results import Trade
 from richletsgo.domain import enums, events, values
+from richletsgo.marketdata.models import Bar, Interval
 from richletsgo.oms import models as orders
 from richletsgo.portfolio import models as portfolio
+from richletsgo.portfolio.signals import MarketSignal
 from richletsgo.risk import equity, records, resume
+from richletsgo.strategy.models import S1State, Trend
 
 from . import contracts
 
@@ -22,6 +26,9 @@ TYPES: dict[str, Any] = {
     for cls in vars(module).values()
     if isinstance(cls, type) and (is_dataclass(cls) or issubclass(cls, Enum))
 }
+
+
+TYPES.update({c.__name__: c for c in (Bar, Interval, MarketSignal, S1State, Trend, Trade)})
 
 
 def milliseconds(value: datetime) -> int:
@@ -49,6 +56,8 @@ def pack(value: Any) -> Any:
             "type": type(value).__name__,
             "fields": {f.name: pack(getattr(value, f.name)) for f in fields(value)},
         }
+    if isinstance(value, list):
+        return {"list": [pack(v) for v in value]}
     if isinstance(value, tuple):
         return {"tuple": [pack(v) for v in value]}
     if isinstance(value, frozenset):
@@ -71,6 +80,8 @@ def unpack(value: Any) -> Any:
         return TYPES[value["enum"]](value["value"])
     if "type" in value:
         return TYPES[value["type"]](**{k: unpack(v) for k, v in value["fields"].items()})
+    if "list" in value:
+        return [unpack(v) for v in value["list"]]
     if "tuple" in value:
         return tuple(unpack(v) for v in value["tuple"])
     if "frozenset" in value:

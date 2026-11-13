@@ -55,13 +55,30 @@ py -3.14 -m venv .venv
 다른 개발 환경에서도 Python 3.12 이상으로 `.venv`를 만든 뒤 같은 설치·검사 명령을 사용합니다. 가상환경 활성화 없이 해당 Python을 직접 실행하므로 PowerShell 실행 정책을 바꿀 필요가 없습니다.
 
 - CI는 모든 PR과 `main` push에서 Windows / Python 3.12·3.14 검사를 각각 실행합니다.
-- `src/richletsgo/domain`에 공통 타입과 검증 함수, `oms/`에 주문·체결·노출 정책, `storage/`에 저장소 계약과 메모리 구현이 있습니다. 실행 서비스는 아직 없습니다.
+- `src/richletsgo/domain`에 공통 타입과 검증 함수, `oms/`에 주문·체결·노출 정책, `storage/`에 메모리/SQLite 저장소가 있습니다. M3-04의 demo Trader 진입점은 `python -m richletsgo.app`입니다.
 - `config.example.toml`은 비밀 값 없는 설정 예시입니다. 로컬 설정은 `config.local.toml`에 두며 Git에서 제외합니다. 실거래 위험 수치는 아직 미정이며, backtest.research_risk의 수치는 연구용입니다.
 - 개발 도구는 테스트(`pytest`), 린트·포맷(`ruff`), 타입 검사(`mypy`)에만 사용합니다. M3-01부터 `keyring`을 Windows 자격 증명 관리자 접근에 사용합니다.
 
 ## 키 보관
 
 키는 채팅이나 저장소에 붙여넣지 않습니다. Windows 자격 증명 관리자에 보관하며, 설정 파일·DB·로그에 넣지 않습니다. 실거래 Bybit 키는 출금 권한 없이 만듭니다.
+
+## Demo Trader 실행 (M3-04)
+
+다음은 운영자가 직접 실행하는 명령입니다. 개발 테스트는 실제 키·데모 계좌를 사용하지 않습니다. 설정에 `environment = "demo"`, `ai.mode = "disabled"`, `[trader]`의 다섯 양수 초 단위 값을 명시합니다. 모든 운영 폴더와 `[storage].db_file`은 설정 파일 위치 기준으로 해석합니다. 계좌 이름은 기존 SQLite meta.account_id와 같아야 합니다.
+
+```powershell
+.\.venv\Scripts\python.exe -m richletsgo.storage migrate --config config.local.toml --account demo-account
+.\.venv\Scripts\python.exe -m richletsgo.app --config config.local.toml --account demo-account
+```
+
+기존 V1 DB는 서비스를 중지하고 **기존 V1 코드의 storage backup 명령으로 백업한 뒤** 이번 코드의 migrate로 V002를 적용합니다. 새 DB는 migrate로 만듭니다. Trader는 버전·환경·계좌가 다르면 시작하지 않으며 자동 마이그레이션/레버리지 변경/실거래 전환은 하지 않습니다. V002에는 출처별 명령 ID 매핑만 있습니다.
+
+저장 추적기를 새 계좌 관측 전에 복원합니다. 추적기가 전혀 없는 최초 실행만 펀딩 확인 이후 준비 계좌 스냅샷으로 EquityTracker.open을 호출합니다. 그 전에는 메모리 진입 게이트가 일일 기준 미완료를 막으며, 최초 스냅샷 이전 손익을 과거 일일 기준으로 추정하지 않습니다. 재시작/재연결은 저장된 자정 준비·출력·결정에서 이어갑니다. 미완료 경계의 신선한 출력에 연결된 CREATED 진입만 복원하고, SUBMITTED/UNKNOWN은 기존 OMS 조회 규칙을 따릅니다.
+
+봉 대기·펀딩 대기와 별개 작업으로 보호/만료 취소→CommandService.tick을 실행합니다. D62 위반은 기존 CloseIntent 경로로 축소하며 손절을 없애지 않습니다. 종료 신호는 진입부터 닫고 UoW 회수/WS 정리를 기다립니다. `/watchdog`는 기존 제어 포트의 127.0.0.1 주소에만 있고 같은 Host/환경별 Bearer 토큰 검사를 통과해야 읽을 수 있습니다. 마지막 경계·개인 WS·마지막 알려진 DB 커밋·정지만 반환합니다.
+
+D97은 S1B 주 보고서 PASS가 필수이며 S2-P를 켜면 부 보고서 PASS와 등록/데이터/종목/구간/선택 쌍이 일치해야 합니다. S2를 끄면 `[strategy.S2] enabled = false`만 두고 secondary_report_path를 제거합니다. manual은 연결 개발용이며 24시간 연결 시험과 M3-07 1주 운영 판정은 다릅니다. 자동 서비스 설치·실제 데모 24시간 시험은 이 구현 PR에서 실행하지 않습니다. 합성 검증 기록은 [M3-04 검증 기록](docs/reports/M3-04-assembly-validation.md)에 있습니다.
 
 ## 참고 문서
 

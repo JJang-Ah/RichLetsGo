@@ -117,6 +117,7 @@ class SqliteDatabase(InMemoryDatabase):
         self.busy_timeout_seconds = busy_timeout_seconds
         self.outcome_timeout_seconds = outcome_timeout_seconds
         self.now, self.fault, self.alert = now, fault, alert
+        self.last_commit_at: datetime | None = None
         with _REGISTRY_LOCK:
             self._file = _FILES.setdefault(
                 self.path,
@@ -514,7 +515,22 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         """Typed audit projections share the transaction with the existing M1 recovery API."""
         assert self._connection is not None
         c, account = self._connection, self.database.account_id
-        if key.startswith("command_identity:"):
+        projections = {
+            "config_version:": "config_versions",
+            "boundary_input:": "boundary_inputs",
+            "boundary_output:": "boundary_outputs",
+            "boundary_checkpoint:": "boundary_checkpoints",
+            "position_snapshot:": "position_snapshots",
+            "unallocated_funding:": "unallocated_funding",
+        }
+        prefix = key.partition(":")[0] + ":"
+        if prefix in projections:
+            table = projections[prefix]
+            c.execute(
+                f"INSERT INTO {table} VALUES(?,?,?,?) ON CONFLICT(account_id,key) DO UPDATE SET payload=excluded.payload",
+                (account, key, value, now),
+            )
+        elif key.startswith("command_identity:"):
             source, external = decode(key.removeprefix("command_identity:"))
             c.execute(
                 "INSERT INTO command_identities VALUES (?,?,?,?) ON CONFLICT(account_id,source,external_request_id) DO NOTHING",
@@ -613,6 +629,7 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         except StorageError:
             if self.database.alert:
                 self.database.alert("committed transaction cleanup failed: " + self.txn_id)
+        self.database.last_commit_at = self.database.now()
 
     def _close_worker(self) -> None:
         connection, self._connection = self._connection, None
