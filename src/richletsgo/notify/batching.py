@@ -4,8 +4,11 @@ from collections.abc import Callable, Hashable
 from dataclasses import dataclass
 from datetime import datetime, timedelta
 from threading import RLock
+from typing import Any
 
 from richletsgo.domain import Clock
+
+from .events import Notice
 
 
 @dataclass
@@ -59,11 +62,43 @@ class WarningBatcher:
             episode = self._episodes.pop(key, None)
             if episode is not None:
                 self._summary(episode)
-                self.emit(message)
+            self.emit(message)
 
     def _summary(self, episode: _Episode) -> None:
         if episode.repeated:
-            self.emit(
+            message = (
                 f"{episode.message} (repeated {episode.repeated}; "
                 f"{episode.start.isoformat()} .. {episode.last.isoformat()})"
             )
+            self.emit(
+                episode.message.with_text(message)
+                if isinstance(episode.message, Notice)
+                else message
+            )
+
+    def snapshot(self) -> list[dict[str, object]]:
+        with self._lock:
+            return [
+                {
+                    "key": list(key) if isinstance(key, tuple) else [str(key)],
+                    "start": e.start.isoformat(),
+                    "last": e.last.isoformat(),
+                    "notice": e.message.record()
+                    if isinstance(e.message, Notice)
+                    else {"message": e.message, "code": str(key)},
+                    "repeated": e.repeated,
+                }
+                for key, e in self._episodes.items()
+            ]
+
+    def restore(self, records: list[dict[str, Any]]) -> None:
+        with self._lock:
+            self._episodes = {
+                tuple(r["key"]): _Episode(
+                    datetime.fromisoformat(r["start"]),
+                    datetime.fromisoformat(r["last"]),
+                    Notice(**r["notice"]),
+                    r["repeated"],
+                )
+                for r in records
+            }

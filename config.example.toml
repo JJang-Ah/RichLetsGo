@@ -10,6 +10,7 @@ leverage = "3"
 position_idx = 0
 margin_mode = "ISOLATED_MARGIN"
 api_created_at = "2026-10-26T00:00:00Z" # replace with actual demo key issue time
+api_expires_at = "2027-01-26T00:00:00Z" # replace with exact UTC expiry shown when issuing key; no default
 recv_window_ms = 5000
 timeout_seconds = 10
 retry_attempts = 3
@@ -168,6 +169,14 @@ S2B = [
 mode = "disabled"
 
 [telegram]
+poll_seconds = 20
+http_timeout_seconds = 30
+retry_seconds = 5
+max_retry_seconds = 300
+send_interval_seconds = 2
+queue_limit = 1000
+shutdown_seconds = 5
+pending_alert_seconds = 120
 allowed_user_ids = [1] # replace with actual numeric user IDs before connection
 
 [storage]

@@ -99,6 +99,26 @@ class StrategyConfig:
 
 
 @dataclass(frozen=True)
+class TelegramConfig:
+    poll_seconds: int
+    http_timeout_seconds: int
+    retry_seconds: int
+    max_retry_seconds: int
+    send_interval_seconds: int
+    queue_limit: int
+    shutdown_seconds: int
+    pending_alert_seconds: int
+
+    def __post_init__(self) -> None:
+        if (
+            min(getattr(self, f.name) for f in fields(self)) <= 0
+            or self.http_timeout_seconds <= self.poll_seconds
+            or self.max_retry_seconds < self.retry_seconds
+        ):
+            raise ConfigError("invalid Telegram worker policy")
+
+
+@dataclass(frozen=True)
 class AppConfig:
     environment: Environment
     bybit: BybitConfig
@@ -108,8 +128,10 @@ class AppConfig:
     all_paths: Mapping[Environment, Paths]
     keystore: Mapping[str, str]
     api_created_at: datetime
+    api_expires_at: datetime
     storage: StorageConfig
     telegram_users: tuple[int, ...]
+    telegram: TelegramConfig
     strategies: Mapping[StrategyId, StrategyConfig]
     log_retention_days: int
     report_path: Path | None
@@ -365,6 +387,9 @@ def _load(path: Path) -> AppConfig:
     created = datetime.fromisoformat(text(raw, "api_created_at").replace("Z", "+00:00"))
     if created.tzinfo is None or created.utcoffset() != timedelta(0):
         raise ConfigError("api_created_at must be UTC")
+    expires = datetime.fromisoformat(text(raw, "api_expires_at").replace("Z", "+00:00"))
+    if expires.tzinfo is None or expires.utcoffset() != timedelta(0) or expires <= created:
+        raise ConfigError("api_expires_at must be UTC and later than api_created_at")
     if "oracle" in data:
         raise ConfigError("replace obsolete oracle configuration with storage")
     storage_raw = data["storage"]
@@ -427,6 +452,10 @@ def _load(path: Path) -> AppConfig:
         )
     ):
         raise ConfigError("invalid local control configuration")
+    if {v for v in control.allowed_ids if v.startswith("telegram:")} != {
+        f"telegram:{u}" for u in users
+    }:
+        raise ConfigError("telegram and control allowed users must match")
     return AppConfig(
         env,
         bybit,
@@ -436,8 +465,24 @@ def _load(path: Path) -> AppConfig:
         MappingProxyType(paths),
         MappingProxyType(names),
         created.astimezone(UTC),
+        expires.astimezone(UTC),
         storage,
         tuple(users),
+        TelegramConfig(
+            *(
+                integer(data["telegram"], k)
+                for k in (
+                    "poll_seconds",
+                    "http_timeout_seconds",
+                    "retry_seconds",
+                    "max_retry_seconds",
+                    "send_interval_seconds",
+                    "queue_limit",
+                    "shutdown_seconds",
+                    "pending_alert_seconds",
+                )
+            )
+        ),
         MappingProxyType(strategies),
         integer(data["logging"], "retention_days"),
         report,

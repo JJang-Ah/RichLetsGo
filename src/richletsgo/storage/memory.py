@@ -109,7 +109,7 @@ class InMemoryDatabase:
         self._state = _State()
         self._lock = asyncio.Lock()
 
-    def unit_of_work(self) -> UnitOfWork:
+    def unit_of_work(self, recovery_keys: tuple[str, ...] = ()) -> UnitOfWork:
         return InMemoryUnitOfWork(self)
 
 

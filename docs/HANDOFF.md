@@ -923,3 +923,13 @@
 - 전체 1575 passed/259.10초(마지막 회귀 2건 추가 전 수집), 최종 관련 114 passed/8.75초(신규 29건 포함). lint/format/mypy/diff 검사 통과. 지원 Python CI는 push 뒤 확인 대상이다. 자세한 명령/범위는 `docs/reports/M3-05-unit-a-validation.md`.
 - Q1 api_expires_at UTC 필수/기본값 없음, Q2 수동 복구 3종 후속 명세 분리, Q3 개인 채팅만, Q4 보수적 커서와 완료 inbox/outbox archive(active=0), 일일 요약 AI 비용 비활성을 명세/해석 문서에 반영했다. 실제 설정 로더의 api_expires_at/영속 Bot outbox는 (b) 범위이며 아직 구현하지 않았다.
 - 다음: 요청대로 (a) 커밋/테스트 결과를 PR #73에 남긴 뒤 Claude 중간 검토를 기다린다. (b)는 시작하지 않는다. 실 Bot/자격 증명/실계좌/연구 DB/판정 자료/D103 실행 폴더·프로세스는 접근하지 않았다. 실제 봇 수동 확인은 마지막에 사용자와 함께 한다.
+
+## 2026-11-16 — Codex (M3-05 단위 b: Telegram)
+
+- PR #73 단위 (a) 통과 뒤 승인 I1~I7/Q1~Q4/C1/C2로 BotClient·Telegram inbox/outbox·감독 작업·공통 명령/status/거절 감사를 조립했다. 수신 배치/커서 같은 UoW 후 offset 확인, 재시작/24시간 무수신 offset 생략, ID/내용 충돌 실행 보류, 개인 채팅·60초 확인 소유권/원래 요청/메시지 바인딩, 확정 결과 재생을 구현했다. 미확정 과거 확인을 새로 발급/자동 실행하지 않는다.
+- 생산자가 구조화 Notice 원인 키를 직접 넘기게 바꿔 app의 문장 분할을 제거했다. 로컬/영속 묶음은 WarningBatcher와 resolve를 공유하고 정시 아닌 펀딩에 “수동 확인 필요”를 넣었다. 첫 긴급 경고/명령/정지 알림을 일반 요약보다 우선하며 고유 체결을 보존한다. 자정 펀딩/계좌 커밋과 일일 요약을 같이 저장하고 AI 비용은 비활성으로 표시한다.
+- 발송 시도를 HTTP 전에 기록하고 재시작/응답 불명 재전송은 possible_duplicate 이력을 남긴다. Bot 발송 exactly-once는 주장하지 않는다. 429 전역 backoff·타임아웃·bounded 큐/탈락 수·보호/경계/tick과 실패 분리를 검증했다. CommandService는 Bot HTTP 대신 로컬 outbox enqueue만 기다리며 웹 raw 명령 JSON 방송을 없앴다.
+- 완료 inbox/outbox/receipt는 archive(active=0). SQLite 기본 작업 집합에서 Telegram archive를 제외하고 필요한 키만 조회한다. 완료 500건의 기본 적재 0건/지정 1건을 확인했다. **스키마 변경 없음(V001/V002 유지, V003 불필요)**.
+- `app.api_expires_at` UTC 필수/기본 없음·created_at보다 이후, Telegram/Control 허용 주체 일치와 Telegram 작업별 정책을 설정 예시에 반영했다. 실제 설정/키는 생성하지 않았다. 정시 아닌 펀딩 해제와 M1-06 수동 복구 3종은 후속 명세다.
+- 검증: 신규 Telegram 42 passed, 관련 통합 143 passed/10.34초, 최종 전체 **1619 passed/187.45초**. lint/format/mypy(156 source files)/diff 검사 통과. 기존 Starlette/httpx 사용 중단 예정 경고 1건. 지원 Python CI는 push 뒤 확인한다. 상세는 `docs/reports/M3-05-unit-b-validation.md`.
+- 다음: Claude의 PR #73 코드 검토·CI 및 사용자와 실제 봇 명령 5종+알림 1종 수동 확인. 수동 항목은 완료로 표시하지 않았다. 실 Bot/자격 증명/실계좌/연구 DB/판정 자료/D103 실행 폴더·프로세스에 접근하지 않았다. 테스트는 자신이 만든 코루틴/임시 DB만 정리했다.

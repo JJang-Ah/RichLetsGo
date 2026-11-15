@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from richletsgo.control.service import CommandService
 from richletsgo.domain import Clock, StrategyId, Symbol
 from richletsgo.marketdata.models import Bar, Interval
+from richletsgo.notify.events import Notice
 from richletsgo.oms.synchronizer import Synchronizer
 from richletsgo.portfolio.funding import (
     FundingSnapshotMissing,
@@ -234,7 +235,7 @@ class Trader:
                 self.ready = True
                 return True
             except (OSError, ValueError):
-                self.alert("Trader boot incomplete")
+                self.alert(Notice("Trader boot incomplete", code="trader_boot"))
                 return False
 
     async def accept(self, bar: Bar) -> None:
@@ -393,7 +394,13 @@ class Trader:
                                 symbol=symbol,
                             )
                         )
-                        self.alert("missing confirmed candle: " + symbol.value)
+                        self.alert(
+                            Notice(
+                                "missing confirmed candle: " + symbol.value,
+                                code="candle_missing",
+                                symbol=symbol.value,
+                            )
+                        )
                     elif bar.end != at or bar.symbol is not symbol or bar.interval is not interval:
                         raise ValueError("REST boundary candle mismatch")
                     else:
@@ -443,7 +450,14 @@ class Trader:
                                 }
                             ),
                         )
-                        self.alert("off-hour funding settlement: " + payment.symbol.value)
+                        self.alert(
+                            Notice(
+                                "off-hour funding settlement: 수동 확인 필요 "
+                                + payment.symbol.value,
+                                code="funding_off_hour",
+                                symbol=payment.symbol.value,
+                            )
+                        )
                         continue
                     if not u.portfolio.funding_seen(payment.funding_id):
                         try:
@@ -487,9 +501,19 @@ class Trader:
                 if waiting:
                     await self._commit(u)
                     self.funding_wait = True
-                    self.alert("midnight funding pending: entries paused for all symbols")
+                    self.alert(
+                        Notice(
+                            "midnight funding pending: entries paused for all symbols",
+                            code="funding_pending",
+                        )
+                    )
                     raise BoundaryWaiting
+                was_waiting = self.funding_wait
                 self.funding_wait = False
+                if was_waiting:
+                    self.alert(
+                        Notice("midnight funding confirmed", code="funding_pending", resolved=True)
+                    )
                 await mark(u, "funding")
 
         async def account() -> None:
@@ -529,11 +553,42 @@ class Trader:
                         replace(tracker.state, seen_flows=frozenset(f.flow_id for f in flows))
                     )
                 elif Interval.DAY.aligned(at) and at > tracker.day_start:
+                    previous_day = tracker.day_start
+                    new_deposits = sum(
+                        (f.amount for f in flows if f.flow_id not in tracker.state.seen_flows),
+                        Decimal(0),
+                    )
+                    summary: dict[str, Any] = {
+                        "boundary": at.isoformat(),
+                        "day": previous_day.isoformat(),
+                        "pnl_d81": str(
+                            snapshot.equity
+                            - tracker.state.net_deposit
+                            - new_deposits
+                            - tracker.state.baseline
+                        ),
+                        "ai_cost": "비활성",
+                        "limit_usage": None,
+                        "warnings": self.gate.pauses.to_json(),
+                    }
                     tracker.start_day(snapshot, flows)
                     pauses.expire(snapshot.at)
                 elif Interval.DAY.floor(snapshot.at) == tracker.day_start:
                     tracker.observe(snapshot, flows)
                 async with self.uow() as u:
+                    if (
+                        not initial
+                        and Interval.DAY.aligned(at)
+                        and at > self.gate.tracker.day_start
+                    ):
+                        summary["fills"] = sum(
+                            previous_day <= f.event.exec_time < at for f in u.fills.all()
+                        )
+                        summary["limit_usage"] = self.control.status_values(u).get("limit_usage")
+                        u.recovery.put(
+                            "daily_summary:" + previous_day.isoformat(),
+                            json.dumps(summary, sort_keys=True),
+                        )
                     if Interval.DAY.aligned(at) and at > self.gate.tracker.day_start:
                         u.recovery.put(
                             "daily_strategy_baseline",

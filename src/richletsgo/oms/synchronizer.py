@@ -31,6 +31,7 @@ from richletsgo.exchange.contracts import (
     ExchangeGateway,
     PrivateEvent,
 )
+from richletsgo.notify.events import Notice
 from richletsgo.portfolio.models import Action, ActionKind, StrategyBook
 from richletsgo.portfolio.service import CONFIRMED, STOPS, PortfolioService, invariants, remaining
 from richletsgo.portfolio.trailing import (
@@ -458,7 +459,15 @@ class Synchronizer:
             )
             data["alerted"] = decision.alerted
             if decision.action is RecoveryAction.ALERT_MANUAL_CHECK:
-                self.alerts.append("manual UNKNOWN check: " + order.key)
+                self.alerts.append(
+                    Notice(
+                        "manual UNKNOWN check: " + order.key,
+                        code="unknown_overdue",
+                        symbol=order.symbol.value,
+                        strategy=order.strategy.value,
+                        related=order.key,
+                    )
+                )
             if decision.action is RecoveryAction.SEND_CANCEL:
                 data["last"] = self.clock.now().isoformat()
                 # Persist actual-attempt time BEFORE external cancellation.
@@ -484,7 +493,15 @@ class Synchronizer:
             actions = uow.portfolio.actions()
         for action in actions:
             if action.kind in (ActionKind.ALERT, ActionKind.PAUSE):
-                self.alerts.append(action.detail)
+                self.alerts.append(
+                    Notice(
+                        action.detail,
+                        code="portfolio:" + action.kind.value,
+                        symbol=action.symbol.value,
+                        strategy=action.strategy.value,
+                        related=action.key,
+                    )
+                )
             elif action.kind is ActionKind.QUERY_STOPS:
                 if not await self._query_stops(action.symbol, since, require_new_revision=True):
                     continue
@@ -494,7 +511,11 @@ class Synchronizer:
                 if order is None:
                     self.sender.pause("missing_action_order")
                     self.alerts.append(
-                        "missing action order: manual reconciliation required: " + action.key
+                        Notice(
+                            "missing action order: manual reconciliation required: " + action.key,
+                            code="missing_action_order",
+                            related=action.key,
+                        )
                     )
                     continue
                 if action.kind in (
@@ -846,7 +867,9 @@ class Synchronizer:
                     await self._persist_pauses()
                     return True
                 self.sender.pause("sync")
-                self.alerts.append("synchronization did not stabilize")
+                self.alerts.append(
+                    Notice("synchronization did not stabilize", code="sync_unstable")
+                )
                 await self._persist_pauses()
                 return False
             except (OSError, JournalCorrupt):

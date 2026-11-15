@@ -63,6 +63,16 @@ py -3.14 -m venv .venv
 
 키는 채팅이나 저장소에 붙여넣지 않습니다. Windows 자격 증명 관리자에 보관하며, 설정 파일·DB·로그에 넣지 않습니다. 실거래 Bybit 키는 출금 권한 없이 만듭니다.
 
+### Telegram (M3-05)
+
+`app.api_created_at`과 **`app.api_expires_at`**은 실제 키 발급 화면에 나온 UTC 시각을 입력합니다. 만료일 기본값은 없고 발급일보다 이후여야 합니다. 3개월을 90일로 환산하지 않습니다. `[telegram]`에는 예시의 poll/http timeout, retry/max retry, send interval, queue limit, shutdown, pending alert 양수 초/개수 설정을 모두 명시합니다. HTTP timeout은 poll보다 길고 max retry는 retry 이상이어야 합니다. `allowed_user_ids`와 `[control].allowed_ids`의 `telegram:<사용자 ID>` 집합은 같아야 합니다.
+
+토큰은 `keystore.telegram_bot` 항목에 해당하는 Windows 자격 증명 관리자에서만 읽습니다. 환경·계좌마다 전용 봇 하나와 poller 하나를 사용하며, 같은 DB의 기존 bot_id를 다른 봇으로 자동 교체하지 않습니다. webhook/다른 poller 충돌은 Telegram health 장애로 남습니다. 서비스는 webhook 삭제·대기 업데이트 삭제를 하지 않습니다.
+
+명령은 허용 사용자와의 **개인 채팅만** 지원합니다. `/status`, `/pause`, `/resume`, `/cancel`, `/resolve <orderLinkId>`를 사용하며 뒤 세 명령은 60초 인라인 확인이 필요합니다. `/cancel`은 고정한 진입 주문만 대상으로 하고 손절은 유지합니다. `/resolve`는 거래소 내역을 직접 확인한 UNKNOWN 주문의 NOT_FOUND 확정만 지원합니다. 수동 보호 복구 3종과 정시 아닌 펀딩의 해제 절차는 후속 명세 범위이며 자동 해제하지 않습니다.
+
+수신·발송은 Trader와 별도 작업입니다. 실패/재시도 상태는 인증된 `/watchdog`의 `telegram`에 표시하고 알림 시도/결과는 `alerts`에 기록합니다. 완료 inbox/outbox는 활성 작업 집합에서 제외하고 필요한 ID만 조회합니다. 발송 중 중단/응답 불명 뒤에는 메시지가 중복될 수 있지만 같은 명령은 다시 실행하지 않습니다. 일일 요약은 UTC 자정 펀딩/계좌 커밋 뒤 생성하며 AI 비용은 **비활성**으로 표시합니다. 실 봇 수동 확인은 코드 검토 뒤 사용자와 함께 진행하며 아직 완료하지 않았습니다.
+
 ## Demo Trader 실행 (M3-04)
 
 다음은 운영자가 직접 실행하는 명령입니다. 개발 테스트는 실제 키·데모 계좌를 사용하지 않습니다. 설정에 `environment = "demo"`, `ai.mode = "disabled"`, `[trader]`의 여섯 양수 초 단위 값을 명시합니다. `warning_window_seconds`는 동일 원인 경고의 반복 집계 창이며 최초 경고는 즉시 기록합니다. 모든 운영 폴더와 `[storage].db_file`은 설정 파일 위치 기준으로 해석합니다. 계좌 이름은 기존 SQLite meta.account_id와 같아야 합니다.

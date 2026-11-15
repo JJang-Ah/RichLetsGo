@@ -15,6 +15,7 @@ from typing import Any, Self, TypeVar
 from uuid import uuid4
 
 from richletsgo.domain import Environment
+from richletsgo.notify.events import Notice
 from richletsgo.portfolio.models import CloseState
 from richletsgo.risk.records import EpisodeState
 
@@ -130,8 +131,8 @@ class SqliteDatabase(InMemoryDatabase):
             )
         self._lock = self._file.lock
 
-    def unit_of_work(self) -> "SqliteUnitOfWork":
-        return SqliteUnitOfWork(self)
+    def unit_of_work(self, recovery_keys: tuple[str, ...] = ()) -> "SqliteUnitOfWork":
+        return SqliteUnitOfWork(self, recovery_keys)
 
     @property
     def entry_paused(self) -> bool:
@@ -225,7 +226,13 @@ class SqliteDatabase(InMemoryDatabase):
     def _unknown(self, txn_id: str) -> None:
         self._file.unresolved[txn_id] = self.account_id
         if self.alert:
-            self.alert("ENTRY_PAUSED_SYSTEM(storage): " + txn_id)
+            self.alert(
+                Notice(
+                    "ENTRY_PAUSED_SYSTEM(storage): " + txn_id,
+                    code="storage_uncertain",
+                    related=txn_id,
+                )
+            )
 
     async def resolve(self, txn_id: str) -> bool:
         """Determine the result only. Resume requires journal reconciliation by the caller."""
@@ -259,7 +266,13 @@ class SqliteDatabase(InMemoryDatabase):
                 return result
         except (TimeoutError, sqlite3.Error):
             if self.alert:
-                self.alert("storage outcome resolution failed: " + txn_id)
+                self.alert(
+                    Notice(
+                        "storage outcome resolution failed: " + txn_id,
+                        code="storage_resolution",
+                        related=txn_id,
+                    )
+                )
             raise
 
     def reconciled(self, txn_id: str) -> None:
@@ -333,11 +346,12 @@ def _rows(state: _State, field: str) -> dict[str, str]:
 class SqliteUnitOfWork(InMemoryUnitOfWork):
     database: SqliteDatabase
 
-    def __init__(self, database: SqliteDatabase) -> None:
+    def __init__(self, database: SqliteDatabase, recovery_keys: tuple[str, ...] = ()) -> None:
         super().__init__(database)
         self.txn_id = uuid4().hex
         self._connection: sqlite3.Connection | None = None
         self._baseline = _State()
+        self._recovery_keys = recovery_keys
 
     @property
     def entry_paused(self) -> bool:
@@ -363,6 +377,14 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             container = getattr(state, field)
             condition = "account_id=?"
             parameters: tuple[Any, ...] = (self.database.account_id,)
+            if field == "recovery_archive":
+                # Completed Telegram receipts are point-lookups, never a growing
+                # bootstrap working set. Other archive contracts remain unchanged.
+                condition += " AND (key NOT GLOB '\"telegram_*'"
+                if self._recovery_keys:
+                    condition += " OR key IN (" + ",".join("?" for _ in self._recovery_keys) + ")"
+                    parameters += tuple(encode(k) for k in self._recovery_keys)
+                condition += ")"
             if field in ("fills", "decisions", "intents", "episodes", "orders"):
                 condition += " AND (active=1 OR updated_at>=?)"
                 parameters += (milliseconds(cutoff),)
@@ -490,6 +512,8 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 elif field == "intents":
                     at = milliseconds(value.created_at)
                     active = int(value.state is not CloseState.DONE)
+                elif field == "recovery_archive":
+                    active = 0
                 values: tuple[Any, ...] = (self.database.account_id, key, payload, at, active)
                 if field == "episodes":
                     episode = decode(payload)
@@ -523,6 +547,7 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         assert self._connection is not None
         c, account = self._connection, self.database.account_id
         projections = {
+            "telegram_outbox:": "alerts",
             "config_version:": "config_versions",
             "boundary_input:": "boundary_inputs",
             "boundary_output:": "boundary_outputs",
@@ -645,7 +670,13 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             await self._close()
         except StorageError:
             if self.database.alert:
-                self.database.alert("committed transaction cleanup failed: " + self.txn_id)
+                self.database.alert(
+                    Notice(
+                        "committed transaction cleanup failed: " + self.txn_id,
+                        code="storage_cleanup",
+                        related=self.txn_id,
+                    )
+                )
         self.database.last_commit_at = self.database.now()
 
     def _close_worker(self) -> None:
