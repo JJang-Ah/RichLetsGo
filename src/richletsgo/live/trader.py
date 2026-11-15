@@ -314,15 +314,18 @@ class Trader:
         await self.inputs.check_liquidation()
         await self.control.tick()  # Actual terminal order observations, not outbox acknowledgement.
         if self._last_rest is None or now - self._last_rest >= self.policy.rest_every:
-            self.ready = False
-            stable = await self.sync.synchronize()
-            self.ready = stable and self._boot_complete and not self.stopping
-            if stable and Interval.DAY.floor(now) == self.gate.tracker.day_start:
-                await self.inputs.market(self.symbols[0])
-                snapshot = await self.inputs.account()
-                flows = await self.inputs.cash_flows(self.gate.tracker.state.latest.at)
-                await self.observe(snapshot, flows)
-            self._last_rest = now
+            # A routine comparison must not turn a concurrent boundary signal
+            # into an immutable "Trader not ready" decision. Serialize its sync
+            # pauses and account observation with the entire boundary instead.
+            async with self._boundary_lock:
+                stable = await self.sync.synchronize()
+                self.ready = stable and self._boot_complete and not self.stopping
+                if stable and Interval.DAY.floor(now) == self.gate.tracker.day_start:
+                    await self.inputs.market(self.symbols[0])
+                    snapshot = await self.inputs.account()
+                    flows = await self.inputs.cash_flows(self.gate.tracker.state.latest.at)
+                    await self.observe(snapshot, flows)
+                self._last_rest = now
         if self._last_products is None or now - self._last_products >= self.policy.products_every:
             await self.inputs.maintain()
             self._last_products = now
@@ -333,11 +336,14 @@ class Trader:
 
     async def step(self) -> None:
         await self.maintenance()
-        if not self.ready or self.stopping:
-            return
+        await self.process_next()
+
+    async def process_next(self) -> bool:
+        """Process a queued boundary only after the last comparison has released it."""
         async with self._boundary_lock:
-            if self._boundaries:
-                await self.process(min(self._boundaries))
+            if self.ready and not self.stopping and self._boundaries:
+                return await self.process(min(self._boundaries))
+            return False
 
     async def process(self, at: datetime) -> bool:
         root = at.isoformat()

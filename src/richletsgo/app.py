@@ -253,8 +253,7 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
             while not stop.is_set():
                 if trader.ready and trader._boundaries:
                     try:
-                        async with trader._boundary_lock:
-                            await trader.process(min(trader._boundaries))
+                        await trader.process_next()
                     except (OSError, ValueError):
                         trader.ready = False
                         alert("Trader boundary reconciliation required")

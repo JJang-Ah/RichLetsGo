@@ -918,3 +918,145 @@ def test_entry_resume_rechecks_pause_after_marker_wait(tmp_path):
             await trader.close()
 
     asyncio.run(run())
+
+
+@pytest.mark.parametrize("first", ["reconciliation", "boundary"])
+def test_periodic_reconciliation_and_boundary_do_not_lose_signals(tmp_path, first):
+    async def run():
+        db, clock, trader, inputs, exchange, sync = await virtual_runtime(tmp_path)
+        release = asyncio.Event()
+        reconciling = asyncio.Event()
+        routing = asyncio.Event()
+        ticked = asyncio.Event()
+        boundary_requested = asyncio.Event()
+        tasks = []
+        try:
+            assert await trader.boot()
+            trader.gate.tracker.publish(EquityTracker.open(AccountSnapshot(T, D(1000), D(0))))
+            for interval in (Interval.HOUR, Interval.DAY):
+                for symbol in SYMBOLS:
+                    await trader.accept(candle(symbol, interval))
+
+            original_sync, original_route, original_tick = (
+                sync.synchronize,
+                inputs.route,
+                trader.control.tick,
+            )
+
+            async def synchronize():
+                reconciling.set()
+                if first == "reconciliation":
+                    await release.wait()
+                return await original_sync()
+
+            async def route(*args):
+                routing.set()
+                if first == "boundary":
+                    await release.wait()
+                return await original_route(*args)
+
+            async def tick():
+                await original_tick()
+                ticked.set()
+
+            async def boundary():
+                # Use the actual app.boundaries() entry point in an independent
+                # task, rather than calling maintenance first via Trader.step().
+                boundary_requested.set()
+                assert await trader.process_next()
+
+            sync.synchronize, inputs.route, trader.control.tick = synchronize, route, tick
+            if first == "reconciliation":
+                tasks.append(asyncio.create_task(trader.maintenance()))
+                await asyncio.wait_for(reconciling.wait(), timeout=10)
+                assert trader.ready
+                tasks.append(asyncio.create_task(boundary()))
+                await asyncio.wait_for(boundary_requested.wait(), timeout=10)
+                assert not routing.is_set()
+            else:
+                tasks.append(asyncio.create_task(boundary()))
+                await asyncio.wait_for(routing.wait(), timeout=10)
+                tasks.append(asyncio.create_task(trader.maintenance()))
+                await asyncio.wait_for(ticked.wait(), timeout=10)
+                assert not reconciling.is_set()
+                assert trader.ready
+
+            async with db.unit_of_work() as u:
+                assert not u.decisions.all()
+            release.set()
+            await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
+
+            async with db.unit_of_work() as u:
+                decisions = u.decisions.all()
+                assert len(decisions) == 4
+                assert all(d.kind.value == "ADMITTED" for d in decisions)
+                assert all(d.rejections == () for d in decisions)
+            for symbol in SYMBOLS:
+                assert len(await exchange.get_open_orders(symbol)) == 2
+            assert trader.last_boundary == T and trader.can_enter()
+        finally:
+            release.set()
+            # Only these test-owned coroutine tasks are cancelled on a failure.
+            # Never terminate Python processes: the D103 collector runs separately.
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await trader.close()
+
+    asyncio.run(run())
+
+
+def test_failed_periodic_comparison_keeps_waiting_boundary_undecided_until_recovery(tmp_path):
+    async def run():
+        db, clock, trader, inputs, exchange, sync = await virtual_runtime(tmp_path)
+        entered, release, requested = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        tasks = []
+        try:
+            assert await trader.boot()
+            trader.gate.tracker.publish(EquityTracker.open(AccountSnapshot(T, D(1000), D(0))))
+            for interval in (Interval.HOUR, Interval.DAY):
+                for symbol in SYMBOLS:
+                    await trader.accept(candle(symbol, interval))
+            original = sync.synchronize
+
+            async def fail():
+                entered.set()
+                await release.wait()
+                return False
+
+            async def boundary():
+                requested.set()
+                return await trader.process_next()
+
+            sync.synchronize = fail
+            tasks.append(asyncio.create_task(trader.maintenance()))
+            await asyncio.wait_for(entered.wait(), timeout=10)
+            tasks.append(asyncio.create_task(boundary()))
+            await asyncio.wait_for(requested.wait(), timeout=10)
+            release.set()
+            results = await asyncio.wait_for(asyncio.gather(*tasks), timeout=10)
+            assert results[1] is False
+            assert not trader.ready and T in trader._boundaries
+            async with db.unit_of_work() as u:
+                assert not u.decisions.all()
+                assert u.recovery.get("trader:last_boundary") is None
+
+            sync.synchronize = original
+            clock.advance(trader.policy.rest_every)
+            await trader.maintenance()
+            assert await trader.process_next()
+            async with db.unit_of_work() as u:
+                assert len(u.decisions.all()) == 4
+                assert all(d.kind.value == "ADMITTED" for d in u.decisions.all())
+            for symbol in SYMBOLS:
+                assert len(await exchange.get_open_orders(symbol)) == 2
+        finally:
+            release.set()
+            for task in tasks:
+                if not task.done():
+                    task.cancel()
+            await asyncio.gather(*tasks, return_exceptions=True)
+            await trader.close()
+
+    asyncio.run(run())
