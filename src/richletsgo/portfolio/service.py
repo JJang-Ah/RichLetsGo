@@ -2,6 +2,7 @@
 not exchange calls. M1-06/M3 journal and send them, then feed authoritative events back.
 """
 
+import json
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import replace
 from datetime import datetime
@@ -168,6 +169,20 @@ class PortfolioService:
         return intent
 
     def book_execution(self, uow: UnitOfWork, event: ExecutionEvent, attr: Attribution) -> None:
+        before = {s: uow.portfolio.book(s, event.symbol).qty for s in StrategyId}
+        self._book_execution(uow, event, attr)
+        uow.recovery.put(
+            "position_delta:" + event.exec_id,
+            json.dumps(
+                {
+                    s.value: str(uow.portfolio.book(s, event.symbol).qty - before[s])
+                    for s in StrategyId
+                },
+                sort_keys=True,
+            ),
+        )
+
+    def _book_execution(self, uow: UnitOfWork, event: ExecutionEvent, attr: Attribution) -> None:
         qty, symbol = event.qty.value, event.symbol
         uow.portfolio.record_fill_at(symbol, self.clock.now())
         if attr.purpose is OrderPurpose.ENTRY and attr.strategy is not None:
@@ -730,8 +745,18 @@ class PortfolioService:
             )
             await uow.commit()
 
-    async def funding(self, funding_id: str, symbol: Symbol, amount: Decimal) -> None:
+    async def funding(
+        self, funding_id: str, symbol: Symbol, amount: Decimal, settled_at: datetime | None = None
+    ) -> None:
         """Allocate exchange funding cost by held absolute quantity, once per event ID."""
+        if settled_at is not None:
+            from .funding import allocate
+
+            async with self.uow_factory() as uow:
+                allocate(uow, funding_id, symbol, amount, settled_at)
+                await uow.commit()
+            return
+        # Legacy synchronous backtest caller: settlement is handled in the same boundary.
         finite_decimal(amount, "funding amount")
         if not funding_id:
             raise ValueError("funding_id required")

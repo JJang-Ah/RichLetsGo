@@ -1,6 +1,7 @@
 """Account risk gate: check and reserve in one transaction (D46, D60)."""
 
 import asyncio
+import json
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
@@ -82,6 +83,8 @@ class MarketInputs:
     fee_rate: Decimal
     slippage: Decimal
     tier_notional_limit: Decimal | None = None
+    observed_at: datetime | None = None
+    valid_until: datetime | None = None
 
     def __post_init__(self) -> None:
         if self.tier_notional_limit is not None:
@@ -126,6 +129,8 @@ class RiskGate:
         if working_set_days < 7:
             raise ValueError("working set must cover at least seven days")
         self.working_set_days = working_set_days
+        self.entry_ready: Callable[[], bool] = lambda: True
+        self.audit_runtime = False
         self._lock = asyncio.Lock()
 
     @property
@@ -178,6 +183,19 @@ class RiskGate:
                     and request.strategy not in strategies
                 ):
                     raise ValueError("requested strategy risk input is required")
+                if not self.entry_ready() and not request.is_exit:
+                    request = replace(
+                        request, entry_rejection=Rejection(RejectionCode.PAUSED, "Trader not ready")
+                    )
+                if (
+                    market.valid_until is not None
+                    and self._clock.now() > market.valid_until
+                    and not request.is_exit
+                ):
+                    request = replace(
+                        request,
+                        entry_rejection=Rejection(RejectionCode.PAUSED, "stale market inputs"),
+                    )
                 admission = self._decide(uow, request, market)
                 if after_decision:
                     after_decision(uow, admission)
@@ -196,6 +214,42 @@ class RiskGate:
             basis: tuple[tuple[str, str], ...] = (),
             order: OrderRecord | None = None,
         ) -> DecisionRecord:
+            if self.audit_runtime:
+                basis += (
+                    ("equity_observed_at", self.tracker.state.latest.at.isoformat()),
+                    ("runtime_equity", str(self.tracker.equity)),
+                    ("pause_revision", str(self.pauses.revision)),
+                    ("pauses", json.dumps(self.pauses.to_json(), sort_keys=True)),
+                    (
+                        "market_checked_at",
+                        market.observed_at.isoformat() if market.observed_at else "unavailable",
+                    ),
+                    (
+                        "marks",
+                        json.dumps(
+                            {s.value: str(p.value) for s, p in market.marks.items()}, sort_keys=True
+                        ),
+                    ),
+                    (
+                        "positions",
+                        json.dumps(
+                            [
+                                (s.value, sym.value, str(q.value))
+                                for s, sym, q in uow.positions.all()
+                            ]
+                        ),
+                    ),
+                    (
+                        "reservations",
+                        json.dumps(
+                            [
+                                (o.key, str(o.reserved_qty), str(o.unbooked_qty))
+                                for o in uow.orders.all()
+                                if o.reserved_qty or o.unbooked_qty
+                            ]
+                        ),
+                    ),
+                )
             decision = DecisionRecord(
                 self.account_id,
                 request.signal_id,

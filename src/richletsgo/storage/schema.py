@@ -1,6 +1,6 @@
 """Schema version and state repository mapping (migration is packaged with the adapter)."""
 
-VERSION = 1
+VERSION = 2
 TABLES = {
     "orders": "orders",
     "fills": "fills",

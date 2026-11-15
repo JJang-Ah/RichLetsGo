@@ -185,24 +185,72 @@ def v1_fixture(tmp_path, mutate=None):
     from richletsgo.backtest.codec import digest
 
     path = config_file(tmp_path)
-    config = tomllib.loads(path.read_text(encoding="utf-8"))
+    source = (
+        path.read_text(encoding="utf-8")
+        .replace('candidate = "S1-A"', 'candidate = "S1-B"')
+        .replace(
+            "params = { fast = 5, slow = 20, exit_channel = 10 }",
+            "params = { entry_channel = 20, exit_channel = 10 }",
+        )
+        .replace('candidate = "S2-A"', 'candidate = "S2-P"')
+        .replace(
+            'params = { period = 20, k = "2", atr_period = 14, atr_multiple = "2", max_hold_bars = 24 }',
+            'params = { rsi_period = 2, lower = "20", atr_period = 14, stop_atr = "1.5", target_r = "2", max_hold_bars = 30 }',
+        )
+    )
+    config = tomllib.loads(source)
     pair = [config["strategy"][s]["params"] for s in ("S1", "S2")]
-    identity = {"preregistration": {"id": "synthetic", "sha256": "a" * 64}}
+    identity = {
+        "preregistration": {"id": "synthetic", "sha256": "a" * 64},
+        "data_hash": "b" * 64,
+        "start": "2021-06-01",
+        "end": "2023-10-01",
+    }
     body = {
         "identity": identity,
         "manifest_hash": digest(identity),
-        "aggregates": {"S1A-S2A": {"verdict": "PASS"}},
-        "windows": {"S1A-S2A": [{"status": "COMPLETED", "selected": pair}]},
+        "aggregates": {"S1B-S2P": {"verdict": "PASS"}},
+        "windows": {
+            "S1B-S2P": [
+                {
+                    "start": "2022-01-01",
+                    "end": "2022-04-01",
+                    "status": "COMPLETED",
+                    "selected": pair,
+                }
+            ]
+        },
     }
     if mutate:
+        import copy
+
+        body["identity"] = copy.deepcopy(identity)
         mutate(body)
+    primary = {
+        "identity": identity,
+        "manifest_hash": digest(identity),
+        "aggregates": {"S1B": {"verdict": "PASS"}},
+        "windows": {
+            "S1B": [
+                {
+                    "start": "2022-01-01",
+                    "end": "2022-04-01",
+                    "status": "COMPLETED",
+                    "selected": [pair[0], None],
+                }
+            ]
+        },
+    }
     report = path.parent / "보고서.json"
-    report.write_text(json.dumps(body, ensure_ascii=False, indent=2), encoding="utf-8")
+    secondary = path.parent / "부보고서.json"
+    report.write_text(json.dumps(primary), encoding="utf-8")
+    secondary.write_text(json.dumps(body), encoding="utf-8")
+    source = source.replace('source = "manual"', f'source = "v1:{digest(primary)}"', 1).replace(
+        'source = "manual"', f'source = "v1:{digest(body)}"', 1
+    )
     path.write_text(
-        path.read_text(encoding="utf-8").replace(
-            'source = "manual"', f'source = "v1:{digest(body)}"'
-        )
-        + '\n[strategy]\nreport_path = "보고서.json"\n',
+        source
+        + '\n[strategy]\nreport_path = "보고서.json"\nsecondary_report_path = "부보고서.json"\n',
         encoding="utf-8",
     )
     return path, report
@@ -217,7 +265,7 @@ def test_v1_report_digest_pair_and_relative_path(tmp_path, monkeypatch):
     report.write_text(json.dumps(json.loads(report.read_text(encoding="utf-8"))), encoding="utf-8")
     assert load_config(path) == cfg
     body = json.loads(report.read_text(encoding="utf-8"))
-    body["aggregates"]["S1A-S2A"]["verdict"] = "FAIL"
+    body["aggregates"]["S1B"]["verdict"] = "FAIL"
     report.write_text(json.dumps(body), encoding="utf-8")
     with pytest.raises(ConfigError, match="digest"):
         load_config(path)
@@ -239,17 +287,17 @@ def test_v1_report_digest_pair_and_relative_path(tmp_path, monkeypatch):
 def test_v1_fail_closed(tmp_path, kind):
     def mutate(body):
         if kind == "fail":
-            body["aggregates"]["S1A-S2A"]["verdict"] = "FAIL"
+            body["aggregates"]["S1B-S2P"]["verdict"] = "FAIL"
         elif kind == "mixed_windows":
             import copy
 
-            first = body["windows"]["S1A-S2A"][0]
+            first = body["windows"]["S1B-S2P"][0]
             second = copy.deepcopy(first)
-            first["selected"][0]["fast"] = 6
-            second["selected"][1]["period"] = 30
-            body["windows"]["S1A-S2A"].append(second)
+            first["selected"][0]["entry_channel"] = 6
+            second["selected"][1]["rsi_period"] = 30
+            body["windows"]["S1B-S2P"].append(second)
         elif kind == "incomplete":
-            body["windows"]["S1A-S2A"][0]["status"] = "NO_CANDIDATE"
+            body["windows"]["S1B-S2P"][0]["status"] = "NO_CANDIDATE"
         elif kind == "manifest":
             body["manifest_hash"] = "f" * 64
         elif kind == "registration":
@@ -285,3 +333,60 @@ def test_s2p_config_validates_parameters(tmp_path):
     )
     path.write_text(source, encoding="utf-8")
     assert load_config(path).strategies[StrategyId.S2].candidate == "S2-P"
+
+
+@pytest.mark.parametrize("field", ["preregistration", "data_hash", "symbols", "start", "end"])
+def test_d97_matching_pass_reports_must_have_identical_identity(tmp_path, field):
+    from richletsgo.backtest.codec import digest
+
+    def mutate(body):
+        body["identity"][field] = {
+            "preregistration": {"id": "another", "sha256": "c" * 64},
+            "data_hash": "c" * 64,
+            "symbols": ["BTCUSDT"],
+            "start": "2021-07-01",
+            "end": "2023-09-01",
+        }[field]
+        body["manifest_hash"] = digest(body["identity"])
+
+    path, _ = v1_fixture(tmp_path, mutate)
+    with pytest.raises(ConfigError):
+        load_config(path)
+
+
+@pytest.mark.parametrize("verdict", ["FAIL", "INDETERMINATE"])
+def test_d97_secondary_pass_cannot_override_primary(tmp_path, verdict):
+    from richletsgo.backtest.codec import digest
+
+    path, report = v1_fixture(tmp_path)
+    body = json.loads(report.read_text(encoding="utf-8"))
+    before = digest(body)
+    body["aggregates"]["S1B"]["verdict"] = verdict
+    report.write_text(json.dumps(body), encoding="utf-8")
+    path.write_text(
+        path.read_text(encoding="utf-8").replace(before, digest(body)), encoding="utf-8"
+    )
+    with pytest.raises(ConfigError, match="primary must PASS"):
+        load_config(path)
+
+
+@pytest.mark.parametrize("extra", ["", '\nsource = "manual"', '\nsecondary_report_path = "x"'])
+def test_disabled_s2_only_allows_enabled_false(tmp_path, extra):
+    import re
+
+    path = config_file(tmp_path)
+    source = re.sub(
+        r"\[strategy.S2\][\s\S]*?(?=\n\[|\Z)",
+        "[strategy.S2]\nenabled = false\n",
+        path.read_text(encoding="utf-8"),
+    )
+    if "secondary_report_path" in extra:
+        source += "\n[strategy]\n" + extra
+    elif extra:
+        source = source.replace("enabled = false", "enabled = false" + extra)
+    path.write_text(source, encoding="utf-8")
+    if extra:
+        with pytest.raises(ConfigError):
+            load_config(path)
+    else:
+        assert StrategyId.S2 not in load_config(path).strategies

@@ -215,3 +215,12 @@ port = 8766
 allowed_ids = ["web:operator", "telegram:1"]
 cancel_retry_seconds = 5
 cancel_max_attempts = 3
+
+
+# Explicit operational scheduling; these settings do not choose strategy/risk values.
+[trader]
+tick_seconds = 1
+bar_wait_seconds = 90
+max_signal_age_seconds = 7200
+rest_every_seconds = 60
+products_every_seconds = 86400

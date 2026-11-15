@@ -101,7 +101,7 @@ def test_pause_idempotency_resume_tolerance_and_binding(tmp_path, backend, sourc
             connection = open_readonly(db.path)
             try:
                 assert connection.execute(
-                    "SELECT source,state FROM commands WHERE request_id='resume-1'"
+                    "SELECT c.source,c.state FROM commands c JOIN command_identities i ON c.account_id=i.account_id AND c.request_id=i.storage_key WHERE i.external_request_id='resume-1'"
                 ).fetchone() == (source, "completed")
             finally:
                 connection.close()

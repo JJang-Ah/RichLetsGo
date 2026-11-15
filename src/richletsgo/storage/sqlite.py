@@ -35,6 +35,22 @@ from .working_set import signal_time, working_set
 T = TypeVar("T")
 
 
+def statements(script: str) -> list[str]:
+    result, pending = [], ""
+    for char in script:
+        pending += char
+        if char == ";" and sqlite3.complete_statement(pending):
+            result.append(pending)
+            pending = ""
+    if pending.strip():
+        # A trailing comment is allowed; actual incomplete SQL is not.
+        if any(
+            line.strip() and not line.lstrip().startswith("--") for line in pending.splitlines()
+        ):
+            raise StorageError("incomplete migration statement")
+    return result
+
+
 @dataclass
 class _File:
     executor: ThreadPoolExecutor
@@ -101,6 +117,7 @@ class SqliteDatabase(InMemoryDatabase):
         self.busy_timeout_seconds = busy_timeout_seconds
         self.outcome_timeout_seconds = outcome_timeout_seconds
         self.now, self.fault, self.alert = now, fault, alert
+        self.last_commit_at: datetime | None = None
         with _REGISTRY_LOCK:
             self._file = _FILES.setdefault(
                 self.path,
@@ -172,18 +189,31 @@ class SqliteDatabase(InMemoryDatabase):
                         .read_text(encoding="utf-8")
                     )
                     # executescript implicitly commits: execute statements individually instead.
-                    for statement in script.split(";"):
+                    for statement in statements(script):
                         if statement.strip():
                             connection.execute(statement)
                     connection.execute(
                         "INSERT INTO schema_version VALUES (?,?)",
-                        (VERSION, milliseconds(self.now())),
+                        (1, milliseconds(self.now())),
                     )
                     connection.execute(
                         "INSERT INTO meta VALUES ('environment',?)", (self.environment.value,)
                     )
                     connection.execute(
                         "INSERT INTO meta VALUES ('account_id',?)", (self.account_id,)
+                    )
+                version = connection.execute("SELECT version FROM schema_version").fetchall()
+                if version == [(1,)]:
+                    script = (
+                        files("richletsgo.storage")
+                        .joinpath("migrations/V002__command_identities.sql")
+                        .read_text(encoding="utf-8")
+                    )
+                    for statement in statements(script):
+                        connection.execute(statement)
+                    connection.execute(
+                        "UPDATE schema_version SET version=2,applied_at=?",
+                        (milliseconds(self.now()),),
                     )
                 self._verify(connection)
                 connection.commit()
@@ -347,6 +377,19 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                     container.add(k)
                 else:
                     container.append(value)
+        if state.recoveries:
+            # Decode only on the rare recovery path; working_set filters unrelated archive rows.
+            for key, payload in self._connection.execute(
+                "SELECT key,payload FROM orders WHERE account_id=?", (self.database.account_id,)
+            ):
+                order = decode(payload)
+                if (order.strategy, order.symbol) in state.recoveries:
+                    state.orders[decode(key)] = order
+        for source, external, key in self._connection.execute(
+            "SELECT source,external_request_id,storage_key FROM command_identities WHERE account_id=?",
+            (self.database.account_id,),
+        ):
+            state.recovery_data["command_identity:" + encode((source, external))] = key
         referenced_episodes = {i.episode_id for i in state.intents.values()}
         for key in referenced_episodes - state.episodes.keys():
             row = self._connection.execute(
@@ -472,7 +515,28 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         """Typed audit projections share the transaction with the existing M1 recovery API."""
         assert self._connection is not None
         c, account = self._connection, self.database.account_id
-        if key.startswith("journal:"):
+        projections = {
+            "config_version:": "config_versions",
+            "boundary_input:": "boundary_inputs",
+            "boundary_output:": "boundary_outputs",
+            "boundary_checkpoint:": "boundary_checkpoints",
+            "position_snapshot:": "position_snapshots",
+            "unallocated_funding:": "unallocated_funding",
+        }
+        prefix = key.partition(":")[0] + ":"
+        if prefix in projections:
+            table = projections[prefix]
+            c.execute(
+                f"INSERT INTO {table} VALUES(?,?,?,?) ON CONFLICT(account_id,key) DO UPDATE SET payload=excluded.payload",
+                (account, key, value, now),
+            )
+        elif key.startswith("command_identity:"):
+            source, external = decode(key.removeprefix("command_identity:"))
+            c.execute(
+                "INSERT INTO command_identities VALUES (?,?,?,?) ON CONFLICT(account_id,source,external_request_id) DO NOTHING",
+                (account, source, external, value),
+            )
+        elif key.startswith("journal:"):
             from richletsgo.oms.journal import JournalRecord
 
             record = JournalRecord.decode(value)
@@ -502,7 +566,14 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             c.execute(
                 "INSERT INTO commands VALUES (?,?,?,?,?,?) ON CONFLICT(account_id,request_id) "
                 "DO UPDATE SET state=excluded.state,payload=excluded.payload",
-                (account, record["request_id"], record["source"], record["state"], value, now),
+                (
+                    account,
+                    record.get("storage_key", record["request_id"]),
+                    record["source"],
+                    record["state"],
+                    value,
+                    now,
+                ),
             )
             for target in record.get("targets", []):
                 c.execute(
@@ -511,7 +582,7 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                     "state=excluded.state,attempts=excluded.attempts,payload=excluded.payload",
                     (
                         account,
-                        record["request_id"],
+                        record.get("storage_key", record["request_id"]),
                         target["order_key"],
                         target["state"],
                         target["attempts"],
@@ -553,7 +624,12 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             except StorageError:
                 pass  # Cleanup failure cannot turn an uncertain COMMIT into a safe retry.
             raise CommitOutcomeUnknown(self.txn_id) from error
-        await self._close()
+        try:
+            await self._close()
+        except StorageError:
+            if self.database.alert:
+                self.database.alert("committed transaction cleanup failed: " + self.txn_id)
+        self.database.last_commit_at = self.database.now()
 
     def _close_worker(self) -> None:
         connection, self._connection = self._connection, None

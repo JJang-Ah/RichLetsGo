@@ -114,6 +114,7 @@ class AppConfig:
     log_retention_days: int
     report_path: Path | None
     control: ControlConfig
+    secondary_report_path: Path | None = None
 
     def public_dict(self) -> dict[str, Any]:
         return dict(primitive(self))
@@ -170,38 +171,72 @@ def strategy(row: Mapping[str, Any], owner: StrategyId) -> StrategyConfig:
 def validate_report(
     raw: Mapping[str, Any], strategies: Mapping[StrategyId, StrategyConfig], parent: Path
 ) -> Path | None:
-    sources = {s.source for s in strategies.values()}
-    if len(sources) != 1:
-        raise ConfigError("S1 and S2 must use the same source")
-    source = next(iter(sources))
-    if source == "manual":
-        return None  # Development only; M3-07 separately requires V1 PASS.
-    target = Path(text(raw, "report_path")).expanduser()
-    target = (target if target.is_absolute() else parent / target).resolve()
-    body = json.loads(target.read_text(encoding="utf-8"))
-    if not isinstance(body, dict) or digest(body) != source.removeprefix("v1:"):
-        raise ConfigError("V1 body digest mismatch")
-    identity = body["identity"]
-    if not isinstance(identity, dict) or body["manifest_hash"] != digest(identity):
-        raise ConfigError("V1 manifest link mismatch")
-    registration = identity["preregistration"]
-    if (
-        not isinstance(registration, dict)
-        or not isinstance(registration.get("id"), str)
-        or not registration["id"].strip()
-        or not isinstance(registration.get("sha256"), str)
-        or re.fullmatch(r"[0-9a-f]{64}", registration["sha256"]) is None
-    ):
-        raise ConfigError("V1 preregistration link required")
-    ordered = [strategies[s] for s in (StrategyId.S1, StrategyId.S2)]
-    combo = "-".join(s.candidate.replace("-", "") for s in ordered)
-    if body["aggregates"][combo]["verdict"] != "PASS":
-        raise ConfigError("V1 combination must PASS")
-    pair = primitive([s.params for s in ordered])
-    if not any(
-        w["status"] == "COMPLETED" and w["selected"] == pair for w in body["windows"][combo]
-    ):
-        raise ConfigError("V1 pair must match one completed confirmation window")
+    def read(name: str, source: str) -> tuple[Path, dict[str, Any]]:
+        target = (parent / Path(text(raw, name)).expanduser()).resolve()
+        body = json.loads(target.read_text(encoding="utf-8"))
+        if not isinstance(body, dict) or digest(body) != source.removeprefix("v1:"):
+            raise ConfigError("V1 body digest mismatch")
+        identity = body["identity"]
+        if not isinstance(identity, dict):
+            raise ConfigError("invalid V1 identity")
+        registration = identity["preregistration"]
+        if body["manifest_hash"] != digest(identity):
+            raise ConfigError("V1 manifest link mismatch")
+        if (
+            not isinstance(registration, dict)
+            or not isinstance(registration.get("id"), str)
+            or not registration.get("id")
+            or re.fullmatch(r"[0-9a-f]{64}", registration.get("sha256", "")) is None
+        ):
+            raise ConfigError("V1 preregistration link required")
+        for key in ("data_hash", "start", "end"):
+            if not identity.get(key):
+                raise ConfigError("V1 data identity required")
+        return target, body
+
+    s1, s2 = strategies[StrategyId.S1], strategies.get(StrategyId.S2)
+    if s2 is None and "secondary_report_path" in raw:
+        raise ConfigError("disabled S2 cannot have secondary report")
+    if s1.source == "manual":
+        if s2 is not None and s2.source != "manual":
+            raise ConfigError("manual and V1 cannot be mixed")
+        if "secondary_report_path" in raw:
+            raise ConfigError("manual cannot have secondary report")
+        return None
+    if s1.candidate != "S1-B":
+        raise ConfigError("D97 requires primary S1-B")
+    target, main = read("report_path", s1.source)
+    if main["aggregates"]["S1B"]["verdict"] != "PASS":
+        raise ConfigError("D97 primary must PASS")
+    selected = primitive(s1.params)
+    windows = [
+        w
+        for w in main["windows"]["S1B"]
+        if w["status"] == "COMPLETED" and w["selected"] == [selected, None]
+    ]
+    if not windows:
+        raise ConfigError("S1 must match primary selected value")
+    if s2 is not None:
+        if s2.candidate != "S2-P" or s2.source == "manual":
+            raise ConfigError("D97 secondary requires S2-P V1")
+        _, secondary = read("secondary_report_path", s2.source)
+        if secondary["aggregates"]["S1B-S2P"]["verdict"] != "PASS":
+            raise ConfigError("D97 secondary must PASS")
+        for key in ("preregistration", "data_hash", "start", "end"):
+            if main["identity"][key] != secondary["identity"][key]:
+                raise ConfigError("D97 reports have different identities")
+        default_symbols = ["BTCUSDT", "ETHUSDT"]
+        if main["identity"].get("symbols", default_symbols) != secondary["identity"].get(
+            "symbols", default_symbols
+        ):
+            raise ConfigError("D97 symbol mismatch")
+        if not any(
+            w["status"] == "COMPLETED"
+            and w["selected"] == [selected, primitive(s2.params)]
+            and any((w["start"], w["end"]) == (m["start"], m["end"]) for m in windows)
+            for w in secondary["windows"]["S1B-S2P"]
+        ):
+            raise ConfigError("D97 pair must be selected in same confirmation window")
     return target
 
 
@@ -361,7 +396,15 @@ def _load(path: Path) -> AppConfig:
     )
     if bybit.leverage > risk.max_leverage:
         raise ConfigError("configured leverage exceeds risk limit")
-    strategies = {s: strategy(data["strategy"][s.value], s) for s in StrategyId}
+    strategies = {StrategyId.S1: strategy(data["strategy"]["S1"], StrategyId.S1)}
+    s2_row = data["strategy"]["S2"]
+    enabled = s2_row.get("enabled", True)
+    if type(enabled) is not bool:
+        raise ConfigError("S2 enabled must be boolean")
+    if enabled:
+        strategies[StrategyId.S2] = strategy(s2_row, StrategyId.S2)
+    elif set(s2_row) != {"enabled"}:
+        raise ConfigError("disabled S2 only accepts enabled")
     report = validate_report(data["strategy"], strategies, path.parent)
     dashboard, control_raw = data["dashboard"], data["control"]
     control = ControlConfig(
@@ -399,6 +442,9 @@ def _load(path: Path) -> AppConfig:
         integer(data["logging"], "retention_days"),
         report,
         control,
+        (path.parent / text(data["strategy"], "secondary_report_path")).resolve()
+        if "secondary_report_path" in data["strategy"]
+        else None,
     )
 
 

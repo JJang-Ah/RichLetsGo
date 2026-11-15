@@ -115,7 +115,13 @@ def position(row: Mapping[str, Any], at: datetime) -> PositionSnapshot:
     # REST uses avgPrice, private position WS uses entryPrice.
     price = row.get("avgPrice", row.get("entryPrice"))
     return PositionSnapshot(
-        Symbol(row["symbol"]), qty, Price(number(price)) if qty.value else None, at
+        Symbol(row["symbol"]),
+        qty,
+        Price(number(price)) if qty.value else None,
+        at,
+        Price(number(row["liqPrice"]))
+        if row.get("liqPrice") and number(row["liqPrice"]) > 0
+        else None,
     )
 
 

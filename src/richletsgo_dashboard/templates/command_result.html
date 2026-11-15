@@ -21,7 +21,7 @@
     <input type="hidden" name="order_link_id" value="{{ result.target or '' }}">
     {% if result.confirmation_id %}<input type="hidden" name="confirmation_id" value="{{ result.confirmation_id }}">{% endif %}
     {% if result.state == 'response_unknown' and result.manually_checked %}<input type="hidden" name="manually_checked" value="true">{% endif %}
-    {% if result.command == 'resolve'  and result.state == 'confirmation_required' %}
+    {% if result.command == 'resolve' and result.state == 'confirmation_required' %}
     <label><input type="checkbox" name="manually_checked" value="true" required>Bybit 주문 내역을 직접 확인했습니다</label>
     {% endif %}
     <button type="submit">{{ '확인하고 실행' if result.state == 'confirmation_required' else '처리 결과 다시 확인' }}</button>

@@ -26,6 +26,7 @@ from richletsgo.risk.pause import Pause, PauseKind, PauseState
 from richletsgo.risk.records import Direction, EpisodeState
 from richletsgo.storage.memory import InMemoryDatabase
 from richletsgo.strategy import candidates
+from richletsgo.strategy.boundary import boundary_signals, boundary_steps
 from richletsgo.strategy.history import ClosedBars, four_hour_bars
 from richletsgo.strategy.models import (
     S1AParams,
@@ -379,23 +380,21 @@ class _Engine:
 
     async def _signals(self) -> None:
         at = self.clock.now()
-        if Interval.DAY.aligned(at):
-            for symbol in self.run.symbols:
-                self._trace("signal:S1", symbol)
-                h = self._history(symbol, Interval.DAY, at, candidates.required_bars(self.run.s1))
-                if isinstance(self.run.s1, S1AParams):
-                    out = candidates.s1_a(h, self.states[symbol], self.run.s1)
-                else:
-                    out = candidates.s1_b(h, self.states[symbol], self.run.s1)
-                self.states[symbol] = out.state
-                if out.signal:
-                    await self._signal(out.signal)
-        if self.run.s2 is None:
-            return
-        for symbol in self.run.symbols:
+
+        async def first(symbol: Symbol) -> None:
+            self._trace("signal:S1", symbol)
+            h = self._history(symbol, Interval.DAY, at, candidates.required_bars(self.run.s1))
+            if isinstance(self.run.s1, S1AParams):
+                out = candidates.s1_a(h, self.states[symbol], self.run.s1)
+            else:
+                out = candidates.s1_b(h, self.states[symbol], self.run.s1)
+            self.states[symbol] = out.state
+            if out.signal:
+                await self._signal(out.signal)
+
+        async def second(symbol: Symbol) -> None:
+            assert self.run.s2 is not None
             if isinstance(self.run.s2, S2PParams):
-                if not Interval.FOUR_HOUR.aligned(at):
-                    continue
                 self._trace("signal:S2", symbol)
                 hourly = self._history(
                     symbol, Interval.HOUR, at, candidates.required_bars(self.run.s2) * 4
@@ -424,7 +423,7 @@ class _Engine:
                 out_p = candidates.s2_p(h4, self.states[symbol], pending, self.run.s2)
                 if out_p.signal:
                     await self._signal(out_p.signal)
-                continue
+                return
             self._trace("signal:S2", symbol)
             h = self._history(symbol, Interval.HOUR, at, candidates.required_bars(self.run.s2))
             trade = self.ledger.active.get((StrategyId.S2, symbol))
@@ -442,7 +441,8 @@ class _Engine:
                 output = candidates.s2_b(h, self.states[symbol], episode, self.run.s2)
             if output.signal:
                 await self._signal(output.signal)
-        await self._settle()
+
+        await boundary_signals(at, self.run.symbols, self.run.s2, first, second, self._settle)
 
     async def _finish_entries(self) -> None:
         self.pauses.add(Pause(PauseKind.ENTRY_PAUSED_MANUAL, "end_of_range", self.clock.now()))
@@ -469,32 +469,41 @@ class _Engine:
             at = self.run.start
             while at <= self.run.end:
                 self.clock.set(at)
-                self._trace("fills")
-                if at > self.run.start:
-                    for symbol in self.run.symbols:
-                        bar = self._history(symbol, Interval.HOUR, at, 1).bars[-1]
-                        rate = self.data.funding.get((symbol, at))
-                        self.venue.advance_bar(bar, funding=(rate,) if rate else ())
-                        self.marks[symbol] = Price(bar.close)
-                await self._settle()
-                self._trace("funding")
-                payments = self.venue.funding_payments
-                for payment in payments[self.funding_index :]:
-                    cost = -payment.amount
-                    await self.portfolio.funding(
-                        payment.record.symbol.value + payment.record.funding_time.isoformat(),
-                        payment.record.symbol,
-                        cost,
-                    )
-                    self.ledger.funding(payment.record.symbol, cost)
-                self.funding_index = len(payments)
-                await self._observe()
+
+                async def fills(at: datetime = at) -> None:
+                    self._trace("fills")
+                    if at > self.run.start:
+                        for symbol in self.run.symbols:
+                            bar = self._history(symbol, Interval.HOUR, at, 1).bars[-1]
+                            rate = self.data.funding.get((symbol, at))
+                            self.venue.advance_bar(bar, funding=(rate,) if rate else ())
+                            self.marks[symbol] = Price(bar.close)
+                    await self._settle()
+
+                async def funding() -> None:
+                    self._trace("funding")
+                    payments = self.venue.funding_payments
+                    for payment in payments[self.funding_index :]:
+                        cost = -payment.amount
+                        await self.portfolio.funding(
+                            payment.record.symbol.value + payment.record.funding_time.isoformat(),
+                            payment.record.symbol,
+                            cost,
+                        )
+                        self.ledger.funding(payment.record.symbol, cost)
+                    self.funding_index = len(payments)
+
+                async def signals(at: datetime = at) -> None:
+                    if at == self.run.end:
+                        return
+                    if at == self.run.end - HOUR:
+                        await self._finish_entries()
+                    else:
+                        await self._signals()
+
+                await boundary_steps(fills, funding, self._observe, signals)
                 if at == self.run.end:
                     break
-                if at == self.run.end - HOUR:
-                    await self._finish_entries()
-                else:
-                    await self._signals()
                 at += HOUR
             async with self.db.unit_of_work() as uow:
                 remaining = tuple(

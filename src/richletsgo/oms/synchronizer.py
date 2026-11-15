@@ -101,6 +101,7 @@ class Synchronizer:
         self._task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self._booted = False
+        self.preserve_created_entries: set[str] = set()
         self._generation = 0
         self.account: AccountSnapshot | None = None
         self.sender.pause("sync")
@@ -129,6 +130,32 @@ class Synchronizer:
             except asyncio.CancelledError:
                 pass
             self._task = None
+
+    async def confirm_fills(self, since: datetime) -> bool:
+        """Serialize boundary replay with periodic reconciliation and queue consumption."""
+        async with self._lock:
+            for symbol in self.symbols:
+                if await self._refresh(symbol, since) is None:
+                    return False
+            await self._drain()
+            return True
+
+    async def discard_unsent(self, order_key: str) -> None:
+        """A proven rolled-back send transaction left CREATED, just like restart recovery."""
+        async with self._lock:
+            async with self.uow_factory() as uow:
+                order = uow.orders.get(order_key)
+                if order is not None and order.state is OrderState.CREATED:
+                    uow.orders.put(replace(order, state=OrderState.ABORTED))
+                    episode = uow.episodes.active_for(order.strategy, order.symbol)
+                    if episode is not None and all(
+                        (o := uow.orders.get(k)) is not None
+                        and o.state is OrderState.ABORTED
+                        and not o.booked_qty.value
+                        for k in episode.entry_order_keys
+                    ):
+                        uow.episodes.put(replace(episode, state=EpisodeState.CLOSED))
+                    await uow.commit()
 
     async def _persist_pauses(self) -> None:
         async with self.uow_factory() as uow:
@@ -217,6 +244,12 @@ class Synchronizer:
                         uow.orders.put(replace(current, state=OrderState.UNKNOWN))
             if not self._booted:
                 for order in uow.orders.all():
+                    if (
+                        order.state is OrderState.CREATED
+                        and order.key in self.preserve_created_entries
+                    ):
+                        self.sender.proven_entries.add(order.key)
+                        continue
                     if order.state in (OrderState.CREATED, OrderState.SUBMITTED):
                         uow.orders.put(
                             replace(
@@ -764,8 +797,11 @@ class Synchronizer:
                     async with self.uow_factory() as uow:
                         books = uow.portfolio.books()
                         unsettled = any(
-                            o.state
-                            in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
+                            (
+                                o.state
+                                in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
+                                and o.key not in self.sender.proven_entries
+                            )
                             or o.exchange_cum_exec_qty > abs(o.booked_qty.value)
                             for o in uow.orders.all()
                         )
