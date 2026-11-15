@@ -8,6 +8,7 @@ from decimal import Decimal
 from richletsgo.domain import StrategyId, Symbol
 from richletsgo.domain.clock import require_utc, trading_day_start
 from richletsgo.domain.values import finite_decimal
+from richletsgo.marketdata.models import Interval
 from richletsgo.storage.contracts import FillStatus, UnitOfWork
 
 from .models import Action, ActionKind
@@ -15,6 +16,15 @@ from .models import Action, ActionKind
 
 class FundingSnapshotMissing(ValueError):
     pass
+
+
+class FundingTimeInvalid(ValueError):
+    pass
+
+
+def validate_settlement(at: datetime) -> None:
+    if not Interval.HOUR.aligned(at):
+        raise FundingTimeInvalid("funding settlement must be exactly on a UTC hour")
 
 
 def snapshot_key(at: datetime, symbol: Symbol) -> str:
@@ -57,7 +67,7 @@ def position_snapshot(uow: UnitOfWork, at: datetime, symbol: Symbol) -> dict[str
 def allocate(
     uow: UnitOfWork, funding_id: str, symbol: Symbol, amount: Decimal, settled_at: datetime
 ) -> None:
-    require_utc(settled_at)
+    validate_settlement(settled_at)
     finite_decimal(amount, "funding amount")
     if not funding_id:
         raise ValueError("funding_id required")

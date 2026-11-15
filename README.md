@@ -65,7 +65,7 @@ py -3.14 -m venv .venv
 
 ## Demo Trader 실행 (M3-04)
 
-다음은 운영자가 직접 실행하는 명령입니다. 개발 테스트는 실제 키·데모 계좌를 사용하지 않습니다. 설정에 `environment = "demo"`, `ai.mode = "disabled"`, `[trader]`의 다섯 양수 초 단위 값을 명시합니다. 모든 운영 폴더와 `[storage].db_file`은 설정 파일 위치 기준으로 해석합니다. 계좌 이름은 기존 SQLite meta.account_id와 같아야 합니다.
+다음은 운영자가 직접 실행하는 명령입니다. 개발 테스트는 실제 키·데모 계좌를 사용하지 않습니다. 설정에 `environment = "demo"`, `ai.mode = "disabled"`, `[trader]`의 여섯 양수 초 단위 값을 명시합니다. `warning_window_seconds`는 동일 원인 경고의 반복 집계 창이며 최초 경고는 즉시 기록합니다. 모든 운영 폴더와 `[storage].db_file`은 설정 파일 위치 기준으로 해석합니다. 계좌 이름은 기존 SQLite meta.account_id와 같아야 합니다.
 
 ```powershell
 .\.venv\Scripts\python.exe -m richletsgo.storage migrate --config config.local.toml --account demo-account

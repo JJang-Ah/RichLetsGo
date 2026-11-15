@@ -27,7 +27,7 @@ from .errors import (
     StorageBusy,
     StorageError,
 )
-from .memory import InMemoryDatabase, InMemoryUnitOfWork, _State
+from .memory import IMMUTABLE_RECOVERY, InMemoryDatabase, InMemoryUnitOfWork, _State
 from .paths import local_database_path
 from .schema import TABLES, VERSION
 from .working_set import signal_time, working_set
@@ -378,13 +378,20 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 else:
                     container.append(value)
         if state.recoveries:
-            # Decode only on the rare recovery path; working_set filters unrelated archive rows.
+            # Filter tagged JSON in SQL before decoding archived domain objects.
+            # This is a SQL scan, not an indexed strategy/symbol lookup.
+            pairs = list(state.recoveries)
+            predicates = " OR ".join(
+                "(json_extract(payload,'$.fields.strategy.value')=? AND "
+                "json_extract(payload,'$.fields.symbol.value')=?)"
+                for _ in pairs
+            )
             for key, payload in self._connection.execute(
-                "SELECT key,payload FROM orders WHERE account_id=?", (self.database.account_id,)
+                "SELECT key,payload FROM orders WHERE account_id=? AND (" + predicates + ")",
+                (self.database.account_id, *(v.value for pair in pairs for v in pair)),
             ):
-                order = decode(payload)
-                if (order.strategy, order.symbol) in state.recoveries:
-                    state.orders[decode(key)] = order
+                if decode(key) not in state.orders:
+                    state.orders[decode(key)] = decode(payload)
         for source, external, key in self._connection.execute(
             "SELECT source,external_request_id,storage_key FROM command_identities WHERE account_id=?",
             (self.database.account_id,),
@@ -526,6 +533,16 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         prefix = key.partition(":")[0] + ":"
         if prefix in projections:
             table = projections[prefix]
+            if prefix[:-1] in IMMUTABLE_RECOVERY:
+                previous = c.execute(
+                    f"SELECT payload FROM {table} WHERE account_id=? AND key=?", (account, key)
+                ).fetchone()
+                if previous is not None:
+                    if previous[0] != value:
+                        raise StorageError("immutable audit projection conflict: " + prefix)
+                    return
+                c.execute(f"INSERT INTO {table} VALUES(?,?,?,?)", (account, key, value, now))
+                return
             c.execute(
                 f"INSERT INTO {table} VALUES(?,?,?,?) ON CONFLICT(account_id,key) DO UPDATE SET payload=excluded.payload",
                 (account, key, value, now),

@@ -26,6 +26,7 @@ from richletsgo.health import install_health
 from richletsgo.keystore import KeyStore, windows_backend
 from richletsgo.live.inputs import BybitInputs
 from richletsgo.live.trader import LoopPolicy, Trader
+from richletsgo.notify.batching import WarningBatcher
 from richletsgo.oms.journal import ProtectiveJournal
 from richletsgo.oms.synchronizer import Synchronizer, SyncPolicy
 from richletsgo.ops.logging import configure_logging
@@ -58,6 +59,7 @@ def loop_policy(path: Path) -> LoopPolicy:
         "max_signal_age_seconds",
         "rest_every_seconds",
         "products_every_seconds",
+        "warning_window_seconds",
     )
     if set(row) != set(names) or any(type(row[k]) is not int or row[k] <= 0 for k in names):
         raise ValueError("invalid Trader loop policy")
@@ -77,8 +79,15 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
         secrets=(credential.key, credential.secret),
     )
 
+    warnings = WarningBatcher(
+        clock, policy.warning_window, lambda message: logger.warning("%s", message)
+    )
+
     def alert(message: str) -> None:
-        logger.warning("%s", message)
+        # Existing producers use fixed reason text, optionally followed by a
+        # symbol/transaction identity. Do not use observations as episode keys.
+        reason, _, identity = message.partition(": ")
+        warnings.warn((config.environment.value, account_id, reason, identity), message)
 
     def unique() -> str:
         return uuid4().hex
@@ -242,6 +251,7 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
 
         async def loop() -> None:
             while not stop.is_set():
+                warnings.flush()
                 try:
                     await trader.maintenance()
                 except (OSError, ValueError):
