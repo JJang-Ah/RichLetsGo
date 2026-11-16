@@ -942,3 +942,13 @@
 - 합성 회귀 17건 추가: BTC/ETH 각각 2페이지, 보유/평탄 두 경우, 두 유효 행·유사 기본값·비정상 크기/인덱스·다른 종목·실제 레버리지 오류 등을 검사했다. 전체 요청이 GET뿐인지 확인했다. Bybit 어댑터 71 passed, 어댑터/Trader/보호 복구 통합 **241 passed/63.95초**, lint/format/mypy/diff 검사 통과. 이번 push CI는 별도 확인 대상이다.
 - PR #73은 Draft 유지, 실제 봇 명령 5종+알림 1종 수동 확인과 재검토 뒤에만 병합한다. D103 실행 폴더·프로세스는 접근하지 않았다.
 - P3 이월: 기존 5건(영구 거절 발송 줄 막힘, message_id 없는 확인 무한 대기, 전체 체결 순회, sync.alerts finally 배출, ID 충돌 차단 해제 절차)과 새 keystore set의 빈 값/1글자 제어 문자 입력 거부를 다음 관련 PR에서 처리한다. 이번 P2에 자격 증명 저장 동작을 섞지 않았다.
+
+## 2026-11-16 — Codex (PR #73 수동 확인 기록·병합 전 P2)
+
+- 사용자·Claude 보고 수동 확인(2026-11-16 21:35–21:53 KST): 명령 5종+시작/묶음/정지 알림 수신, 확인 없는 실행 없음, 주문 0건. cancel은 빈 대상, resolve는 부재 대상 거절을 확인했다. 실제 UNKNOWN 확정 성공은 합성 검증이며 실계좌 변경으로 과장하지 않는다. 보고 링크와 상세 범위는 `docs/reports/M3-05-manual-validation.md`.
+- 허용 개인 채팅의 형식 오류/미지원 명령은 짧은 안내와 reason_code=invalid, 소유한 만료 버튼은 expired로 감사한다. 미등록/그룹은 무응답·unauthorized 유지. query ID의 근거 없는 URL-safe 문자 제한을 제거하고 원래 nonce/소유권 바인딩은 유지했다. 특수 문자/한글 ID와 message_id 미기록 만료 정리를 합성으로 확인했다.
+- TrackerState.equity_confirmed로 부팅 초기값을 미확인으로 명시했다. ResumeService는 요청·확인 모두 미확인 재개를 거절하며 웹·Telegram 같은 CommandService 경로에서 버튼 없이 사유를 반환한다. JSON 저장/복원과 과거 완전 0 seed의 보수적 판독, 저장된 미확인 상태의 실제 준비 스냅샷 초기화를 연결했다. 스키마 변경 없음. 기존 pause_revision/record_peak/허용 폭 검사는 보존한다.
+- 신규 합성 17건. 전체 1652 passed/200.67초, 안내 문구 정리 뒤 최종 Telegram/신규 58 passed/5.47초. lint/format/mypy/diff 통과. 이번 push CI는 별도 확인 대상이다. 사용자 요청대로 결과 기록과 함께 Draft를 해제하고 P2 재검토를 요청한다. 직접 병합하지 않는다.
+- 다음: **PR #73 병합 뒤 별도 작은 PR**로 demo 전용 maker_fee_rate/taker_fee_rate 명시 설정(기본 없음·없으면 시작 거부), live는 API만, demo fee-rate 10001 합성 테스트 및 출처/config_version 기록을 구현한다. 이번 PR에는 수수료 대체를 섞지 않았다.
+- P3는 /status 사람 문장·미확인 표시/day_start 원인, /resolve 거절 확인 문구, 정지 전이 묶음과 기존 이월 목록을 유지한다. day_start 11-09는 코드상 7일 이전 bootstrap 및 boot 준비 실패와 부합하지만 운영 DB로 확인하지 않았다. message_id 미기록의 만료 정리는 이번 P2에 포함됐다.
+- 실제 API/봇/키/로컬 설정/운영 DB/D103 실행 폴더·프로세스에 접근하지 않았다. 실제 수동 결과는 사용자·Claude 제공이며 Codex가 재실행하지 않았다.

@@ -163,6 +163,8 @@ class Telegram:
             await u.commit()
 
     def format_result(self, record: dict[str, Any]) -> str:
+        if record.get("reason_code") in {"invalid", "expired"}:
+            return f"[{self.service.environment.value}] {record['message']}"
         text = f"[{self.service.environment.value}] /{record['command']} {record['state']}\n{record['message']}"
         if record.get("resume"):
             text += "\n재개 확인 (기록용 최고점·평가액·낙폭·다음 정지 수준·허용 폭):\n" + dumps(
@@ -215,11 +217,14 @@ class Telegram:
         )
         if isinstance(callback, dict):
             nonce, query_id = callback.get("data"), callback.get("id")
+            result["callback_input"] = True
+            if isinstance(query_id, str) and query_id:
+                result["query_id"] = query_id
             if (
                 isinstance(nonce, str)
                 and re.fullmatch(r"[A-Za-z0-9_-]{1,64}", nonce)
                 and isinstance(query_id, str)
-                and re.fullmatch(r"[A-Za-z0-9_-]{1,128}", query_id)
+                and bool(query_id)
             ):
                 result.update(kind="callback", nonce=nonce, query_id=query_id)
             else:
@@ -239,7 +244,10 @@ class Telegram:
             ):
                 result.update(kind="command", command=match[1], target=match[3])
             else:
-                result.update(kind="invalid", command="unknown")
+                known = re.match(
+                    r"/(status|pause|resume|cancel|resolve)(?:@[^\s]+)?(?:\s|$)", text.strip()
+                )
+                result.update(kind="invalid", command=known[1] if known else "unknown")
         return result
 
     async def poll_once(self) -> None:
@@ -309,13 +317,25 @@ class Telegram:
             request,
         )
 
-    async def _audit(self, value: dict[str, Any], reason: str) -> None:
+    async def _audit(
+        self, value: dict[str, Any], reason: str, reason_code: str = "invalid"
+    ) -> dict[str, Any] | None:
         if "user" in value:
-            await self.service.telegram_inspect(
+            return await self.service.telegram_inspect(
                 self._context(value, "audit:" + str(value["update_id"])),
                 value.get("command", "unknown"),
                 denial=reason,
+                reason_code=reason_code,
             )
+        return None
+
+    async def _reject_input(
+        self, key: str, value: dict[str, Any], reason: str, reason_code: str
+    ) -> None:
+        record = await self._audit(value, reason, reason_code)
+        if record and record.get("reason_code") != "unauthorized":
+            await self.command_notification(dumps(record))
+        await self._finish(key)
 
     async def process_once(self) -> None:
         if not self._initialized:
@@ -339,10 +359,22 @@ class Telegram:
                     and value.get("user") in self.users
                     and value.get("chat") == value.get("user")
                 )
-                if not allowed or value["kind"] == "invalid":
-                    await self._audit(value, "권한/채팅/형식 거절")
+                if not allowed:
+                    await self._audit(value, "개인 채팅/권한 거절", "unauthorized")
                     await self._finish(key)
-                    if value["kind"] == "callback":
+                    if value.get("query_id"):
+                        await self._ack(value)
+                    continue
+                if value["kind"] == "invalid":
+                    reason = (
+                        "확인 입력이 잘못되었습니다: 새 요청 필요"
+                        if value.get("callback_input")
+                        else "형식이 맞지 않습니다: /resolve d-… 또는 b-…"
+                        if value.get("command") == "resolve"
+                        else "사용 가능한 명령: /status /pause /resume /cancel /resolve d-…"
+                    )
+                    await self._reject_input(key, value, reason, "invalid")
+                    if value.get("query_id"):
                         await self._ack(value)
                     continue
                 if value["kind"] == "callback":
@@ -447,11 +479,7 @@ class Telegram:
             and binding["context"]["actor_id"] == f"telegram:{value['user']}"
             and binding["context"]["session_id"] == str(value["chat"])
         )
-        if (
-            owner_valid
-            and binding["boot"] != self.boot
-            and binding["message_id"] == value["message_id"]
-        ):
+        if owner_valid and binding["message_id"] == value["message_id"]:
             old_context = Context(**{**binding["context"], "environment": self.service.environment})
             saved = await self.service.saved_result(
                 old_context, binding["command"], binding["target"]
@@ -460,14 +488,25 @@ class Telegram:
                 await self.command_notification(dumps(saved))
                 await self._finish(inbox_key)
                 return
+        if owner_valid and (
+            binding["boot"] != self.boot
+            or datetime.fromisoformat(binding["expires"]) <= self.clock.now()
+        ):
+            await self._reject_input(
+                inbox_key,
+                {**value, "command": binding["command"]},
+                "확인 만료: 새 요청 필요",
+                "expired",
+            )
+            await self._finish(key)
+            return
         valid = owner_valid and binding["boot"] == self.boot
         if valid and binding["message_id"] is None:
-            return  # Sender has not committed message identity yet.
-        if valid:
-            valid = binding["message_id"] == value["message_id"]
-        if not valid:
-            await self._audit(value, "확인 번호 소유권/부팅/메시지 불일치")
-            await self._finish(inbox_key)
+            return  # Only wait while this owned confirmation is still unexpired.
+        if not valid or binding["message_id"] != value["message_id"]:
+            await self._reject_input(
+                inbox_key, value, "확인 번호가 유효하지 않습니다: 새 요청 필요", "invalid"
+            )
             return
         context = Context(**{**binding["context"], "environment": self.service.environment})
         try:
@@ -479,7 +518,13 @@ class Telegram:
                 manually_checked=binding["command"] == "resolve",
             )
         except CommandDenied:
-            await self._audit(value, "확인 만료/무효: 새 요청 필요")
+            await self._audit(
+                value,
+                "확인 만료/무효: 새 요청 필요",
+                "expired"
+                if datetime.fromisoformat(binding["expires"]) <= self.clock.now()
+                else "invalid",
+            )
             result = {
                 **context.identity(),
                 "command": binding["command"],

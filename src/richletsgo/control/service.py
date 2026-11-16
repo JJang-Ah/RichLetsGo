@@ -9,6 +9,7 @@ import copy
 import json
 import secrets
 from collections.abc import Awaitable, Callable, Collection
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
@@ -146,15 +147,28 @@ class CommandService:
             uow.recovery.put("notification:" + storage + ":" + record["state"], raw)
 
     async def telegram_inspect(
-        self, context: Context, command: str, *, denial: str | None = None
+        self,
+        context: Context,
+        command: str,
+        *,
+        denial: str | None = None,
+        reason_code: str = "invalid",
     ) -> dict[str, Any]:
         """Shared authorization/audit path for read-only status and silent denials."""
         async with self.lock:
-            authorize_command(context.actor_id, "/" + command, self.allowed_ids, self.clock.now())
-            try:
-                self._authorize(context, command, read=True)
-            except CommandDenied:
+            auth = authorize_command(
+                context.actor_id, "/" + command, self.allowed_ids, self.clock.now()
+            )
+            if (
+                not auth.allowed
+                or context.environment is not self.environment
+                or context.account_id != self.account_id
+                or (context.source, context.session_id) in self.revoked
+            ):
                 denial = "권한 없는 요청"
+                reason_code = "unauthorized"
+            elif denial is None:
+                self._authorize(context, command, read=True)
             identity = encode((context.source, context.request_id))
             async with self.uow() as u:
                 storage = u.recovery.get("command_identity:" + identity)
@@ -166,6 +180,8 @@ class CommandService:
                 record = self._record(
                     context, command, None, "rejected" if denial else "completed", denial or "상태"
                 )
+                if denial:
+                    record["reason_code"] = reason_code
                 if not denial:
                     if command != "status":
                         raise CommandDenied("read path only accepts status")
@@ -300,7 +316,11 @@ class CommandService:
                         ):
                             raise CommandDenied("request confirmation mismatch")
                         return self._prompt_view(existing)
-                return self._create_prompt(uow, context, command, target)
+                prompt_view = self._create_prompt(uow, context, command, target)
+                if prompt_view["state"] == "rejected":
+                    self._save(uow, prompt_view)
+                    await uow.commit()
+                return prompt_view
 
             staged_pauses, staged_tracker = (
                 copy.deepcopy(self.pauses),
@@ -423,7 +443,16 @@ class CommandService:
                 context.actor_id, self.clock.now()
             )
             if isinstance(resume, ResumeRejected):
-                raise CommandDenied(resume.reason)
+                return self._record(
+                    context,
+                    command,
+                    target,
+                    "rejected",
+                    resume.reason,
+                    reason_code="equity_unconfirmed"
+                    if not self.tracker.equity_confirmed
+                    else "resume_rejected",
+                )
             prompt.resume = resume
         elif command == "cancel":
             prompt.targets = tuple(
@@ -645,7 +674,11 @@ class CommandService:
                     restored_tracker
                     and not self._startup_complete
                     and current is self._initial_tracker_state
-                    and current == EquityTracker.open(current.latest).state
+                    and current
+                    == replace(
+                        EquityTracker.open(current.latest).state,
+                        equity_confirmed=current.equity_confirmed,
+                    )
                     and restored_tracker.state.latest.at >= current.latest.at
                 ):
                     self.tracker.publish(restored_tracker)

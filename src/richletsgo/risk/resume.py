@@ -75,6 +75,8 @@ class ResumeService:
         auth = authorize_command(actor_id, RESUME_COMMAND, self._allowed, at)
         if not auth.allowed:
             return ResumeRejected("unauthorized", auth)
+        if not self._tracker.equity_confirmed:
+            return ResumeRejected("평가액 미확인: 재개 불가", auth)
         halted = self._pauses.has(PauseKind.HALTED)
         manual = self._pauses.has(PauseKind.ENTRY_PAUSED_MANUAL)
         if not (halted or manual):
@@ -133,6 +135,8 @@ class ResumeService:
             return ResumeRejected("confirmation precedes prompt", auth)
         if at >= prompt.expires_at:
             return ResumeRejected("prompt expired", auth)
+        if not self._tracker.equity_confirmed:
+            return ResumeRejected("평가액 미확인: 재개 불가", auth)
         if (
             self._pauses.revision != prompt.pause_revision
             or abs(self._tracker.equity - prompt.equity)

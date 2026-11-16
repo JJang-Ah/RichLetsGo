@@ -37,7 +37,7 @@ from richletsgo.ops.logging import Redactor, configure_logging
 from richletsgo.portfolio.models import ClosePolicy
 from richletsgo.portfolio.service import PortfolioService
 from richletsgo.portfolio.signals import AiMode, AiScoreStore, SignalRouter
-from richletsgo.risk.equity import AccountSnapshot, EquityTracker
+from richletsgo.risk.equity import EquityTracker
 from richletsgo.risk.gate import RiskGate
 from richletsgo.risk.pause import PauseState
 from richletsgo.storage.sqlite import SqliteDatabase, open_readonly
@@ -124,10 +124,8 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
     finally:
         connection.close()
     pauses = PauseState()
-    tracker = EquityTracker.open(
-        AccountSnapshot(
-            clock.now() - timedelta(days=config.storage.working_set_days), Decimal(0), Decimal(0)
-        )
+    tracker = EquityTracker.unconfirmed(
+        clock.now() - timedelta(days=config.storage.working_set_days)
     )
     gate = RiskGate(
         account_id=account_id,

@@ -143,10 +143,9 @@ def test_pause_status_dedup_and_completed_receipts_not_in_working_set(tmp_path, 
     [
         message(1, "/pause", user=2),
         message(1, "/pause", chat=-50, private=False),
-        message(1, "/unknown token=never-store"),
     ],
 )
-def test_unauthorized_group_invalid_are_silent_and_audited(tmp_path, update):
+def test_unauthorized_group_are_silent_and_audited(tmp_path, update):
     async def run():
         db, service, clock, bot, tg, _ = await runtime(tmp_path)
         await receive(bot, tg, update)

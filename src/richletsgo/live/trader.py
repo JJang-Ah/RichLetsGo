@@ -152,6 +152,7 @@ class Trader:
     def can_enter(self) -> bool:
         return (
             self.ready
+            and self.gate.tracker.equity_confirmed
             and self._boot_complete
             and not self.funding_wait
             and not self.stopping
@@ -521,7 +522,10 @@ class Trader:
                 if await done(u, "account"):
                     return
                 prepared = u.recovery.get("boundary_input:" + root + ":account")
-                first_account = self.initialize_tracker and u.recovery.get("equity_tracker") is None
+                first_account = self.initialize_tracker and (
+                    u.recovery.get("equity_tracker") is None
+                    or not self.gate.tracker.equity_confirmed
+                )
             if prepared:
                 snapshot, flows = decode(prepared)
             else:
@@ -545,7 +549,10 @@ class Trader:
                     copy.deepcopy(self.gate.pauses),
                 )
                 async with self.uow() as u:
-                    initial = self.initialize_tracker and u.recovery.get("equity_tracker") is None
+                    initial = self.initialize_tracker and (
+                        u.recovery.get("equity_tracker") is None
+                        or not self.gate.tracker.equity_confirmed
+                    )
                 if initial:
                     # First account baseline is initialized only AFTER funding is known.
                     tracker = EquityTracker.open(snapshot)
