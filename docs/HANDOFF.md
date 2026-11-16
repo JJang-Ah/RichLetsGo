@@ -933,3 +933,12 @@
 - `app.api_expires_at` UTC 필수/기본 없음·created_at보다 이후, Telegram/Control 허용 주체 일치와 Telegram 작업별 정책을 설정 예시에 반영했다. 실제 설정/키는 생성하지 않았다. 정시 아닌 펀딩 해제와 M1-06 수동 복구 3종은 후속 명세다.
 - 검증: 신규 Telegram 42 passed, 관련 통합 143 passed/10.34초, 최종 전체 **1619 passed/187.45초**. lint/format/mypy(156 source files)/diff 검사 통과. 기존 Starlette/httpx 사용 중단 예정 경고 1건. 지원 Python CI는 push 뒤 확인한다. 상세는 `docs/reports/M3-05-unit-b-validation.md`.
 - 다음: Claude의 PR #73 코드 검토·CI 및 사용자와 실제 봇 명령 5종+알림 1종 수동 확인. 수동 항목은 완료로 표시하지 않았다. 실 Bot/자격 증명/실계좌/연구 DB/판정 자료/D103 실행 폴더·프로세스에 접근하지 않았다. 테스트는 자신이 만든 코루틴/임시 DB만 정리했다.
+
+## 2026-11-16 — Codex (PR #73 수동 확인 시작 차단 P2)
+
+- 사용자/Claude가 보고한 demo position/list의 2페이지 응답(설정된 Normal 행 + 빈 상태/기본 레버리지 행)을 합성 재현했다. 공통 mapping.single_position을 check_settings와 get_positions에 적용했다. RestClient.pages의 전체 커서 순회와 레버리지 자동 변경 금지는 유지한다.
+- 예외는 요청 symbol 일치, 정수 positionIdx=0, side="", positionStatus="", 유한 숫자 문자열 size=0인 행에만 적용한다. 제외 뒤 정확히 한 행이고 그 행의 status가 Normal/Liq/Adl이어야 한다. 두 유효 행/부재·모호한 상태/헤지/비정상 수량/기본값만 있는 응답은 계속 실패한다. 남은 실제 행의 설정 레버리지 검사는 그대로다.
+- 근거: 공식 V5 position 문서의 cursor·빈 포지션 side·status 정의와 사용자가 제공한 demo 관측을 함께 사용했다. 빈 status 자체의 기본값 의미는 공식 보장이 아니므로 위 조합 외에는 추정하지 않는다. 실제 API/키/로컬 설정/운영 DB는 읽지 않았다.
+- 합성 회귀 17건 추가: BTC/ETH 각각 2페이지, 보유/평탄 두 경우, 두 유효 행·유사 기본값·비정상 크기/인덱스·다른 종목·실제 레버리지 오류 등을 검사했다. 전체 요청이 GET뿐인지 확인했다. Bybit 어댑터 71 passed, 어댑터/Trader/보호 복구 통합 **241 passed/63.95초**, lint/format/mypy/diff 검사 통과. 이번 push CI는 별도 확인 대상이다.
+- PR #73은 Draft 유지, 실제 봇 명령 5종+알림 1종 수동 확인과 재검토 뒤에만 병합한다. D103 실행 폴더·프로세스는 접근하지 않았다.
+- P3 이월: 기존 5건(영구 거절 발송 줄 막힘, message_id 없는 확인 무한 대기, 전체 체결 순회, sync.alerts finally 배출, ID 충돌 차단 해제 절차)과 새 keystore set의 빈 값/1글자 제어 문자 입력 거부를 다음 관련 PR에서 처리한다. 이번 P2에 자격 증명 저장 동작을 섞지 않았다.

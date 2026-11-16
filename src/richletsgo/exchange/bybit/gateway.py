@@ -122,9 +122,9 @@ class BybitGateway:
                 "/v5/position/list", {"category": "linear", "symbol": symbol.value}
             )
             try:
-                if isinstance(rows, ExchangeError) or len(rows) != 1:
+                if isinstance(rows, ExchangeError):
                     raise ValueError
-                row = rows[0]
+                row = mapping.single_position(rows, symbol)
                 valid = (
                     valid
                     and row["symbol"] == symbol.value
@@ -387,9 +387,8 @@ class BybitGateway:
             if isinstance(rows, ExchangeError):
                 return rows
             try:
-                if len(rows) != 1 or rows[0]["symbol"] != symbol.value:
-                    raise ValueError
-                result.append(mapping.position(rows[0], self.clock.now()))
+                row = mapping.single_position(rows, symbol)
+                result.append(mapping.position(row, self.clock.now()))
             except MAPPING_ERRORS:
                 return self._bad("bybit_position_mapping")
         return tuple(result)

@@ -310,6 +310,114 @@ def test_settings_fail_closed_read_only(setup, margin, idx, leverage):
     asyncio.run(run())
 
 
+def demo_position_pages(primary, extra):
+    """Synthetic shape reported during PR73 manual checks, never an account recording."""
+
+    def handler(method, url, body):
+        query = parse_qs(urlparse(url).query)
+        if urlparse(url).path == "/v5/account/info":
+            return response({"marginMode": "ISOLATED_MARGIN"})
+        assert method == "GET" and urlparse(url).path == "/v5/position/list"
+        symbol = query["symbol"][0]
+        cursor = f"{symbol},{to_ms(NOW)},0"
+        if "cursor" not in query:
+            return response({"list": primary(symbol), "nextPageCursor": cursor})
+        assert query["cursor"] == [cursor]
+        return response({"list": extra(symbol), "nextPageCursor": ""})
+
+    return handler
+
+
+@pytest.mark.parametrize("held", [False, True])
+def test_demo_two_page_placeholder_settings_and_positions(setup, held):
+    async def run():
+        def primary(symbol):
+            return [
+                position_row(
+                    symbol,
+                    positionStatus="Normal",
+                    size="0.02" if held else "0",
+                    side="Buy" if held else "",
+                    avgPrice="60000" if held else "",
+                )
+            ]
+
+        def extra(symbol):
+            return [position_row(symbol, positionStatus="", leverage="10")]
+
+        g, transport, _, _ = setup(handler=demo_position_pages(primary, extra))
+        assert await g.check_settings() and g._settings_ok
+        snapshots = await g.get_positions()
+        assert isinstance(snapshots, tuple) and len(snapshots) == 2
+        assert all(p.qty.value == (D("0.02") if held else D(0)) for p in snapshots)
+        position_calls = [c for c in transport.calls if "/v5/position/list" in c[1]]
+        assert len(position_calls) == 8
+        assert sum("cursor" in parse_qs(urlparse(c[1]).query) for c in position_calls) == 4
+        assert all(c[0] == "GET" for c in transport.calls)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "change",
+    [
+        {"positionStatus": "Normal"},
+        {"positionStatus": "Liq"},
+        {"positionStatus": "Adl"},
+        {"positionStatus": None},
+        {"size": "0.01", "side": "Buy", "avgPrice": "60000"},
+        {"size": "NaN"},
+        {"size": ""},
+        {"side": "Buy"},
+        {"side": None},
+        {"positionIdx": 1},
+        {"positionIdx": False},
+        {"symbol": "UNEXPECTED"},
+    ],
+)
+def test_demo_second_page_not_proven_placeholder_fails_closed(setup, change):
+    async def run():
+        def primary(symbol):
+            return [position_row(symbol, positionStatus="Normal")]
+
+        def extra(symbol):
+            row = position_row(symbol, positionStatus="", leverage="10")
+            return [row | change]
+
+        g, transport, _, alerts = setup(handler=demo_position_pages(primary, extra))
+        assert not await g.check_settings()
+        assert (await g.get_positions()).code is ErrorCode.QUERY_FAILED
+        assert "bybit_account_settings" in alerts and "bybit_position_mapping" in alerts
+        assert all(c[0] == "GET" for c in transport.calls)
+
+    asyncio.run(run())
+
+
+@pytest.mark.parametrize(
+    "case", ["placeholder_only", "wrong_leverage", "missing_authoritative_status"]
+)
+def test_placeholder_never_supplies_settings_or_hides_configuration_error(setup, case):
+    async def run():
+        def primary(symbol):
+            if case == "placeholder_only":
+                return []
+            row = position_row(symbol, leverage="2" if case == "wrong_leverage" else "3")
+            if case != "missing_authoritative_status":
+                row["positionStatus"] = "Normal"
+            return [row]
+
+        def extra(symbol):
+            return [position_row(symbol, positionStatus="", leverage="10")]
+
+        g, transport, _, _ = setup(handler=demo_position_pages(primary, extra))
+        assert not await g.check_settings()
+        if case != "wrong_leverage":
+            assert (await g.get_positions()).code is ErrorCode.QUERY_FAILED
+        assert all(c[0] == "GET" for c in transport.calls)
+
+    asyncio.run(run())
+
+
 def test_clock_pause_protection_and_recovery(setup):
     async def run():
         g, t, _, alerts = setup(

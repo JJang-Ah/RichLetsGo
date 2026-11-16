@@ -49,6 +49,7 @@ retMsg/요청/인증 원문을 오류에 넣지 않는다. 시각 오차는 왕�
 | position.liqPrice | 양수이면 PositionSnapshot.liquidation_price. 공백/0은 None. 보유 중 값이 없으면 진입 보류, 실제 값이 D62 부등식을 깨면 전략별 CloseIntent로 축소 |
 | account/info.marginMode | ISOLATED_MARGIN 확인. position.tradeMode 사용하지 않음 |
 | position/list.leverage | 설정 레버리지와 일치 검사. 자동 설정 변경 없음 |
+| position/list 단일 종목의 페이지 병합 | 모든 cursor 조회 후 설정 검사와 get_positions가 공통 선택기를 사용. 요청 symbol 일치·정수 positionIdx=0·side=""·positionStatus=""·유한 숫자 문자열 size=0인 관측된 demo 기본값 행만 제외. 제외 후 정확히 1행이며 그 행의 status가 Normal/Liq/Adl일 때만 예외 인정. 유효 2행/다른 종목/헤지/비정상 수량/기본값만 있으면 실패 |
 | wallet UNIFIED.coin[USDT] | walletBalance와 unrealisedPnl 각각 AccountSnapshot. USD 계좌 전체 totals는 격리 마진에서 사용하지 않음. 차입 잔액 거절 |
 | transaction-log TRANSFER_IN/OUT | USDT change의 부호를 보존한 CashFlow. category 필터를 걸어 이체를 누락하지 않음 |
 | transaction-log SETTLEMENT | LiveInputs.funding: 계좌 ID·symbol·transactionTime(UTC settled_at), cost = -funding. V5 funding은 양수가 수취·음수가 지급이므로 비용 부호로 뒤집음. 고정 범위의 모든 페이지를 조회하고 공개 펀딩율을 사용하지 않음 |
