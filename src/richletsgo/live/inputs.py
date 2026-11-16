@@ -7,7 +7,7 @@ from typing import Any
 
 from richletsgo.backtest.results import TradeLedger
 from richletsgo.config import AppConfig
-from richletsgo.domain import Price, StrategyId, Symbol
+from richletsgo.domain import Environment, Price, StrategyId, Symbol
 from richletsgo.exchange.bybit.gateway import BybitGateway
 from richletsgo.exchange.contracts import ExchangeError
 from richletsgo.marketdata.models import Bar, Interval, from_ms, to_ms
@@ -161,8 +161,19 @@ class BybitInputs:
         return value
 
     async def maintain(self) -> None:
+        configured = None
+        if self.config.environment is Environment.DEMO:
+            configured = self.config.bybit.demo_fee_rates
+            if configured is None:
+                raise ValueError("explicit demo maker_fee_rate/taker_fee_rate required")
+        elif self.config.environment is not Environment.LIVE:
+            raise ValueError("Bybit live inputs require demo or live environment")
         if not await self.gateway.refresh_instruments():
             raise OSError("instrument refresh failed")
+        if configured is not None:
+            self.fee = configured.taker_fee_rate
+            return
+        # LIVE never uses demo settings, even after API rejection/10001.
         rates: list[Decimal] = []
         for symbol in self.config.bybit.symbols:
             body = checked(

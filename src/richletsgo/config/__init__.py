@@ -53,6 +53,23 @@ class Paths:
 
 
 @dataclass(frozen=True)
+class DemoFeeRates:
+    maker_fee_rate: Decimal
+    taker_fee_rate: Decimal
+    source: str
+
+    def __post_init__(self) -> None:
+        if (
+            not self.maker_fee_rate.is_finite()
+            or not self.taker_fee_rate.is_finite()
+            or not -1 < self.maker_fee_rate < 1
+            or not 0 <= self.taker_fee_rate < 1
+            or not self.source.strip()
+        ):
+            raise ConfigError("invalid demo fee rates/source")
+
+
+@dataclass(frozen=True)
 class BybitConfig:
     rest_url: str
     private_ws_url: str
@@ -71,6 +88,7 @@ class BybitConfig:
     ws_max_backoff_seconds: int
     page_limit: int
     trigger_by: str
+    demo_fee_rates: DemoFeeRates | None = None
 
 
 @dataclass(frozen=True)
@@ -324,6 +342,8 @@ def _load(path: Path) -> AppConfig:
     }
     if any(text(endpoint, k) != v for k, v in expected.items()):
         raise ConfigError("demo endpoints required")
+    if env is Environment.DEMO and not {"maker_fee_rate", "taker_fee_rate"} <= endpoint.keys():
+        raise ConfigError("bybit.demo maker_fee_rate and taker_fee_rate are required")
     if (
         text(public, "base_url") != "https://api.bybit.com"
         or text(public, "ws_url") != "wss://stream.bybit.com/v5/public/linear"
@@ -361,6 +381,15 @@ def _load(path: Path) -> AppConfig:
         integer(raw, "ws_max_backoff_seconds"),
         integer(raw, "page_limit"),
         text(raw, "trigger_by"),
+        DemoFeeRates(
+            decimal(endpoint, "maker_fee_rate"),
+            decimal(endpoint, "taker_fee_rate"),
+            text(endpoint, "fee_rate_source")
+            if "fee_rate_source" in endpoint
+            else "configuration:[bybit.demo]",
+        )
+        if env is Environment.DEMO
+        else None,
     )
     if (
         bybit.trigger_by != "LastPrice"
