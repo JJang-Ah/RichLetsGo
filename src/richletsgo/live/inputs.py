@@ -11,6 +11,7 @@ from richletsgo.domain import Price, StrategyId, Symbol
 from richletsgo.exchange.bybit.gateway import BybitGateway
 from richletsgo.exchange.contracts import ExchangeError
 from richletsgo.marketdata.models import Bar, Interval, from_ms, to_ms
+from richletsgo.notify.events import Notice
 from richletsgo.portfolio.funding import snapshot_key
 from richletsgo.portfolio.signals import MarketSignal, SignalRouter
 from richletsgo.risk.checks import StrategyRiskInput
@@ -373,7 +374,13 @@ class BybitInputs:
                         symbol=symbol,
                     )
                 )
-                self.gateway.alert("missing strategy history: " + symbol.value)
+                self.gateway.alert(
+                    Notice(
+                        "missing strategy history: " + symbol.value,
+                        code="strategy_history",
+                        symbol=symbol.value,
+                    )
+                )
         available = frozenset(valid)
 
         async def first(symbol: Symbol) -> None:

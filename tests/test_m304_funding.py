@@ -74,7 +74,7 @@ def test_zero_snapshot_records_unallocated_and_midnight_day():
             with pytest.raises(FundingSnapshotMissing):
                 allocate(u, "missing", Symbol.BTCUSDT, D(1), midnight)
             for index, at in enumerate(
-                (midnight - timedelta(seconds=1), midnight, midnight + timedelta(seconds=1))
+                (midnight - timedelta(hours=1), midnight, midnight + timedelta(hours=1))
             ):
                 position_snapshot(u, at, Symbol.BTCUSDT)
                 allocate(u, str(index), Symbol.BTCUSDT, D(1), at)

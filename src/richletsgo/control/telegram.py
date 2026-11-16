@@ -4,10 +4,11 @@ Transport polling/delivery is assembled by the Trader; tests use synthetic updat
 The confirmation callback retains the original command update_id as its idempotency key.
 """
 
+from dataclasses import replace
 from typing import Any
 
 from .models import Context
-from .service import CommandService
+from .service import CommandDenied, CommandService
 
 
 class TelegramCommands:
@@ -33,6 +34,15 @@ class TelegramCommands:
             self.service.account_id,
             str(update_id),
         )
+        if chat_id != user_id:
+            await self.service.telegram_inspect(
+                replace(context, request_id="legacy-audit:" + str(update_id)),
+                command.removeprefix("/"),
+                denial="개인 채팅만 허용",
+            )
+            raise CommandDenied("private chat required")
+        if command == "/status":
+            return await self.service.telegram_inspect(context, "status")
         return await self.service.request(
             context,
             command.removeprefix("/"),

@@ -1,7 +1,7 @@
 """Account equity, daily PnL (D72, D81) and the two peaks (D48)."""
 
 from collections.abc import Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
 from decimal import Decimal
 
@@ -63,6 +63,7 @@ class TrackerState:
     record_peak: Decimal
     risk_peak: Decimal
     seen_flows: frozenset[str]
+    equity_confirmed: bool = True
 
 
 class EquityTracker:
@@ -70,6 +71,15 @@ class EquityTracker:
 
     def __init__(self, state: TrackerState) -> None:
         self._s = state
+
+    @classmethod
+    def unconfirmed(cls, at: datetime) -> "EquityTracker":
+        seed = cls.open(AccountSnapshot(at, Decimal(0), Decimal(0)))
+        return cls(replace(seed.state, equity_confirmed=False))
+
+    @property
+    def equity_confirmed(self) -> bool:
+        return self._s.equity_confirmed
 
     @classmethod
     def open(cls, snapshot: AccountSnapshot) -> "EquityTracker":
@@ -147,6 +157,7 @@ class EquityTracker:
             max(record, snapshot.equity),
             max(risk, snapshot.equity),
             frozenset(seen),
+            self._s.equity_confirmed,
         )
 
     @property

@@ -97,7 +97,11 @@ class OrderSender:
             Pause(PauseKind.ENTRY_PAUSED_SYSTEM, reason, self.clock.now(), symbol=symbol)
         )
         if reason not in self.alerts:
-            self.alerts.append(reason)
+            from richletsgo.notify.events import Notice
+
+            self.alerts.append(
+                Notice(reason, code="protection:" + reason, symbol=symbol.value if symbol else "")
+            )
 
     async def _save(self, record: JournalRecord) -> None:
         if self.uow_factory().entry_paused:

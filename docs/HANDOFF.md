@@ -907,3 +907,48 @@
 - 이월 P3 4건: 정산 시각의 정시 검증(임의 반올림 금지), 반복 경고 억제, 불변 레코드 투영의 저장 제약, 복구 중 주문 전체 디코드 범위 축소. 사용자 요청대로 이번 P2 수정에서는 구현하지 않고 다음 관련 PR에서 처리한다.
 - D103 운영 인계(사용자 제공, 직접 조사하지 않음): 수집기가 2026-11-13 23:06 KST 조용히 종료되어 2026-11-15 14:54 KST 감시 루프로 재시작됐다. 해당 구간은 보고서 운영 공백 기록에 인계한다. 수집 DB·통계·판정 자료·수집 프로세스는 접근하지 않았다. 테스트 정리에 taskkill /IM python.exe 등 Python 프로세스 일괄 종료를 사용하지 않는다. 이번 테스트는 자신이 만든 코루틴 태스크만 정리했다.
 - 다음: 같은 PR #72에서 Claude 재검토. 직접 병합하지 않는다.
+
+## 2026-11-15 — Codex (M3-05 구현 전 해석 PR)
+
+- PR #72 병합 커밋 e1823ae에서 `task/M3-05-telegram`을 만들고 `docs/tasks/M3-05-interpretation.md`에 구현 전 해석을 작성했다. 이번 변경은 문서만이다. 첫 구현 커밋 (a)은 정산 정시 검증·반복 경고 묶음·불변 저장 충돌·복구 주문 디코드 축소·미확정 커밋/entry_paused와 경계 직렬화 다섯 건이며, 다음 (b)에 Telegram 본 작업을 둔다.
+- inbox/offset 원자 저장과 명령 멱등, 60초 확인의 요청자/채팅/환경/계좌 바인딩, 기존 CommandService 재사용과 status/거절 감사 보완, 알림 원인별 묶음, Trader와 Bot worker 실패 분리, UTC 만료/일일 요약 해석 및 합성 검증 계획을 적었다.
+- 구현 전 질문 Q1~Q4: 정확한 api_expires_at 입력, M1-06 수동 복구 세 경로 범위/계약, 개인 채팅 제한, 장기 무수신 뒤 update_id 재선정/충돌 정책. 명세에 없는 위험 동작은 임의 구현하지 않고 PR에서 Claude·사용자 확인을 받는다.
+- 검증은 문서 diff/링크·대상 코드 대조만 했다. 제품 테스트는 코드 변경이 없어 실행하지 않았다. 실제 Bot API/자격 증명/연구 DB/판정 자료/D103 실행 폴더·프로세스에 접근하지 않았다. 실 봇 수동 확인은 합성 검증 완료 뒤 사용자와 함께 한다.
+- 운영 인계(사용자 확인): 종전 D103 종료는 수집기 cmd 창을 사용자가 닫은 것이 원인이었으며 Codex 작업과 무관하다. Codex 앱/샌드박스 조사 요청은 철회됐다. 현재 창 없이 별도 d103-run에서 실행 중이며 후속 작업에서도 접근하지 않는다.
+
+## 2026-11-15 — Codex (M3-05 단위 a: PR #72 이월 다섯 건)
+
+- PR #73 해석 승인에 따라 첫 구현 단위 (a)를 작성했다. UTC 정시 펀딩 검증/원시 시각 보류, 공통 WarningBatcher의 로컬 반복 경고 집계, 불변 recovery/SQL 투영 충돌, 복구 대상 SQL 필터 뒤 주문 디코드, pending entry/경계 커밋/entry_paused 복구와 경계 직렬화를 반영했다. 운영 경고 창은 `[trader].warning_window_seconds` 필수 양수 설정이며 예시는 60초다.
+- 신규 합성 회귀 29건. 복구 3종×선행 순서×적용/롤백 12조합, 실패 후 미결정 재개/운영자 정지 유지, 스레드 안전 경고 묶음, 불변 충돌/롤백, 과거 주문 300건 디코드 제외를 검사했다. SQLite는 계좌 SQL 스캔이 남고 Python 디코드 범위만 줄었다. 스키마 변경은 없다.
+- 전체 1575 passed/259.10초(마지막 회귀 2건 추가 전 수집), 최종 관련 114 passed/8.75초(신규 29건 포함). lint/format/mypy/diff 검사 통과. 지원 Python CI는 push 뒤 확인 대상이다. 자세한 명령/범위는 `docs/reports/M3-05-unit-a-validation.md`.
+- Q1 api_expires_at UTC 필수/기본값 없음, Q2 수동 복구 3종 후속 명세 분리, Q3 개인 채팅만, Q4 보수적 커서와 완료 inbox/outbox archive(active=0), 일일 요약 AI 비용 비활성을 명세/해석 문서에 반영했다. 실제 설정 로더의 api_expires_at/영속 Bot outbox는 (b) 범위이며 아직 구현하지 않았다.
+- 다음: 요청대로 (a) 커밋/테스트 결과를 PR #73에 남긴 뒤 Claude 중간 검토를 기다린다. (b)는 시작하지 않는다. 실 Bot/자격 증명/실계좌/연구 DB/판정 자료/D103 실행 폴더·프로세스는 접근하지 않았다. 실제 봇 수동 확인은 마지막에 사용자와 함께 한다.
+
+## 2026-11-16 — Codex (M3-05 단위 b: Telegram)
+
+- PR #73 단위 (a) 통과 뒤 승인 I1~I7/Q1~Q4/C1/C2로 BotClient·Telegram inbox/outbox·감독 작업·공통 명령/status/거절 감사를 조립했다. 수신 배치/커서 같은 UoW 후 offset 확인, 재시작/24시간 무수신 offset 생략, ID/내용 충돌 실행 보류, 개인 채팅·60초 확인 소유권/원래 요청/메시지 바인딩, 확정 결과 재생을 구현했다. 미확정 과거 확인을 새로 발급/자동 실행하지 않는다.
+- 생산자가 구조화 Notice 원인 키를 직접 넘기게 바꿔 app의 문장 분할을 제거했다. 로컬/영속 묶음은 WarningBatcher와 resolve를 공유하고 정시 아닌 펀딩에 “수동 확인 필요”를 넣었다. 첫 긴급 경고/명령/정지 알림을 일반 요약보다 우선하며 고유 체결을 보존한다. 자정 펀딩/계좌 커밋과 일일 요약을 같이 저장하고 AI 비용은 비활성으로 표시한다.
+- 발송 시도를 HTTP 전에 기록하고 재시작/응답 불명 재전송은 possible_duplicate 이력을 남긴다. Bot 발송 exactly-once는 주장하지 않는다. 429 전역 backoff·타임아웃·bounded 큐/탈락 수·보호/경계/tick과 실패 분리를 검증했다. CommandService는 Bot HTTP 대신 로컬 outbox enqueue만 기다리며 웹 raw 명령 JSON 방송을 없앴다.
+- 완료 inbox/outbox/receipt는 archive(active=0). SQLite 기본 작업 집합에서 Telegram archive를 제외하고 필요한 키만 조회한다. 완료 500건의 기본 적재 0건/지정 1건을 확인했다. **스키마 변경 없음(V001/V002 유지, V003 불필요)**.
+- `app.api_expires_at` UTC 필수/기본 없음·created_at보다 이후, Telegram/Control 허용 주체 일치와 Telegram 작업별 정책을 설정 예시에 반영했다. 실제 설정/키는 생성하지 않았다. 정시 아닌 펀딩 해제와 M1-06 수동 복구 3종은 후속 명세다.
+- 검증: 신규 Telegram 42 passed, 관련 통합 143 passed/10.34초, 최종 전체 **1619 passed/187.45초**. lint/format/mypy(156 source files)/diff 검사 통과. 기존 Starlette/httpx 사용 중단 예정 경고 1건. 지원 Python CI는 push 뒤 확인한다. 상세는 `docs/reports/M3-05-unit-b-validation.md`.
+- 다음: Claude의 PR #73 코드 검토·CI 및 사용자와 실제 봇 명령 5종+알림 1종 수동 확인. 수동 항목은 완료로 표시하지 않았다. 실 Bot/자격 증명/실계좌/연구 DB/판정 자료/D103 실행 폴더·프로세스에 접근하지 않았다. 테스트는 자신이 만든 코루틴/임시 DB만 정리했다.
+
+## 2026-11-16 — Codex (PR #73 수동 확인 시작 차단 P2)
+
+- 사용자/Claude가 보고한 demo position/list의 2페이지 응답(설정된 Normal 행 + 빈 상태/기본 레버리지 행)을 합성 재현했다. 공통 mapping.single_position을 check_settings와 get_positions에 적용했다. RestClient.pages의 전체 커서 순회와 레버리지 자동 변경 금지는 유지한다.
+- 예외는 요청 symbol 일치, 정수 positionIdx=0, side="", positionStatus="", 유한 숫자 문자열 size=0인 행에만 적용한다. 제외 뒤 정확히 한 행이고 그 행의 status가 Normal/Liq/Adl이어야 한다. 두 유효 행/부재·모호한 상태/헤지/비정상 수량/기본값만 있는 응답은 계속 실패한다. 남은 실제 행의 설정 레버리지 검사는 그대로다.
+- 근거: 공식 V5 position 문서의 cursor·빈 포지션 side·status 정의와 사용자가 제공한 demo 관측을 함께 사용했다. 빈 status 자체의 기본값 의미는 공식 보장이 아니므로 위 조합 외에는 추정하지 않는다. 실제 API/키/로컬 설정/운영 DB는 읽지 않았다.
+- 합성 회귀 17건 추가: BTC/ETH 각각 2페이지, 보유/평탄 두 경우, 두 유효 행·유사 기본값·비정상 크기/인덱스·다른 종목·실제 레버리지 오류 등을 검사했다. 전체 요청이 GET뿐인지 확인했다. Bybit 어댑터 71 passed, 어댑터/Trader/보호 복구 통합 **241 passed/63.95초**, lint/format/mypy/diff 검사 통과. 이번 push CI는 별도 확인 대상이다.
+- PR #73은 Draft 유지, 실제 봇 명령 5종+알림 1종 수동 확인과 재검토 뒤에만 병합한다. D103 실행 폴더·프로세스는 접근하지 않았다.
+- P3 이월: 기존 5건(영구 거절 발송 줄 막힘, message_id 없는 확인 무한 대기, 전체 체결 순회, sync.alerts finally 배출, ID 충돌 차단 해제 절차)과 새 keystore set의 빈 값/1글자 제어 문자 입력 거부를 다음 관련 PR에서 처리한다. 이번 P2에 자격 증명 저장 동작을 섞지 않았다.
+
+## 2026-11-16 — Codex (PR #73 수동 확인 기록·병합 전 P2)
+
+- 사용자·Claude 보고 수동 확인(2026-11-16 21:35–21:53 KST): 명령 5종+시작/묶음/정지 알림 수신, 확인 없는 실행 없음, 주문 0건. cancel은 빈 대상, resolve는 부재 대상 거절을 확인했다. 실제 UNKNOWN 확정 성공은 합성 검증이며 실계좌 변경으로 과장하지 않는다. 보고 링크와 상세 범위는 `docs/reports/M3-05-manual-validation.md`.
+- 허용 개인 채팅의 형식 오류/미지원 명령은 짧은 안내와 reason_code=invalid, 소유한 만료 버튼은 expired로 감사한다. 미등록/그룹은 무응답·unauthorized 유지. query ID의 근거 없는 URL-safe 문자 제한을 제거하고 원래 nonce/소유권 바인딩은 유지했다. 특수 문자/한글 ID와 message_id 미기록 만료 정리를 합성으로 확인했다.
+- TrackerState.equity_confirmed로 부팅 초기값을 미확인으로 명시했다. ResumeService는 요청·확인 모두 미확인 재개를 거절하며 웹·Telegram 같은 CommandService 경로에서 버튼 없이 사유를 반환한다. JSON 저장/복원과 과거 완전 0 seed의 보수적 판독, 저장된 미확인 상태의 실제 준비 스냅샷 초기화를 연결했다. 스키마 변경 없음. 기존 pause_revision/record_peak/허용 폭 검사는 보존한다.
+- 신규 합성 17건. 전체 1652 passed/200.67초, 안내 문구 정리 뒤 최종 Telegram/신규 58 passed/5.47초. lint/format/mypy/diff 통과. 이번 push CI는 별도 확인 대상이다. 사용자 요청대로 결과 기록과 함께 Draft를 해제하고 P2 재검토를 요청한다. 직접 병합하지 않는다.
+- 다음: **PR #73 병합 뒤 별도 작은 PR**로 demo 전용 maker_fee_rate/taker_fee_rate 명시 설정(기본 없음·없으면 시작 거부), live는 API만, demo fee-rate 10001 합성 테스트 및 출처/config_version 기록을 구현한다. 이번 PR에는 수수료 대체를 섞지 않았다.
+- P3는 /status 사람 문장·미확인 표시/day_start 원인, /resolve 거절 확인 문구, 정지 전이 묶음과 기존 이월 목록을 유지한다. day_start 11-09는 코드상 7일 이전 bootstrap 및 boot 준비 실패와 부합하지만 운영 DB로 확인하지 않았다. message_id 미기록의 만료 정리는 이번 P2에 포함됐다.
+- 실제 API/봇/키/로컬 설정/운영 DB/D103 실행 폴더·프로세스에 접근하지 않았다. 실제 수동 결과는 사용자·Claude 제공이며 Codex가 재실행하지 않았다.

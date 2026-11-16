@@ -9,12 +9,13 @@ import copy
 import json
 import secrets
 from collections.abc import Awaitable, Callable, Collection
+from dataclasses import replace
 from datetime import timedelta
 from typing import Any
 from uuid import uuid4
 
 from richletsgo.backtest.codec import primitive
-from richletsgo.domain import Clock, Environment, OrderPurpose, OrderState
+from richletsgo.domain import Clock, Environment, OrderPurpose, OrderState, StrategyId, Symbol
 from richletsgo.oms.journal import JournalRecord
 from richletsgo.oms.models import OrderRecord, confirm_not_found
 from richletsgo.portfolio.models import Action, ActionKind
@@ -60,6 +61,7 @@ class CommandService:
         self._initial_tracker_state = tracker.state
         self._startup_complete = False
         self._notifications = asyncio.Lock()
+        self.status_values: Callable[[UnitOfWork], dict[str, Any]] = lambda _: {}
         self._keys: dict[str, str] = {}
         self.prompts: dict[str, Confirmation] = {}
         self.revoked: set[tuple[str, str]] = set()
@@ -67,8 +69,8 @@ class CommandService:
             str, tuple[str, dict[str, Any], PauseState, EquityTracker, int, Any]
         ] = {}
 
-    def _authorize(self, context: Context, command: str) -> None:
-        if command not in COMMANDS:
+    def _authorize(self, context: Context, command: str, *, read: bool = False) -> None:
+        if command not in COMMANDS and not (read and command == "status"):
             raise CommandDenied("unknown command")
         if context.environment is not self.environment or context.account_id != self.account_id:
             raise CommandDenied("environment/account mismatch")
@@ -133,7 +135,7 @@ class CommandService:
             **extra,
         }
 
-    def _save(self, uow: UnitOfWork, record: dict[str, Any]) -> None:
+    def _save(self, uow: UnitOfWork, record: dict[str, Any], *, notify: bool = True) -> None:
         raw = json.dumps(record, ensure_ascii=False, sort_keys=True)
         storage = record.get("storage_key", record["request_id"])
         uow.recovery.put(
@@ -141,7 +143,90 @@ class CommandService:
         )
         uow.recovery.put("command:" + storage, raw)
         # Durable delivery queue; notification I/O never runs under the database lock.
-        uow.recovery.put("notification:" + storage + ":" + record["state"], raw)
+        if notify:
+            uow.recovery.put("notification:" + storage + ":" + record["state"], raw)
+
+    async def telegram_inspect(
+        self,
+        context: Context,
+        command: str,
+        *,
+        denial: str | None = None,
+        reason_code: str = "invalid",
+    ) -> dict[str, Any]:
+        """Shared authorization/audit path for read-only status and silent denials."""
+        async with self.lock:
+            auth = authorize_command(
+                context.actor_id, "/" + command, self.allowed_ids, self.clock.now()
+            )
+            if (
+                not auth.allowed
+                or context.environment is not self.environment
+                or context.account_id != self.account_id
+                or (context.source, context.session_id) in self.revoked
+            ):
+                denial = "권한 없는 요청"
+                reason_code = "unauthorized"
+            elif denial is None:
+                self._authorize(context, command, read=True)
+            identity = encode((context.source, context.request_id))
+            async with self.uow() as u:
+                storage = u.recovery.get("command_identity:" + identity)
+                if storage and (saved := u.recovery.get("command:" + storage)):
+                    record = dict(json.loads(saved))
+                    self._matches(record, context, command, None)
+                    return record
+                self._keys[identity] = storage or "cmd-v2-" + uuid4().hex
+                record = self._record(
+                    context, command, None, "rejected" if denial else "completed", denial or "상태"
+                )
+                if denial:
+                    record["reason_code"] = reason_code
+                if not denial:
+                    if command != "status":
+                        raise CommandDenied("read path only accepts status")
+                    books = [u.portfolio.book(s, symbol) for s in StrategyId for symbol in Symbol]
+                    record["status"] = {
+                        "equity": str(self.tracker.equity),
+                        "daily_pnl": str(self.tracker.daily_pnl),
+                        "day_start": self.tracker.day_start.isoformat(),
+                        "pauses": self.pauses.to_json(),
+                        "positions": [
+                            {
+                                "strategy": b.strategy.value,
+                                "symbol": b.symbol.value,
+                                "qty": str(b.qty),
+                                "stop": str(b.stop_price.value) if b.stop_price else None,
+                            }
+                            for b in books
+                            if b.qty
+                        ],
+                        "last_boundary": u.recovery.get("trader:last_boundary"),
+                        "last_fill": max(
+                            (f.event.exec_time.isoformat() for f in u.fills.all()), default=None
+                        ),
+                        "limit_usage": None,
+                    }
+                    record["status"].update(self.status_values(u))
+                self._save(u, record, notify=False)
+                await u.commit()
+                return record
+
+    async def saved_result(
+        self, context: Context, command: str, target: str | None = None
+    ) -> dict[str, Any] | None:
+        """Read a committed result after restart without issuing a new confirmation."""
+        async with self.lock:
+            self._authorize(context, command)
+            async with self.uow() as u:
+                identity = encode((context.source, context.request_id))
+                storage = u.recovery.get("command_identity:" + identity)
+                raw = u.recovery.get("command:" + storage) if storage else None
+                if raw is None:
+                    return None
+                record = dict(json.loads(raw))
+                self._matches(record, context, command, target)
+                return record
 
     async def request(
         self,
@@ -231,7 +316,11 @@ class CommandService:
                         ):
                             raise CommandDenied("request confirmation mismatch")
                         return self._prompt_view(existing)
-                return self._create_prompt(uow, context, command, target)
+                prompt_view = self._create_prompt(uow, context, command, target)
+                if prompt_view["state"] == "rejected":
+                    self._save(uow, prompt_view)
+                    await uow.commit()
+                return prompt_view
 
             staged_pauses, staged_tracker = (
                 copy.deepcopy(self.pauses),
@@ -354,7 +443,16 @@ class CommandService:
                 context.actor_id, self.clock.now()
             )
             if isinstance(resume, ResumeRejected):
-                raise CommandDenied(resume.reason)
+                return self._record(
+                    context,
+                    command,
+                    target,
+                    "rejected",
+                    resume.reason,
+                    reason_code="equity_unconfirmed"
+                    if not self.tracker.equity_confirmed
+                    else "resume_rejected",
+                )
             prompt.resume = resume
         elif command == "cancel":
             prompt.targets = tuple(
@@ -576,7 +674,11 @@ class CommandService:
                     restored_tracker
                     and not self._startup_complete
                     and current is self._initial_tracker_state
-                    and current == EquityTracker.open(current.latest).state
+                    and current
+                    == replace(
+                        EquityTracker.open(current.latest).state,
+                        equity_confirmed=current.equity_confirmed,
+                    )
                     and restored_tracker.state.latest.at >= current.latest.at
                 ):
                     self.tracker.publish(restored_tracker)

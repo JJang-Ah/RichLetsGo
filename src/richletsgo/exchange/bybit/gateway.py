@@ -27,6 +27,7 @@ from richletsgo.exchange.contracts import (
     PrivateEvent,
 )
 from richletsgo.marketdata.models import RiskLimitTier, from_ms, to_ms
+from richletsgo.notify.events import Notice
 from richletsgo.risk.equity import AccountSnapshot, CashFlow
 from richletsgo.risk.pause import Pause, PauseKind, PauseState
 
@@ -62,7 +63,7 @@ class BybitGateway:
 
     def pause(self, reason: str) -> None:
         if self.pauses.add(Pause(PauseKind.ENTRY_PAUSED_SYSTEM, reason, self.clock.now())):
-            self.alert(reason)
+            self.alert(Notice(reason, code="bybit:" + reason))
 
     def _bad(self, reason: str) -> ExchangeError:
         self.pause(reason)
@@ -77,7 +78,10 @@ class BybitGateway:
         """Called only with the result of M1-06 synchronize(), after WS subscription."""
         self._synchronized = success and self.connected
         if self._synchronized:
-            self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason="bybit_stream")
+            if self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason="bybit_stream"):
+                self.alert(
+                    Notice("Bybit stream synchronized", code="bybit:bybit_stream", resolved=True)
+                )
 
     async def check_clock(self) -> bool:
         start = to_ms(self.clock.now())
@@ -103,7 +107,8 @@ class BybitGateway:
         if not self._clock_ok:
             self.pause("clock")
         else:
-            self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason="clock")
+            if self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason="clock"):
+                self.alert(Notice("Bybit clock recovered", code="bybit:clock", resolved=True))
         return self._clock_ok
 
     async def check_settings(self) -> bool:
@@ -117,9 +122,9 @@ class BybitGateway:
                 "/v5/position/list", {"category": "linear", "symbol": symbol.value}
             )
             try:
-                if isinstance(rows, ExchangeError) or len(rows) != 1:
+                if isinstance(rows, ExchangeError):
                     raise ValueError
-                row = rows[0]
+                row = mapping.single_position(rows, symbol)
                 valid = (
                     valid
                     and row["symbol"] == symbol.value
@@ -382,9 +387,8 @@ class BybitGateway:
             if isinstance(rows, ExchangeError):
                 return rows
             try:
-                if len(rows) != 1 or rows[0]["symbol"] != symbol.value:
-                    raise ValueError
-                result.append(mapping.position(rows[0], self.clock.now()))
+                row = mapping.single_position(rows, symbol)
+                result.append(mapping.position(row, self.clock.now()))
             except MAPPING_ERRORS:
                 return self._bad("bybit_position_mapping")
         return tuple(result)

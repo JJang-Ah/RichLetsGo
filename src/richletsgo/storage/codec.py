@@ -79,7 +79,20 @@ def unpack(value: Any) -> Any:
     if "enum" in value:
         return TYPES[value["enum"]](value["value"])
     if "type" in value:
-        return TYPES[value["type"]](**{k: unpack(v) for k, v in value["fields"].items()})
+        data = {k: unpack(v) for k, v in value["fields"].items()}
+        if value["type"] == "TrackerState" and "equity_confirmed" not in data:
+            # Old all-zero bootstrap snapshots carry no evidence of an exchange
+            # observation. Preserve historical nonzero peaks/baselines otherwise.
+            data["equity_confirmed"] = not (
+                data["baseline"]
+                == data["net_deposit"]
+                == data["record_peak"]
+                == data["risk_peak"]
+                == 0
+                and data["latest"].wallet_balance == data["latest"].unrealized_pnl == 0
+                and not data["seen_flows"]
+            )
+        return TYPES[value["type"]](**data)
     if "list" in value:
         return [unpack(v) for v in value["list"]]
     if "tuple" in value:

@@ -11,6 +11,7 @@ from richletsgo.config import BybitConfig
 from richletsgo.domain.clock import Clock
 from richletsgo.keystore import ApiCredential
 from richletsgo.marketdata.models import Bar, to_ms
+from richletsgo.notify.events import Notice
 
 from .gateway import BybitGateway
 from .mapping import bars
@@ -166,7 +167,9 @@ class StreamRunner:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.alert("bybit_private_reconnect")  # never expose authentication payload
+                self.alert(
+                    Notice("bybit_private_reconnect", code="bybit_private_reconnect")
+                )  # never expose authentication payload
             finally:
                 gateway.stream_state(False)
             # At least one second even after a successful short-lived connection: <500 / 5min.
@@ -199,7 +202,7 @@ class StreamRunner:
             except asyncio.CancelledError:
                 raise
             except Exception:
-                self.alert("bybit_public_reconnect")
+                self.alert(Notice("bybit_public_reconnect", code="bybit_public_reconnect"))
             finally:
                 await on_connection(False)
             await self.sleep(delay)

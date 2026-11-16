@@ -15,6 +15,7 @@ from typing import Any, Self, TypeVar
 from uuid import uuid4
 
 from richletsgo.domain import Environment
+from richletsgo.notify.events import Notice
 from richletsgo.portfolio.models import CloseState
 from richletsgo.risk.records import EpisodeState
 
@@ -27,7 +28,7 @@ from .errors import (
     StorageBusy,
     StorageError,
 )
-from .memory import InMemoryDatabase, InMemoryUnitOfWork, _State
+from .memory import IMMUTABLE_RECOVERY, InMemoryDatabase, InMemoryUnitOfWork, _State
 from .paths import local_database_path
 from .schema import TABLES, VERSION
 from .working_set import signal_time, working_set
@@ -130,8 +131,8 @@ class SqliteDatabase(InMemoryDatabase):
             )
         self._lock = self._file.lock
 
-    def unit_of_work(self) -> "SqliteUnitOfWork":
-        return SqliteUnitOfWork(self)
+    def unit_of_work(self, recovery_keys: tuple[str, ...] = ()) -> "SqliteUnitOfWork":
+        return SqliteUnitOfWork(self, recovery_keys)
 
     @property
     def entry_paused(self) -> bool:
@@ -225,7 +226,13 @@ class SqliteDatabase(InMemoryDatabase):
     def _unknown(self, txn_id: str) -> None:
         self._file.unresolved[txn_id] = self.account_id
         if self.alert:
-            self.alert("ENTRY_PAUSED_SYSTEM(storage): " + txn_id)
+            self.alert(
+                Notice(
+                    "ENTRY_PAUSED_SYSTEM(storage): " + txn_id,
+                    code="storage_uncertain",
+                    related=txn_id,
+                )
+            )
 
     async def resolve(self, txn_id: str) -> bool:
         """Determine the result only. Resume requires journal reconciliation by the caller."""
@@ -259,7 +266,13 @@ class SqliteDatabase(InMemoryDatabase):
                 return result
         except (TimeoutError, sqlite3.Error):
             if self.alert:
-                self.alert("storage outcome resolution failed: " + txn_id)
+                self.alert(
+                    Notice(
+                        "storage outcome resolution failed: " + txn_id,
+                        code="storage_resolution",
+                        related=txn_id,
+                    )
+                )
             raise
 
     def reconciled(self, txn_id: str) -> None:
@@ -333,11 +346,12 @@ def _rows(state: _State, field: str) -> dict[str, str]:
 class SqliteUnitOfWork(InMemoryUnitOfWork):
     database: SqliteDatabase
 
-    def __init__(self, database: SqliteDatabase) -> None:
+    def __init__(self, database: SqliteDatabase, recovery_keys: tuple[str, ...] = ()) -> None:
         super().__init__(database)
         self.txn_id = uuid4().hex
         self._connection: sqlite3.Connection | None = None
         self._baseline = _State()
+        self._recovery_keys = recovery_keys
 
     @property
     def entry_paused(self) -> bool:
@@ -363,6 +377,14 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             container = getattr(state, field)
             condition = "account_id=?"
             parameters: tuple[Any, ...] = (self.database.account_id,)
+            if field == "recovery_archive":
+                # Completed Telegram receipts are point-lookups, never a growing
+                # bootstrap working set. Other archive contracts remain unchanged.
+                condition += " AND (key NOT GLOB '\"telegram_*'"
+                if self._recovery_keys:
+                    condition += " OR key IN (" + ",".join("?" for _ in self._recovery_keys) + ")"
+                    parameters += tuple(encode(k) for k in self._recovery_keys)
+                condition += ")"
             if field in ("fills", "decisions", "intents", "episodes", "orders"):
                 condition += " AND (active=1 OR updated_at>=?)"
                 parameters += (milliseconds(cutoff),)
@@ -378,13 +400,20 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 else:
                     container.append(value)
         if state.recoveries:
-            # Decode only on the rare recovery path; working_set filters unrelated archive rows.
+            # Filter tagged JSON in SQL before decoding archived domain objects.
+            # This is a SQL scan, not an indexed strategy/symbol lookup.
+            pairs = list(state.recoveries)
+            predicates = " OR ".join(
+                "(json_extract(payload,'$.fields.strategy.value')=? AND "
+                "json_extract(payload,'$.fields.symbol.value')=?)"
+                for _ in pairs
+            )
             for key, payload in self._connection.execute(
-                "SELECT key,payload FROM orders WHERE account_id=?", (self.database.account_id,)
+                "SELECT key,payload FROM orders WHERE account_id=? AND (" + predicates + ")",
+                (self.database.account_id, *(v.value for pair in pairs for v in pair)),
             ):
-                order = decode(payload)
-                if (order.strategy, order.symbol) in state.recoveries:
-                    state.orders[decode(key)] = order
+                if decode(key) not in state.orders:
+                    state.orders[decode(key)] = decode(payload)
         for source, external, key in self._connection.execute(
             "SELECT source,external_request_id,storage_key FROM command_identities WHERE account_id=?",
             (self.database.account_id,),
@@ -483,6 +512,8 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
                 elif field == "intents":
                     at = milliseconds(value.created_at)
                     active = int(value.state is not CloseState.DONE)
+                elif field == "recovery_archive":
+                    active = 0
                 values: tuple[Any, ...] = (self.database.account_id, key, payload, at, active)
                 if field == "episodes":
                     episode = decode(payload)
@@ -516,6 +547,7 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         assert self._connection is not None
         c, account = self._connection, self.database.account_id
         projections = {
+            "telegram_outbox:": "alerts",
             "config_version:": "config_versions",
             "boundary_input:": "boundary_inputs",
             "boundary_output:": "boundary_outputs",
@@ -526,6 +558,16 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
         prefix = key.partition(":")[0] + ":"
         if prefix in projections:
             table = projections[prefix]
+            if prefix[:-1] in IMMUTABLE_RECOVERY:
+                previous = c.execute(
+                    f"SELECT payload FROM {table} WHERE account_id=? AND key=?", (account, key)
+                ).fetchone()
+                if previous is not None:
+                    if previous[0] != value:
+                        raise StorageError("immutable audit projection conflict: " + prefix)
+                    return
+                c.execute(f"INSERT INTO {table} VALUES(?,?,?,?)", (account, key, value, now))
+                return
             c.execute(
                 f"INSERT INTO {table} VALUES(?,?,?,?) ON CONFLICT(account_id,key) DO UPDATE SET payload=excluded.payload",
                 (account, key, value, now),
@@ -628,7 +670,13 @@ class SqliteUnitOfWork(InMemoryUnitOfWork):
             await self._close()
         except StorageError:
             if self.database.alert:
-                self.database.alert("committed transaction cleanup failed: " + self.txn_id)
+                self.database.alert(
+                    Notice(
+                        "committed transaction cleanup failed: " + self.txn_id,
+                        code="storage_cleanup",
+                        related=self.txn_id,
+                    )
+                )
         self.database.last_commit_at = self.database.now()
 
     def _close_worker(self) -> None:

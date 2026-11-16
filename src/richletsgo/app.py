@@ -26,13 +26,18 @@ from richletsgo.health import install_health
 from richletsgo.keystore import KeyStore, windows_backend
 from richletsgo.live.inputs import BybitInputs
 from richletsgo.live.trader import LoopPolicy, Trader
+from richletsgo.notify.batching import WarningBatcher
+from richletsgo.notify.bot import BotClient
+from richletsgo.notify.events import Notice
+from richletsgo.notify.telegram import Telegram
+from richletsgo.oms.exposure import exposure
 from richletsgo.oms.journal import ProtectiveJournal
 from richletsgo.oms.synchronizer import Synchronizer, SyncPolicy
-from richletsgo.ops.logging import configure_logging
+from richletsgo.ops.logging import Redactor, configure_logging
 from richletsgo.portfolio.models import ClosePolicy
 from richletsgo.portfolio.service import PortfolioService
 from richletsgo.portfolio.signals import AiMode, AiScoreStore, SignalRouter
-from richletsgo.risk.equity import AccountSnapshot, EquityTracker
+from richletsgo.risk.equity import EquityTracker
 from richletsgo.risk.gate import RiskGate
 from richletsgo.risk.pause import PauseState
 from richletsgo.storage.sqlite import SqliteDatabase, open_readonly
@@ -58,6 +63,7 @@ def loop_policy(path: Path) -> LoopPolicy:
         "max_signal_age_seconds",
         "rest_every_seconds",
         "products_every_seconds",
+        "warning_window_seconds",
     )
     if set(row) != set(names) or any(type(row[k]) is not int or row[k] <= 0 for k in names):
         raise ValueError("invalid Trader loop policy")
@@ -68,17 +74,32 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
     if config.environment is not Environment.DEMO or config.ai_mode != "disabled":
         raise ValueError("M3 Trader only supports demo with AI disabled")
     clock = SystemClock()
+    bot_token = keys.get(config.keystore["telegram_bot"])
     credential = keys.api(config.keystore["bybit_demo_api"], config.api_created_at)
     logger = configure_logging(
         config.paths.log_dir,
         environment=config.environment,
         service="Trader",
         retention_days=config.log_retention_days,
-        secrets=(credential.key, credential.secret),
+        secrets=(credential.key, credential.secret, bot_token),
     )
 
+    warnings = WarningBatcher(
+        clock, policy.warning_window, lambda message: logger.warning("%s", message)
+    )
+
+    telegram_holder: list[Telegram] = []
+
     def alert(message: str) -> None:
-        logger.warning("%s", message)
+        if not isinstance(message, Notice):
+            raise TypeError("alert producer must supply a structured Notice")
+        cause = (config.environment.value, account_id, *message.key)
+        if message.resolved:
+            warnings.resolve(cause, message)
+        else:
+            warnings.warn(cause, message)
+        if telegram_holder:
+            telegram_holder[0].capture(message)
 
     def unique() -> str:
         return uuid4().hex
@@ -103,10 +124,8 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
     finally:
         connection.close()
     pauses = PauseState()
-    tracker = EquityTracker.open(
-        AccountSnapshot(
-            clock.now() - timedelta(days=config.storage.working_set_days), Decimal(0), Decimal(0)
-        )
+    tracker = EquityTracker.unconfirmed(
+        clock.now() - timedelta(days=config.storage.working_set_days)
     )
     gate = RiskGate(
         account_id=account_id,
@@ -162,22 +181,30 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
         )
 
         async def notify(message: str) -> None:
-            bot = keys.get(config.keystore["telegram_bot"])
-            try:
-                for user in config.telegram_users:
-                    async with session.post(
-                        "https://api.telegram.org/bot" + bot.reveal() + "/sendMessage",
-                        json={"chat_id": user, "text": message},
-                        allow_redirects=False,
-                        timeout=aiohttp.ClientTimeout(total=config.bybit.timeout_seconds),
-                    ) as response:
-                        if response.status != 200:
-                            raise OSError("Telegram notification unavailable")
-            except aiohttp.ClientError:
-                raise OSError("Telegram notification unavailable") from None
+            await telegram.command_notification(message)
 
         control = build_control(config, database, gate, clock, keys, notify)
+        telegram = Telegram(
+            database=database,
+            service=control.service,
+            bot=BotClient(session, bot_token, config.telegram.http_timeout_seconds),
+            clock=clock,
+            policy=config.telegram,
+            users=config.telegram_users,
+            expires_at=config.api_expires_at,
+            warning_window=policy.warning_window,
+            redactor=Redactor((credential.key, credential.secret, bot_token)),
+        )
+        telegram_holder.append(telegram)
         inputs = BybitInputs(config, gateway, router)
+
+        def status_values(u: Any) -> dict[str, Any]:
+            if not set(config.bybit.symbols) <= inputs.marks.keys():
+                return {"limit_usage": None}
+            used = exposure(u, marks=inputs.marks, slippage_buffer=config.risk.slippage_buffer)
+            return {"limit_usage": str(used.total_notional / config.risk.max_account_notional_usdt)}
+
+        control.service.status_values = status_values
 
         async def recover() -> None:
             if not await database.recover(sync.synchronize):
@@ -206,6 +233,7 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
                 "last_commit": database.last_commit_at.isoformat()
                 if database.last_commit_at
                 else None,
+                "telegram": dict(telegram.health),
             }
 
         install_health(control.api, watchdog)
@@ -242,11 +270,15 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
 
         async def loop() -> None:
             while not stop.is_set():
+                warnings.flush()
                 try:
                     await trader.maintenance()
+                    for event in tuple(sync.alerts):
+                        alert(event)
+                    sync.alerts.clear()
                 except (OSError, ValueError):
                     trader.ready = False
-                    alert("Trader reconciliation required")
+                    alert(Notice("Trader reconciliation required", code="trader_reconcile"))
                 await asyncio.sleep(policy.tick.total_seconds())
 
         async def boundaries() -> None:
@@ -256,22 +288,23 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
                         await trader.process_next()
                     except (OSError, ValueError):
                         trader.ready = False
-                        alert("Trader boundary reconciliation required")
+                        alert(
+                            Notice(
+                                "Trader boundary reconciliation required", code="trader_boundary"
+                            )
+                        )
                 await asyncio.sleep(policy.tick.total_seconds())
 
         await control.service.startup()  # Restore before private WS or any new account observation.
         if not await gateway.initialize():
             raise OSError("Bybit startup checks failed")
-        await notify(
-            "Trader startup: "
-            + config.environment.value
-            + " AI="
-            + config.ai_mode
-            + " config="
-            + digest(record)
-            + " strategies="
-            + ",".join(s.candidate for s in config.strategies.values())
+        alert(
+            Notice(
+                "Trader startup: " + config.environment.value + " AI=" + config.ai_mode,
+                code="trader_started",
+            )
         )
+        telegram_task = asyncio.create_task(telegram.run(stop))
         tasks = [
             asyncio.create_task(stream.private(gateway, boot)),
             asyncio.create_task(loop()),
@@ -304,7 +337,10 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
             await asyncio.gather(
                 *tasks, stop_task, *([public_task] if public_task else []), return_exceptions=True
             )
+            telegram_task.cancel()
+            await asyncio.gather(telegram_task, return_exceptions=True)
             await trader.close()
+            await telegram.shutdown()
             for signum, handler in previous.items():
                 signal.signal(signum, handler)
 

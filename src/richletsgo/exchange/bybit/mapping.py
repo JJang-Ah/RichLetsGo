@@ -1,6 +1,6 @@
 """Strict V5 mappings. Missing/unknown fields fail reconciliation, never invent ownership."""
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from datetime import datetime
 from decimal import Decimal
 from typing import Any
@@ -106,6 +106,37 @@ def execution(row: Mapping[str, Any]) -> ExecutionEvent:
         from_ms(int(row["execTime"])),
         flag(row["isMaker"]),
     )
+
+
+def single_position(rows: Sequence[Mapping[str, Any]], symbol: Symbol) -> Mapping[str, Any]:
+    """Keep one authoritative row, excluding the observed demo empty placeholder.
+
+    Bybit documents cursor pagination, empty-side flat positions and the three
+    nonempty status values. Blank status itself is an observed demo deviation,
+    not a documented promise: never infer flatness from that field alone.
+    """
+    selected = []
+    for row in rows:
+        if row["symbol"] != symbol.value:
+            raise ValueError("unexpected position symbol")
+        placeholder = (
+            row.get("positionStatus") == ""
+            and type(row.get("positionIdx")) is int
+            and row["positionIdx"] == 0
+            and row.get("side") == ""
+            and number(row["size"]) == 0
+        )
+        if not placeholder:
+            selected.append(row)
+    if len(selected) != 1:
+        raise ValueError("one authoritative position required")
+    if len(selected) != len(rows) and selected[0].get("positionStatus") not in {
+        "Normal",
+        "Liq",
+        "Adl",
+    }:
+        raise ValueError("placeholder requires a documented authoritative status")
+    return selected[0]
 
 
 def position(row: Mapping[str, Any], at: datetime) -> PositionSnapshot:

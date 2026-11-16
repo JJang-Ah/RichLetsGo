@@ -26,7 +26,11 @@ from .contracts import (
     RecoveryRepository,
     UnitOfWork,
 )
-from .errors import DuplicateExecId, DuplicateSignalId
+from .errors import DuplicateExecId, DuplicateSignalId, StorageError
+
+IMMUTABLE_RECOVERY = frozenset(
+    ("config_version", "boundary_input", "boundary_output", "position_snapshot", "funding_record")
+)
 
 
 @dataclass
@@ -105,7 +109,7 @@ class InMemoryDatabase:
         self._state = _State()
         self._lock = asyncio.Lock()
 
-    def unit_of_work(self) -> UnitOfWork:
+    def unit_of_work(self, recovery_keys: tuple[str, ...] = ()) -> UnitOfWork:
         return InMemoryUnitOfWork(self)
 
 
@@ -343,6 +347,10 @@ class _Recovery:
 
     def put(self, key: str, value: str) -> None:
         state = self.owner.state
+        if key.partition(":")[0] in IMMUTABLE_RECOVERY:
+            previous = self.get(key)
+            if previous is not None and previous != value:
+                raise StorageError("immutable recovery record conflict: " + key.partition(":")[0])
         # Identical replay cannot resurrect completed work.
         if key in state.recovery_archive and state.recovery_archive[key] == value:
             return
