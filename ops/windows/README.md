@@ -19,7 +19,7 @@
 
 스크립트는 서비스를 disabled로 구성한 후 NSSM 편집 화면을 연다. Log on 탭에 자격 증명을 소유한 사용자를 지정하고 저장한다. StartName이 요청한 계정과 일치할 때만 자동 시작으로 전환한다. 스크립트는 서비스를 시작하지 않는다. 기존 서비스가 있으면 덮어쓰지 않는다. 세 서비스 사이 SCM 의존성은 없으며 Trader 내부 부팅·동기화 게이트가 진입을 제어한다.
 
-서비스는 `python -m richletsgo_watchdog.service <역할> --config <절대 경로> --account <계좌>`를 실행한다. 이 래퍼는 시작 기록을 남기고 **같은 프로세스에서** 원래 모듈을 실행한다. 자식 프로세스를 띄우거나 프로세스를 종료하는 코드가 없다. NSSM은 `AppKillProcessTree=0`으로 원래 PID만 관리한다. 정상 종료 0과 재시작 한도 종료 78은 Exit, 다른 종료 코드는 설정 간격 후 Restart다. 공식 근거: [NSSM 사용법](https://nssm.cc/usage), [AppKillProcessTree 설명](https://git.nssm.cc/nssm/nssm).
+서비스는 `python -m richletsgo_watchdog.service <역할> --config <절대 경로> --account <계좌>`를 실행한다. 이 래퍼는 시작 기록을 남기고 **같은 프로세스에서** 원래 모듈을 실행한다. 자식 프로세스를 띄우거나 프로세스를 종료하는 코드가 없다. NSSM 2.24에는 `AppKillProcessTree` 설정이 없으므로 기본 동작을 쓴다. 강제 종료 때 NSSM은 **그 서비스가 띄운 프로세스와 그 자식만** 끝내고, 다른 python·cmd 프로세스(D103 등)는 건드리지 않는다. 가상환경 `python.exe`는 실제 인터프리터를 자식으로 띄우는 런처이므로, 런처 PID만 끝내면 실제 Trader가 남아 재시작 때 두 개가 뜰 수 있다. 그래서 트리 종료 끄기를 쓰지 않는다(2026-11-17 Claude, NSSM 2.24 실제 등록 중 확인). 정상 종료 0과 재시작 한도 종료 78은 Exit, 다른 종료 코드는 설정 간격 후 Restart다. 공식 근거: [NSSM 사용법](https://nssm.cc/usage).
 
 시작 횟수에는 최초 시작·운영자 재시작도 포함된다. 창 안 한도에 닿은 뒤 다음 시작은 실제 모듈을 실행하지 않고 blocked를 기록하며 78로 종료한다. 파일 오류/손상도 시작을 거절한다. 제한은 시간이 지나도 자동 해제하지 않는다. 종료 전에 DB와 무관한 Telegram sendMessage를 제한된 시간으로 시도하며 실패는 고정 문구로 stdout에 남긴다. 별도 Watchdog도 Trader/Dashboard 제한 기록을 감시한다. Watchdog 자체가 멈추거나 네트워크/봇도 실패하면 Telegram 전달을 보장할 수 없으므로 SCM 상태와 서비스 로그를 함께 확인한다.
 

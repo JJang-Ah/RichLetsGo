@@ -51,7 +51,9 @@ foreach ($role in $roles) {
     Invoke-Nssm @('set', $name, 'Start', 'SERVICE_DISABLED')
     Invoke-Nssm @('set', $name, 'AppParameters', (Arguments-For 'richletsgo_watchdog.service' $role))
     Invoke-Nssm @('set', $name, 'AppDirectory', (Split-Path -Parent $Config))
-    Invoke-Nssm @('set', $name, 'AppKillProcessTree', '0')
+    # NSSM 2.24 has no AppKillProcessTree. Keep its default: on forced stop it ends only this
+    # service's own descendants. The venv python.exe is a launcher with the real interpreter as
+    # its child, so killing only the launcher PID could orphan a second Trader.
     Invoke-Nssm @('set', $name, 'AppStopMethodConsole', '30000')
     Invoke-Nssm @('set', $name, 'AppExit', 'Default', 'Restart')
     Invoke-Nssm @('set', $name, 'AppExit', '0', 'Exit')
