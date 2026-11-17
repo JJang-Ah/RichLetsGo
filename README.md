@@ -75,6 +75,10 @@ py -3.14 -m venv .venv
 
 ## Demo Trader 실행 (M3-04)
 
+demo는 `[bybit.demo].maker_fee_rate`와 `taker_fee_rate`를 소수 비율 문자열로 명시해야 합니다. 기본값이나 연구용 수수료에서 가져오는 대체 값은 없으며, 누락하면 키 조회/네트워크 연결 전에 설정 로더가 거절합니다. demo의 수수료 API를 호출했다가 실패 시 대체하는 방식도 사용하지 않습니다. 설정의 taker 비율을 기존 위험 검사 입력에 쓰며 실제 체결 수수료 장부는 거래소 체결 값을 계속 사용합니다.
+
+`fee_rate_source`에는 값의 출처와 확인일을 남길 수 있습니다. 생략하면 출처를 `configuration:[bybit.demo]`로 기록하며 비율 기본값이 생기는 것은 아닙니다. 값 두 개와 출처는 기존 설정 해시와 config_versions에 포함됩니다. 예시 `0.0002`/`0.00055`는 [Bybit 공식 일반 Perpetual/Futures VIP 0 표](https://www.bybit.com/en/help-center/article/Trading-Fee-Structure)를 2026-11-17에 확인한 값입니다. 실제 적용 조건을 확인하고 입력해야 합니다. [demo 지원 API 목록](https://bybit-exchange.github.io/docs/v5/demo)에는 fee-rate가 없으며 사용자에게서 retCode 10001이 보고됐습니다. live의 수수료 경로는 API만 사용하며 실패해도 demo 설정으로 대체하지 않습니다. 기존 M3의 실제 live 시작 금지는 유지합니다.
+
 다음은 운영자가 직접 실행하는 명령입니다. 개발 테스트는 실제 키·데모 계좌를 사용하지 않습니다. 설정에 `environment = "demo"`, `ai.mode = "disabled"`, `[trader]`의 여섯 양수 초 단위 값을 명시합니다. `warning_window_seconds`는 동일 원인 경고의 반복 집계 창이며 최초 경고는 즉시 기록합니다. 모든 운영 폴더와 `[storage].db_file`은 설정 파일 위치 기준으로 해석합니다. 계좌 이름은 기존 SQLite meta.account_id와 같아야 합니다.
 
 ```powershell

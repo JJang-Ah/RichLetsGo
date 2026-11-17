@@ -952,3 +952,12 @@
 - 다음: **PR #73 병합 뒤 별도 작은 PR**로 demo 전용 maker_fee_rate/taker_fee_rate 명시 설정(기본 없음·없으면 시작 거부), live는 API만, demo fee-rate 10001 합성 테스트 및 출처/config_version 기록을 구현한다. 이번 PR에는 수수료 대체를 섞지 않았다.
 - P3는 /status 사람 문장·미확인 표시/day_start 원인, /resolve 거절 확인 문구, 정지 전이 묶음과 기존 이월 목록을 유지한다. day_start 11-09는 코드상 7일 이전 bootstrap 및 boot 준비 실패와 부합하지만 운영 DB로 확인하지 않았다. message_id 미기록의 만료 정리는 이번 P2에 포함됐다.
 - 실제 API/봇/키/로컬 설정/운영 DB/D103 실행 폴더·프로세스에 접근하지 않았다. 실제 수동 결과는 사용자·Claude 제공이며 Codex가 재실행하지 않았다.
+
+## 2026-11-17 — Codex (demo 명시 수수료 설정, PR #73 병합 후 별도 PR)
+
+- 사용자 확인대로 PR #73이 main 4386995로 병합된 뒤 최신 main에서 `codex/demo-explicit-fee-rates`를 만들었다. demo의 fee-rate retCode 10001로 boot가 실패하는 문제만 수정한다. 이월 P3와 D103은 범위 밖이다.
+- demo는 `[bybit.demo].maker_fee_rate`/`taker_fee_rate` 두 Decimal 문자열을 필수로 읽는다. 숫자 기본값/연구 설정 대체/실패 뒤 API fallback은 없다. 누락은 설정 로더에서 시작 거부, programmatic 누락도 maintain에서 외부 호출 전 거절한다. demo maintain은 상품 갱신을 유지하되 fee-rate API를 호출하지 않고 설정 taker를 기존 위험 입력으로 사용한다. 체결 장부 수수료는 기존 거래소 체결 값을 유지한다.
+- fee_rate_source를 지정하면 출처를 함께 기록하고 생략 시 configuration:[bybit.demo]라는 위치만 남긴다(비율 기본값 없음). 설정 두 값과 출처는 public_dict→설정 해시→기존 config_version 경로에 포함된다. 예시는 공식 일반 Perpetual/Futures VIP 0 표의 maker 0.0200%/taker 0.0550%를 2026-11-17에 재확인해 소수 비율로 적었다. 지역/VIP 등 실제 조건 확인 책임을 문서에 명시했다.
+- live 정책은 API 조회뿐이며 10001도 실패로 유지하고 demo 설정을 사용하지 않는다. 실제 live 시작/REST endpoint 가드는 그대로다. live 분기 검증은 가짜 클라이언트의 정책 라벨만 바꾼 합성이며 실제 live 접속 시험이 아니다.
+- 신규 합성 14건: 실제 RestClient/FakeTransport의 10001, demo 재갱신 시 API 미호출, 누락/비정상 비율 거절, live 성공값 우선·10001 fallback 금지, source/설정 해시/config_version 보존. 관련 회귀 **99 passed/6.64초**, lint/format/mypy(156 source files)/diff 검사 통과. 새 PR push CI는 별도 확인 대상이다.
+- 실제 API/키/로컬 설정/운영 DB/연구 DB/판정 자료/D103 실행 폴더·프로세스에는 접근하지 않았다. 다음은 Claude의 작은 PR 검토이며 Codex는 직접 병합하지 않는다. /status 표시/day_start, /resolve 거절 문구, 정지 전이 묶음, keystore 입력 검증 등 이월 P3는 유지한다.

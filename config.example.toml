@@ -26,6 +26,11 @@ trigger_by = "LastPrice"
 [bybit.demo]
 rest_url = "https://api-demo.bybit.com"
 private_ws_url = "wss://stream-demo.bybit.com/v5/private"
+# Explicit DEMO fractions, not percent and not runtime defaults.
+# Standard Perpetual/Futures VIP 0 table checked 2026-11-17; verify for your demo setup.
+maker_fee_rate = "0.0002"
+taker_fee_rate = "0.00055"
+fee_rate_source = "Bybit standard Perpetual/Futures VIP 0; https://www.bybit.com/en/help-center/article/Trading-Fee-Structure; checked 2026-11-17"
 
 [risk]
 # Explicit DEMO research examples (D88); live is refused by M3.
