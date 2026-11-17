@@ -96,6 +96,11 @@ D97은 S1B 주 보고서 PASS가 필수이며 S2-P를 켜면 부 보고서 PASS�
 
 ## 참고 문서
 
+M3-06 Watchdog은 `python -m richletsgo_watchdog --config <설정 절대 경로>`로 실행한다.
+`[watchdog]` 설정을 먼저 명시한다. 실제 서비스 등록·백업 예약·시계 상태 점검과
+재부팅/재시작 수동 확인은 [Windows 운영 절차](ops/windows/README.md)를 따른다.
+Watchdog은 독립적인 읽기 전용 감시 및 Telegram 발송 전용이며 주문·제어 명령을 실행하지 않는다.
+
 - Bybit V5 API: https://bybit-exchange.github.io/docs/v5/intro
 - Bybit 데모: https://bybit-exchange.github.io/docs/v5/demo
 - 한국투자증권: https://github.com/koreainvestment/open-trading-api
