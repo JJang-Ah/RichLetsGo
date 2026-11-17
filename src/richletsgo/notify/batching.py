@@ -64,6 +64,10 @@ class WarningBatcher:
                 self._summary(episode)
             self.emit(message)
 
+    def transition(self, key: Hashable, message: str) -> None:
+        """Coalesce on/off changes without resetting the cause's fixed window."""
+        self.warn(key, message)
+
     def _summary(self, episode: _Episode) -> None:
         if episode.repeated:
             message = (

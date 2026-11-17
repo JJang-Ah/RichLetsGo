@@ -315,8 +315,9 @@ class Trader:
         if self._last_tick is not None and now - self._last_tick < self.policy.tick:
             return
         self._last_tick = now
-        if Interval.DAY.floor(now) > self.gate.tracker.day_start:
-            self.funding_wait = True
+        # Date rollover is already fail-closed in can_enter(). Only the boundary
+        # funding stage owns funding_wait; maintenance must not re-arm it between
+        # settlement completion and the new account tracker publication.
         expected = (
             self.last_boundary + Interval.HOUR.duration
             if self.last_boundary
