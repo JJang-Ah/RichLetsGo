@@ -194,6 +194,7 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
             expires_at=config.api_expires_at,
             warning_window=policy.warning_window,
             redactor=Redactor((credential.key, credential.secret, bot_token)),
+            pause_visible=sync.pause_visible,
         )
         telegram_holder.append(telegram)
         inputs = BybitInputs(config, gateway, router)
@@ -273,12 +274,14 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
                 warnings.flush()
                 try:
                     await trader.maintenance()
-                    for event in tuple(sync.alerts):
-                        alert(event)
-                    sync.alerts.clear()
                 except (OSError, ValueError):
                     trader.ready = False
                     alert(Notice("Trader reconciliation required", code="trader_reconcile"))
+                finally:
+                    events = tuple(sync.alerts)
+                    sync.alerts.clear()
+                    for event in events:
+                        alert(event)
                 await asyncio.sleep(policy.tick.total_seconds())
 
         async def boundaries() -> None:

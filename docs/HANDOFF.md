@@ -961,3 +961,11 @@
 - live 정책은 API 조회뿐이며 10001도 실패로 유지하고 demo 설정을 사용하지 않는다. 실제 live 시작/REST endpoint 가드는 그대로다. live 분기 검증은 가짜 클라이언트의 정책 라벨만 바꾼 합성이며 실제 live 접속 시험이 아니다.
 - 신규 합성 14건: 실제 RestClient/FakeTransport의 10001, demo 재갱신 시 API 미호출, 누락/비정상 비율 거절, live 성공값 우선·10001 fallback 금지, source/설정 해시/config_version 보존. 관련 회귀 **99 passed/6.64초**, lint/format/mypy(156 source files)/diff 검사 통과. 새 PR push CI는 별도 확인 대상이다.
 - 실제 API/키/로컬 설정/운영 DB/연구 DB/판정 자료/D103 실행 폴더·프로세스에는 접근하지 않았다. 다음은 Claude의 작은 PR 검토이며 Codex는 직접 병합하지 않는다. /status 표시/day_start, /resolve 거절 문구, 정지 전이 묶음, keystore 입력 검증 등 이월 P3는 유지한다.
+
+## 2026-11-17 — Codex (M3-07 운영 인계·정기 대조 알림·준비 경합)
+
+- 사용자 제공 운영 확인: PR #74 병합 후 13:00–13:25 KST demo 시작 점검/private WS/Telegram 정상, boot incomplete 없음, 주문 0건, 수동 정지 유지. PC 시계가 약 +1.2초/일 빨라져 사용자가 로컬 clock_limit_ms=5000으로 올렸으며 REST 타임스탬프는 offset 보정된다. **M3-07의 해당 PC 운영 값**으로 기록하며 저장소 기본값이나 다른 환경의 허용 한도는 바꾸지 않았다.
+- main 6a41a73에서 codex/trader-reconcile-alerts를 만들었다. 정상 대조의 일시 sync는 진입 차단을 유지하되 원시 Notice/Telegram 전이에서 제외한다. 기존 정지·실패/중단 후 잔류 정지는 알리고, 진행 중에도 기존 SyncPolicy.unknown_alert_after(앱 2분) 이상 지속하면 보인다. 정지/해소는 기존 WarningBatcher 창으로 함께 묶어 첫 전이 즉시/나머지 최신 상태 요약으로 보낸다. 창·관측·outbox 원자 저장, 큐 포화 재시도와 재시작 복원을 검증했다. 관련 이월 P3인 sync.alerts finally 배출도 포함했다.
+- P2-2는 수정 전 합성 테스트에서 재현했다. funding 해소→account 조회 대기→maintenance가 funding_wait 재설정→새 tracker 게시 뒤에도 can_enter 거짓 순서다. maintenance의 날짜 비교 중복 쓰기를 제거하고 실제 펀딩 대기는 경계 funding 단계만 관리한다. 기존 can_enter 날짜 검사는 account 준비 전 진입을 계속 차단한다. 경계 I/O에 maintenance 전체를 묶지 않아 보호/tick도 유지한다.
+- 신규 합성 7 passed: 자정/재시작 경합과 이후 5분, 정상 대조 25회 진행 중 차단 및 알림 0건, 지속/실패 알림, 20회 정지 전이 묶음, 큐 포화·notifier 재시작 복원. 전체 **1672 passed/194.19초**, 이후 큐 포화·재시작 회귀 1건만 추가하여 최종 신규 파일 **7 passed/1.18초**로 확인했다. 기존 Starlette/httpx 경고 1건. lint/format/mypy(156 source files)/diff 통과. 상세는 docs/reports/M3-07-readiness-and-notifications.md.
+- 다음: Claude의 작은 PR 검토와 지원 Python CI 확인, 이후 사용자·Claude의 demo 재확인/24시간·자정 운영. Codex는 실제 운영 원인을 DB로 확인하거나 실제 API를 재호출하지 않았다. 실제 키/로컬 설정/운영 DB/연구·판정 자료 및 D103 실행 폴더·프로세스에는 접근하지 않았다. 테스트는 자신이 만든 코루틴과 합성 임시 DB만 정리한다. /status/day_start 표시, /resolve 문구, keystore 입력 등 나머지 P3는 이월한다.

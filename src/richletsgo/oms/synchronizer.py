@@ -42,7 +42,7 @@ from richletsgo.portfolio.trailing import (
     settle_trails,
 )
 from richletsgo.risk.equity import AccountSnapshot
-from richletsgo.risk.pause import PauseKind, PauseState
+from richletsgo.risk.pause import Pause, PauseKind, PauseState
 from richletsgo.risk.records import EpisodeState
 from richletsgo.storage.contracts import FillStatus, UnitOfWork
 
@@ -102,6 +102,7 @@ class Synchronizer:
         self._task: asyncio.Task[None] | None = None
         self._lock = asyncio.Lock()
         self._booted = False
+        self._transient_sync = False
         self.preserve_created_entries: set[str] = set()
         self._generation = 0
         self.account: AccountSnapshot | None = None
@@ -778,103 +779,122 @@ class Synchronizer:
             uow.recovery.put(key, json.dumps(state))
             await uow.commit()
 
+    def pause_visible(self, pause: Pause) -> bool:
+        if (
+            self._transient_sync
+            and pause.kind is PauseKind.ENTRY_PAUSED_SYSTEM
+            and pause.reason == "sync"
+        ):
+            return self.clock.now() - pause.since >= self.policy.unknown_alert_after
+        return True
+
     async def synchronize(self) -> bool:
         async with self._lock:
-            self.sender.pause("sync")
-            await self.start_stream()
-            if not self.gateway.connected:
-                return False
+            self._transient_sync = not any(
+                p.kind is PauseKind.ENTRY_PAUSED_SYSTEM and p.reason == "sync"
+                for p in self.pauses.active()
+            )
+            # This still blocks entries. Do not emit a warning merely for a
+            # comparison in progress; a failed/interrupted comparison is visible.
+            self.pauses.add(Pause(PauseKind.ENTRY_PAUSED_SYSTEM, "sync", self.clock.now()))
             try:
-                records = await self._load_journal()
-                since = await self._since()
-                history_complete = since is not None
-                if since is None:
-                    since = self.clock.now() - self.policy.history_window
-                account = await self.gateway.get_account()
-                if isinstance(account, ExchangeError):
-                    self.sender.pause("query")
-                    return False
-                self.account = account
-                for _ in range(self.policy.max_rounds):
-                    complete = history_complete
-                    for symbol in self.symbols:
-                        complete = await self._query_stops(symbol, since) and complete
-                    await self._audit_unsettled()
-                    await self._unknowns()
-                    await self._actions(since)
-                    await self._resume_replacements(since)
-                    await self._drain()
-                    if complete:
-                        await self._replay_outcomes(records)
-                    generation = self._generation
-                    positions = await self.gateway.get_positions()
-                    await self._drain()
-                    if (
-                        isinstance(positions, ExchangeError)
-                        or self._generation != generation
-                        or not complete
-                    ):
-                        continue
-                    async with self.uow_factory() as uow:
-                        books = uow.portfolio.books()
-                        unsettled = any(
-                            (
-                                o.state
-                                in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
-                                and o.key not in self.sender.proven_entries
+                return await self._synchronize_locked()
+            finally:
+                self._transient_sync = False
+
+    async def _synchronize_locked(self) -> bool:
+        await self.start_stream()
+        if not self.gateway.connected:
+            return False
+        try:
+            records = await self._load_journal()
+            since = await self._since()
+            history_complete = since is not None
+            if since is None:
+                since = self.clock.now() - self.policy.history_window
+            account = await self.gateway.get_account()
+            if isinstance(account, ExchangeError):
+                self.sender.pause("query")
+                return False
+            self.account = account
+            for _ in range(self.policy.max_rounds):
+                complete = history_complete
+                for symbol in self.symbols:
+                    complete = await self._query_stops(symbol, since) and complete
+                await self._audit_unsettled()
+                await self._unknowns()
+                await self._actions(since)
+                await self._resume_replacements(since)
+                await self._drain()
+                if complete:
+                    await self._replay_outcomes(records)
+                generation = self._generation
+                positions = await self.gateway.get_positions()
+                await self._drain()
+                if (
+                    isinstance(positions, ExchangeError)
+                    or self._generation != generation
+                    or not complete
+                ):
+                    continue
+                async with self.uow_factory() as uow:
+                    books = uow.portfolio.books()
+                    unsettled = any(
+                        (
+                            o.state
+                            in (OrderState.CREATED, OrderState.SUBMITTED, OrderState.UNKNOWN)
+                            and o.key not in self.sender.proven_entries
+                        )
+                        or o.exchange_cum_exec_qty > abs(o.booked_qty.value)
+                        for o in uow.orders.all()
+                    )
+                    unsettled = unsettled or any(r.in_flight for r in recoveries(uow))
+                    pending = any(
+                        f.status is FillStatus.PENDING_ATTRIBUTION for f in uow.fills.all()
+                    )
+                    snapshots = {s: uow.portfolio.stop_snapshot_at(s) for s in self.symbols}
+                if (
+                    unsettled
+                    or pending
+                    or invariants(
+                        books,
+                        {p.symbol: p.qty for p in positions},
+                        symbols=frozenset(self.symbols),
+                    )
+                ):
+                    continue
+                try:
+                    for position in positions:
+                        at = snapshots.get(position.symbol)
+                        if at is not None:
+                            await self.portfolio.recover_system_pause(
+                                position.symbol, position.qty, at
                             )
-                            or o.exchange_cum_exec_qty > abs(o.booked_qty.value)
-                            for o in uow.orders.all()
-                        )
-                        unsettled = unsettled or any(r.in_flight for r in recoveries(uow))
-                        pending = any(
-                            f.status is FillStatus.PENDING_ATTRIBUTION for f in uow.fills.all()
-                        )
-                        snapshots = {s: uow.portfolio.stop_snapshot_at(s) for s in self.symbols}
-                    if (
-                        unsettled
-                        or pending
-                        or invariants(
-                            books,
-                            {p.symbol: p.qty for p in positions},
-                            symbols=frozenset(self.symbols),
-                        )
-                    ):
-                        continue
-                    try:
-                        for position in positions:
-                            at = snapshots.get(position.symbol)
-                            if at is not None:
-                                await self.portfolio.recover_system_pause(
-                                    position.symbol, position.qty, at
-                                )
-                    except ValueError:
-                        continue
-                    if not self.gateway.connected or self._buffer:
-                        continue
-                    for reason in (
-                        "sync",
-                        "stream",
-                        "query",
-                        "db",
-                        "storage",
-                        "journal_uncertain",
-                        "unknown",
-                        "pending_attribution",
-                        "unbooked",
-                    ):
-                        self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason=reason)
-                    await self._persist_pauses()
-                    return True
-                self.sender.pause("sync")
-                self.alerts.append(
-                    Notice("synchronization did not stabilize", code="sync_unstable")
-                )
+                except ValueError:
+                    continue
+                if not self.gateway.connected or self._buffer:
+                    continue
+                for reason in (
+                    "sync",
+                    "stream",
+                    "query",
+                    "db",
+                    "storage",
+                    "journal_uncertain",
+                    "unknown",
+                    "pending_attribution",
+                    "unbooked",
+                ):
+                    self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason=reason)
                 await self._persist_pauses()
-                return False
-            except (OSError, JournalCorrupt):
-                self.sender.pause("db" if not self.journal.corrupt else "journal_corrupt")
-                return False
+                return True
+            self.sender.pause("sync")
+            self.alerts.append(Notice("synchronization did not stabilize", code="sync_unstable"))
+            await self._persist_pauses()
+            return False
+        except (OSError, JournalCorrupt):
+            self.sender.pause("db" if not self.journal.corrupt else "journal_corrupt")
+            return False
 
     async def submit(self, order: OrderRecord) -> Accepted | ExchangeError:
         """Serialize normal submissions with synchronization and account events."""

@@ -16,6 +16,7 @@ from richletsgo.control.models import Context
 from richletsgo.control.service import CommandDenied, CommandService
 from richletsgo.domain import Clock
 from richletsgo.ops.logging import Redactor
+from richletsgo.risk.pause import Pause
 from richletsgo.storage.contracts import FillStatus, UnitOfWork
 from richletsgo.storage.memory import InMemoryDatabase
 from richletsgo.storage.sqlite import SqliteDatabase
@@ -50,6 +51,7 @@ class Telegram:
         warning_window: timedelta,
         redactor: Redactor | None = None,
         sleep: Callable[[float], Awaitable[None]] = asyncio.sleep,
+        pause_visible: Callable[[Pause], bool] | None = None,
     ) -> None:
         self.db, self.service, self.bot, self.clock, self.policy = (
             database,
@@ -62,6 +64,7 @@ class Telegram:
         if not users or policy.queue_limit < len(users):
             raise ValueError("Telegram queue must fit all recipients")
         self.redactor, self.sleep = redactor or Redactor(), sleep
+        self.pause_visible = pause_visible or (lambda _: True)
         if {f"telegram:{v}" for v in users} != {
             v for v in service.allowed_ids if v.startswith("telegram:")
         }:
@@ -778,6 +781,7 @@ class Telegram:
                         ]
                     ): "정지: " + p.kind.value + " " + p.reason
                     for p in self.service.pauses.active()
+                    if self.pause_visible(p)
                 }
                 transitions = [
                     ("pause:", k, current[k]) for k in current.keys() - previous.keys()
@@ -785,15 +789,34 @@ class Telegram:
                     ("unpause:", k, "정지 해소: " + previous[k])
                     for k in previous.keys() - current.keys()
                 ]
-                if len(transitions) * len(self.users) <= self.policy.queue_limit - len(
+                transition_output: list[str] = []
+                transition_batch = WarningBatcher(
+                    self.clock, self.warning_window, transition_output.append
+                )
+                transition_key = self.key("batch", "pause_transitions")
+                transition_batch.restore(json.loads(u.recovery.get(transition_key) or "[]"))
+                transition_batch.flush()
+                for kind, pause_key, text in transitions:
+                    pause_kind, reason, symbol, strategy = json.loads(pause_key)
+                    notice = Notice(
+                        text,
+                        code="pause_transition:" + pause_kind + ":" + reason,
+                        symbol=symbol,
+                        strategy=strategy,
+                        resolved=kind == "unpause:",
+                    )
+                    transition_batch.transition(notice.key, notice)
+                if len(transition_output) * len(self.users) <= self.policy.queue_limit - len(
                     u.recovery.active("telegram_outbox:")
                 ):
                     sequence = saved["sequence"] + bool(transitions)
-                    for kind, pause_key, text in transitions:
+                    for text in transition_output:
+                        emission = "pause_transition:" + uuid4().hex
                         for user in self.users:
                             self._enqueue(
-                                u, kind + str(sequence) + ":" + pause_key, user, text, priority=0
+                                u, emission, user, text, priority=3 if "(repeated " in text else 0
                             )
+                    u.recovery.put(transition_key, dumps(transition_batch.snapshot()))
                     u.recovery.put(observation, dumps({"values": current, "sequence": sequence}))
                 for fill in u.fills.all():
                     if fill.event.exec_id not in fill_ids:
