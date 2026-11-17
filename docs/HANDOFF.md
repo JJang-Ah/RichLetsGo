@@ -975,3 +975,14 @@
 - 사용자 결정(D107): 현재 데모 API 키를 발급한 데모 계정을 D92의 프로그램 전용 계정으로 본다(데모 한정). 이 데모 계정에서는 수동 주문·포지션을 만들지 않고, 만들었다면 그 기간은 운영 판정에서 뺀다. 실거래는 D92대로 별도 서브 계정과 키를 만든다.
 - M3-07 준비 항목의 '서브 계정 만들기'는 데모에 한해 충족으로 본다. 남은 M3-07 시작 조건: PASS한 사전 등록 V1 보고서(전략 재설계 뒤), M3-06 Watchdog·서비스.
 - 코드·설정·키 변경 없음.
+
+## 2026-11-17 — Codex (M3-06 Watchdog·Windows 서비스)
+
+- D107 병합 main d60234b에서 지정한 task/M3-06-watchdog-and-services 브랜치로 시작했다. 승인된 M3-06 명세에 따라 별도 Watchdog, NSSM 등록/해제, 온라인 백업 예약, 읽기 전용 PC 점검 스크립트를 구현했다. 상세 수동 절차는 ops/windows/README.md.
+- Watchdog은 loopback /watchdog만 환경별 control token으로 읽는다. 토큰은 keystore에서만 가져오고 원격 오류/응답/URL을 로그에 넣지 않는다. Bot API는 sendMessage만 사용하고 DB outbox에 의존하지 않는다. SQLite는 mode=ro/query_only의 meta.environment 조회만 한다. DB 없음/손상도 별도 장애로 알리며 디스크 여유를 검사한다.
+- 모든 장애는 명시한 unhealthy_seconds 동안 연속할 때 최초 알림, repeat_seconds 간격 반복, 복구 1회다. 짧은 ready=false는 소거된다. 429 retry_after를 준수하며 발송 실패는 고정 문구로 기록한다. 알림 상태는 프로세스 메모리이며 Watchdog 재시작 때 새 지속 시간으로 측정한다.
+- 서비스 실행 래퍼는 DB 밖 역할별 시작 기록을 fsync/원자 교체한 뒤 같은 프로세스에서 원래 모듈을 실행한다. 창 안 시작 횟수 제한 초과/기록 오류면 78로 종료한다. 제한 초과는 수동 해제 전 유지되고 DB 비의존 stop 알림을 시도한다. NSSM은 0/78은 Exit, 그 외 Restart와 설정 간격을 적용한다. 프로세스 이름/트리 종료 코드 없음. AppKillProcessTree=0. 실행 계정은 NSSM UI에서 사용자 자격 증명을 넣고 확인한 뒤 자동 시작으로 전환한다. 서비스 자체는 등록 단계에서 시작하지 않는다.
+- Dashboard 배포 경로가 없으면 그 서비스만 생략한다. 매일 백업은 기존 storage.backup의 온라인 백업/무결성 검사/14일 초과 정리를 사용한다. 점검 스크립트는 powercfg/w32tm 상태·마지막 동기화·지정 peer와 대략 오프셋, 유선 연결, 서비스/작업/디스크를 표시하며 변경하지 않는다. PowerShell 7.3+ 필수.
+- 운영 인계(사용자 제공): PR #75 뒤 demo 부팅 약 6초 만에 ready=true, Telegram 폭주 없음. Free-running System Clock/약 +1.2초·일/로컬 clock_limit_ms=5000은 M3-07 운영 기록으로 유지한다. D107 데모 전용 계정 조건은 충족됐으며 PASS 전략 보고서와 M3-06 수동 운영 확인은 여전히 필요하다.
+- 신규 합성 16건 통과: health 인증·리디렉션/오류 정보 차단, 장애별 grace/반복/복구, 429, DB 부재/손상/읽기 전용/환경, 디스크, 시작 제한 지속/시간 창/손상/모듈 미실행. 기존 Trader 실패 부팅·재연결·펀딩 대기 게이트 회귀도 전체 검사 대상이다. PowerShell 3개 AST 구문 검사 및 lint/format/mypy(160 source files) 통과. 최종 전체 **1689 passed/192.98초**. 기존 Starlette/httpx 경고 1건. 합성 fixture의 SQLite 연결 미종료 1건을 수정한 뒤 전체 재실행으로 확인했다.
+- 다음: Claude 코드 검토·CI, 사용자·Claude의 실제 등록/재부팅/대상 PID 강제 종료/크래시 루프/점검 결과 첨부. 수동 완료 항목은 체크하지 않았다. 실제 API/키/봇/로컬 설정/운영 DB/연구·판정 자료/D103 실행 폴더·프로세스 접근 없음. P3 이월 목록은 유지하며 이번 PR에 섞지 않았다. 직접 병합하지 않는다.

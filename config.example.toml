@@ -239,3 +239,17 @@ bar_wait_seconds = 90
 max_signal_age_seconds = 7200
 rest_every_seconds = 60
 products_every_seconds = 86400
+
+# Independent M3-06 monitor: explicit operational thresholds, seconds/bytes.
+[watchdog]
+interval_seconds = 10
+timeout_seconds = 5
+unhealthy_seconds = 120
+boundary_stale_seconds = 3900
+repeat_seconds = 900
+minimum_free_bytes = 5368709120
+disk_path = "."
+state_dir = "data/service-state/demo"
+restart_limit = 5
+restart_window_seconds = 600
+restart_delay_seconds = 30

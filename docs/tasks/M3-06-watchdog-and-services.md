@@ -1,6 +1,6 @@
 # M3-06 Watchdog·Windows 서비스
 
-- 상태: 명세 작성 완료, 검토 대기
+- 상태: 구현 완료, Claude 코드 검토·수동 운영 확인 대기
 - 구현: Codex / 검토: Claude Code
 - 브랜치: `task/M3-06-watchdog-and-services`
 - 근거: 03 2장(프로세스 구성), D31, D36, D74, D89, 00 P1, 04 7장(PC 운영)
@@ -33,8 +33,8 @@ Trader가 멈추거나 DB 파일에 문제가 생겨도 사용자가 알 수 있
 
 ## 완료 조건
 
-- [ ] Watchdog: 가짜 health·DB 파일로 각 장애 → 알림 1회, 복구 → 복구 알림, 반복 장애 묶음
-- [ ] Watchdog이 DB 없이도 시작·알림 가능
+- [x] Watchdog: 가짜 health·DB 파일로 각 장애 → 알림 1회, 복구 → 복구 알림, 반복 장애 묶음
+- [x] Watchdog이 DB 없이도 시작·알림 가능
 - [ ] (수동) 서비스 등록 후 PC 재부팅 → Trader·Watchdog·Dashboard가 올라오고, Trader가 시작 순서(03 4.3절)를 통과해 진입이 열리는지 기록
 - [ ] (수동) Trader 프로세스 강제 종료 → 서비스 재시작 → 동기화 복구, Watchdog 알림 확인
 - [ ] (수동) 운영 점검 스크립트 결과 첨부
@@ -43,3 +43,7 @@ Trader가 멈추거나 DB 파일에 문제가 생겨도 사용자가 알 수 있
 
 - 서비스 재시작이 동기화 전에 진입을 열지 않는지(시작 순서 준수)
 - 재시작 반복(크래시 루프) 시 알림·중단 조건
+
+구현 및 운영자 수동 검증 절차: [ops/windows/README.md](../../ops/windows/README.md).
+감시의 시간 기준은 `[watchdog]` 필수 값으로 받으며, 짧은 ready=false는 알리지 않는다.
+NSSM의 재시작 간격과 별도 DB 비의존 시작 기록의 횟수 제한을 함께 사용한다.
