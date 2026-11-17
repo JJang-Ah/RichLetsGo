@@ -74,7 +74,9 @@ $backupArgs = Arguments-For 'richletsgo.storage' 'backup'
 $action = New-ScheduledTaskAction -Execute $Python -Argument $backupArgs -WorkingDirectory (Split-Path -Parent $Config)
 $trigger = New-ScheduledTaskTrigger -Daily -At $BackupTime
 # Local SQLite backup needs no network credentials. Run even when the user is logged out.
-$principal = New-ScheduledTaskPrincipal -UserId $ServiceUser -LogonType S4U -RunLevel Limited
+# Task Scheduler cannot resolve the SCM form '.\user'; use 'COMPUTER\user'.
+$TaskUser = if ($ServiceUser.StartsWith('.\')) { "$env:COMPUTERNAME\" + $ServiceUser.Substring(2) } else { $ServiceUser }
+$principal = New-ScheduledTaskPrincipal -UserId $TaskUser -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'RichLetsGo-SQLiteBackup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 Write-Host 'Registered only; inspect settings, then start services manually. Backup retains 14 days via storage.backup.'
