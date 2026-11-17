@@ -969,3 +969,9 @@
 - P2-2는 수정 전 합성 테스트에서 재현했다. funding 해소→account 조회 대기→maintenance가 funding_wait 재설정→새 tracker 게시 뒤에도 can_enter 거짓 순서다. maintenance의 날짜 비교 중복 쓰기를 제거하고 실제 펀딩 대기는 경계 funding 단계만 관리한다. 기존 can_enter 날짜 검사는 account 준비 전 진입을 계속 차단한다. 경계 I/O에 maintenance 전체를 묶지 않아 보호/tick도 유지한다.
 - 신규 합성 7 passed: 자정/재시작 경합과 이후 5분, 정상 대조 25회 진행 중 차단 및 알림 0건, 지속/실패 알림, 20회 정지 전이 묶음, 큐 포화·notifier 재시작 복원. 전체 **1672 passed/194.19초**, 이후 큐 포화·재시작 회귀 1건만 추가하여 최종 신규 파일 **7 passed/1.18초**로 확인했다. 기존 Starlette/httpx 경고 1건. lint/format/mypy(156 source files)/diff 통과. 상세는 docs/reports/M3-07-readiness-and-notifications.md.
 - 다음: Claude의 작은 PR 검토와 지원 Python CI 확인, 이후 사용자·Claude의 demo 재확인/24시간·자정 운영. Codex는 실제 운영 원인을 DB로 확인하거나 실제 API를 재호출하지 않았다. 실제 키/로컬 설정/운영 DB/연구·판정 자료 및 D103 실행 폴더·프로세스에는 접근하지 않았다. 테스트는 자신이 만든 코루틴과 합성 임시 DB만 정리한다. /status/day_start 표시, /resolve 문구, keystore 입력 등 나머지 P3는 이월한다.
+
+## 2026-11-17 — Claude Code (D107 데모 계좌 지정)
+
+- 사용자 결정(D107): 현재 데모 API 키를 발급한 데모 계정을 D92의 프로그램 전용 계정으로 본다(데모 한정). 이 데모 계정에서는 수동 주문·포지션을 만들지 않고, 만들었다면 그 기간은 운영 판정에서 뺀다. 실거래는 D92대로 별도 서브 계정과 키를 만든다.
+- M3-07 준비 항목의 '서브 계정 만들기'는 데모에 한해 충족으로 본다. 남은 M3-07 시작 조건: PASS한 사전 등록 V1 보고서(전략 재설계 뒤), M3-06 Watchdog·서비스.
+- 코드·설정·키 변경 없음.
