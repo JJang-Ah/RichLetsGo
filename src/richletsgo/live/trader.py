@@ -345,8 +345,9 @@ class Trader:
                 if stable and Interval.DAY.floor(now) == self.gate.tracker.day_start:
                     await self.inputs.market(self.symbols[0])
                     snapshot = await self.inputs.account()
-                    flows = await self.inputs.cash_flows(self.gate.tracker.state.latest.at)
-                    await self.observe(snapshot, flows)
+                    since = self.gate.tracker.state.latest.at
+                    if since <= snapshot.at and await self._history_available(since):
+                        await self.observe(snapshot, await self.inputs.cash_flows(since))
                 self._last_rest = now
         if self._last_products is None or now - self._last_products >= self.policy.products_every:
             await self.inputs.maintain()
@@ -367,7 +368,24 @@ class Trader:
                 return await self.process(min(self._boundaries))
             return False
 
+    async def _history_available(self, required: datetime) -> bool:
+        now = self.clock.now()
+        if required > now:
+            return False
+        if required >= now - self.sync.policy.history_window:
+            return True
+        # A recent reconciliation watermark cannot prove that an older boundary or
+        # account interval was covered. Use the existing manual gap-recovery path.
+        self.sync.sender.pause("history_out_of_range")
+        async with self.uow() as u:
+            for symbol in self.symbols:
+                u.recovery.put("history_gap:" + symbol.value, "unresolved")
+            await self._commit(u)
+        return False
+
     async def process(self, at: datetime) -> bool:
+        if at > self.clock.now() or not await self._history_available(self.last_boundary or at):
+            return False
         root = at.isoformat()
         key = "boundary_input:" + root
         async with self.uow() as u:
@@ -426,7 +444,9 @@ class Trader:
         async def fills() -> None:
             # Authoritative lookup plus buffered execution ingestion precedes the freeze.
             await self.sync.tick()
-            if not await self.sync.confirm_fills(at - self.sync.policy.history_window):
+            if not await self.sync.confirm_fills(
+                self.clock.now() - self.sync.policy.history_window
+            ):
                 raise BoundaryWaiting
             async with self.uow() as u:
                 if not await done(u, "fills"):
@@ -435,7 +455,7 @@ class Trader:
                     await mark(u, "fills")
 
         async def funding() -> None:
-            payments = await self.inputs.funding(at - self.sync.policy.history_window)
+            payments = await self.inputs.funding(self.clock.now() - self.sync.policy.history_window)
             async with self.uow() as u:
                 for payment in payments:
                     try:
@@ -534,11 +554,14 @@ class Trader:
                 snapshot = await self.inputs.account()
                 if snapshot.at < at:
                     raise BoundaryWaiting
-                flows = await self.inputs.cash_flows(
+                since = (
                     Interval.DAY.floor(snapshot.at)
                     if first_account
                     else self.gate.tracker.day_start
                 )
+                if not await self._history_available(since):
+                    raise BoundaryWaiting
+                flows = await self.inputs.cash_flows(since)
                 if any(f.at > snapshot.at for f in flows):
                     raise BoundaryWaiting
                 async with self.uow() as u:
@@ -655,6 +678,8 @@ class Trader:
                     break
                 market = await self.inputs.market(signal.symbol)
                 snapshot = await self.inputs.account()
+                if not await self._history_available(self.gate.tracker.day_start):
+                    raise BoundaryWaiting
                 flows = await self.inputs.cash_flows(self.gate.tracker.day_start)
                 await self.observe(snapshot, flows)
                 admission = await self.inputs.route(signal, market, await self._figures())
