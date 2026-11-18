@@ -1,0 +1,2016 @@
+{
+ "T0": "1794377036855",
+ "allowlist_sha256": "ed09872927fe165dadad554b7ab4a42101fbafe5bf08bf69acc8714aee6e8b08",
+ "data_hash": "8fcf6ce05cf3665cc1389bc4d053da6053a2e18ab4e4bf3a4f32bdc497194ab3",
+ "symbols": 305,
+ "tiers": {
+  "20M-50M": [
+   "CLUSDT",
+   "KORUUSDT",
+   "MUUSDT",
+   "NVDAUSDT",
+   "SKHYUSDT",
+   "SNXXUSDT",
+   "XAGUSDT"
+  ],
+  "50M-200M": [
+   "SKHYNIXUSDT",
+   "SNDKUSDT",
+   "SOXLUSDT",
+   "SPCXUSDT",
+   "XAUUSDT"
+  ],
+  "5M-20M": [
+   "AAPLUSDT",
+   "BZUSDT",
+   "CRCLUSDT",
+   "DRAMUSDT",
+   "EWYUSDT",
+   "GOOGLUSDT",
+   "INTCUSDT",
+   "MRVLUSDT",
+   "MSFTUSDT",
+   "MSTRUSDT",
+   "NBISUSDT",
+   "SAMSUNGUSDT",
+   "SOXSUSDT",
+   "TSLAUSDT"
+  ],
+  "<5M": [
+   "AALUSDT",
+   "AAOIUSDT",
+   "ADBEUSDT",
+   "AEHRUSDT",
+   "ALABUSDT",
+   "AMATUSDT",
+   "AMCUSDT",
+   "AMDSTOCKUSDT",
+   "AMGNUSDT",
+   "AMZNUSDT",
+   "APLDUSDT",
+   "APPSTOCKUSDT",
+   "ARKKUSDT",
+   "ARMUSDT",
+   "ASMLUSDT",
+   "ASTSUSDT",
+   "AVGOUSDT",
+   "AXTIUSDT",
+   "BABAUSDT",
+   "BBXUSDT",
+   "BEUSDT",
+   "BITOUSDT",
+   "BMNRUSDT",
+   "BNCUSDT",
+   "BOTUSDT",
+   "BRKBUSDT",
+   "BSPUSDT",
+   "BXUSDT",
+   "CATSTOCKUSDT",
+   "CBRSUSDT",
+   "CIENUSDT",
+   "COHRUSDT",
+   "COINUSDT",
+   "COSTUSDT",
+   "CRDOUSDT",
+   "CRMUSDT",
+   "CRWDUSDT",
+   "CRWVUSDT",
+   "CSCOUSDT",
+   "CXMTUSDT",
+   "DELLUSDT",
+   "DKNGUSDT",
+   "EWJUSDT",
+   "EWTUSDT",
+   "FLEXUSDT",
+   "FLNCUSDT",
+   "FLYUSDT",
+   "FWDIUSDT",
+   "GDXUSDT",
+   "GEUSDT",
+   "GEVUSDT",
+   "GIGADEVICEUSDT",
+   "GILDUSDT",
+   "GLWUSDT",
+   "GMESTOCKUSDT",
+   "GSUSDT",
+   "HIMSUSDT",
+   "HOODUSDT",
+   "HPEUSDT",
+   "HYUNDAIUSDT",
+   "IBMUSDT",
+   "INTWUSDT",
+   "IONQUSDT",
+   "IRENUSDT",
+   "IWMUSDT",
+   "JPMUSDT",
+   "KLACUSDT",
+   "KOUSDT",
+   "KSTRUSDT",
+   "LITEUSDT",
+   "LLYUSDT",
+   "LRCXUSDT",
+   "MARAUSDT",
+   "MAUSDT",
+   "METAUSDT",
+   "MINIMAXUSDT",
+   "MUUUSDT",
+   "MVLLUSDT",
+   "NFLXUSDT",
+   "NOKIAUSDT",
+   "NOWUSDT",
+   "NVDLUSDT",
+   "ONDSUSDT",
+   "ONUSDT",
+   "ORCLUSDT",
+   "PANWUSDT",
+   "PENGSTOCKUSDT",
+   "PEPUSDT",
+   "PLTRUSDT",
+   "POETUSDT",
+   "POPMARTUSDT",
+   "PURRUSDT",
+   "PYPLUSDT",
+   "QCOMUSDT",
+   "QNTXUSDT",
+   "QQQUSDT",
+   "RDWUSDT",
+   "REGNUSDT",
+   "RIVNUSDT",
+   "RKLBUSDT",
+   "SHAZUSDT",
+   "SMCIUSDT",
+   "SMHUSDT",
+   "SNOWUSDT",
+   "SOFIUSDT",
+   "SONYUSDT",
+   "SOXXUSDT",
+   "SPYUSDT",
+   "SQQQUSDT",
+   "SSPCUSDT",
+   "STXXUSDT",
+   "TBTUSDT",
+   "TENCENTUSDT",
+   "TERUSDT",
+   "TMFUSDT",
+   "TQQQUSDT",
+   "TSEMUSDT",
+   "TSLLUSDT",
+   "TSMUSDT",
+   "TTWOUSDT",
+   "TXNUSDT",
+   "TZAUSDT",
+   "UNHUSDT",
+   "USARUSDT",
+   "UVXYUSDT",
+   "VRTUSDT",
+   "VUSDT",
+   "WDCUSDT",
+   "WENSTOCKUSDT",
+   "WMTUSDT",
+   "XBIUSDT",
+   "XLEUSDT",
+   "XLFUSDT",
+   "XLKUSDT",
+   "XLVUSDT",
+   "ZHIPUUSDT",
+   "ZMUSDT"
+  ],
+  "uncomputable": [
+   "ABBVUSDT",
+   "ACNUSDT",
+   "ADIUSDT",
+   "AGPUUSDT",
+   "AKAMUSDT",
+   "AMZUUSDT",
+   "ANETUSDT",
+   "AXPUSDT",
+   "BACUSDT",
+   "BAUSDT",
+   "BIIBUSDT",
+   "BKNGUSDT",
+   "BMNUUSDT",
+   "BTDRUSDT",
+   "BWETUSDT",
+   "BYDUSDT",
+   "CEGUSDT",
+   "CGNXUSDT",
+   "CIFRUSDT",
+   "CLSKUSDT",
+   "CONLUSDT",
+   "CORZUSDT",
+   "CRMLUSDT",
+   "CSOPSAMSUNG2LUSDT",
+   "CSOPSKHYNIX2LUSDT",
+   "CSTOCKUSDT",
+   "CVNAUSDT",
+   "CVXSTOCKUSDT",
+   "CYPHUSDT",
+   "DDOGUSDT",
+   "DJTUSDT",
+   "DUOLUSDT",
+   "EBAYUSDT",
+   "EIDOUSDT",
+   "EQTUSDT",
+   "EURUSDUSDT",
+   "EWZSUSDT",
+   "EWZUSDT",
+   "FISVUSDT",
+   "FNUSDT",
+   "FORMSTOCKUSDT",
+   "FUTUUSDT",
+   "GBPUSDUSDT",
+   "GPROUSDT",
+   "GRALUSDT",
+   "GTLBUSDT",
+   "HANMIUSDT",
+   "HDUSDT",
+   "HORIZONUSDT",
+   "HUAHONGUSDT",
+   "HUTUSDT",
+   "IBITUSDT",
+   "IBKRUSDT",
+   "INFQUSDT",
+   "INTUUSDT",
+   "ISRGUSDT",
+   "JDUSDT",
+   "JNJUSDT",
+   "KODEX200USDT",
+   "KUAISHOUUSDT",
+   "LAOPUUSDT",
+   "LENOVOUSDT",
+   "LGELECTRONICSUSDT",
+   "LMTUSDT",
+   "LULUUSDT",
+   "LYTEUSDT",
+   "MAGSUSDT",
+   "MCDUSDT",
+   "MDBUSDT",
+   "MDTSTOCKUSDT",
+   "MEITUANUSDT",
+   "MEITUUSDT",
+   "MELIUSDT",
+   "MNSTUSDT",
+   "MOUSDT",
+   "MPUSDT",
+   "MRKUSDT",
+   "MRNAUSDT",
+   "MSFUUSDT",
+   "MSTUUSDT",
+   "MXLUSDT",
+   "NAVERUSDT",
+   "NCLDUSDT",
+   "NETUSDT",
+   "NKEUSDT",
+   "NUSTOCKUSDT",
+   "NVOUSDT",
+   "OKLOUSDT",
+   "OKTAUSDT",
+   "OUSTUSDT",
+   "OXYUSDT",
+   "PATHUSDT",
+   "PBRUSDT",
+   "PDDUSDT",
+   "PFEUSDT",
+   "PGUSDT",
+   "RAMUSDT",
+   "RDDTUSDT",
+   "RIOTUSDT",
+   "RUMUSDT",
+   "SAMSUNGEMUSDT",
+   "SDGRUSDT",
+   "SECZUSDT",
+   "SENSETIMEUSDT",
+   "SHEINUSDT",
+   "SHOPUSDT",
+   "SKDDUSDT",
+   "SKUUUSDT",
+   "SMICUSDT",
+   "SMRUSDT",
+   "SNPSUSDT",
+   "SPCHUSDT",
+   "SPOTUSDT",
+   "SPXLUSDT",
+   "STMUSDT",
+   "TEAMUSDT",
+   "TEMUSDT",
+   "TLTUSDT",
+   "TTMIUSDT",
+   "TWSTUSDT",
+   "UBERUSDT",
+   "UMCUSDT",
+   "UNITREEUSDT",
+   "URNMUSDT",
+   "USDBRLUSDT",
+   "USDEXUSDT",
+   "USDJPYUSDT",
+   "VISTUSDT",
+   "VKTXUSDT",
+   "VRTXSTOCKUSDT",
+   "VSTUSDT",
+   "XIAOMIUSDT",
+   "XLIUSDT",
+   "XLPUSDT",
+   "XLUUSDT",
+   "XOMUSDT",
+   "XPUSDT",
+   "YOFCUSDT",
+   "YPFUSDT",
+   "ZCSHUSDT",
+   "ZHONGJIUSDT",
+   "ZSUSDT"
+  ]
+ },
+ "zero_volume_ratio": {
+  "median": "0.01890547263681592039800995025",
+  "valid": 224,
+  "excluded": 81
+ },
+ "tier_by_group": {
+  "stock:US": {
+   "<5M": 102,
+   "5M-20M": 9,
+   "uncomputable": 94,
+   "20M-50M": 3,
+   "50M-200M": 2
+  },
+  "ETF:US": {
+   "<5M": 28,
+   "uncomputable": 22,
+   "5M-20M": 3,
+   "20M-50M": 2,
+   "50M-200M": 1
+  },
+  "stock:HK": {
+   "uncomputable": 14,
+   "<5M": 5
+  },
+  "commodity": {
+   "5M-20M": 1,
+   "20M-50M": 2,
+   "50M-200M": 1
+  },
+  "ETF:HK": {
+   "uncomputable": 2
+  },
+  "stock:CN": {
+   "<5M": 1,
+   "uncomputable": 1
+  },
+  "forex": {
+   "uncomputable": 4
+  },
+  "stock:KR": {
+   "uncomputable": 4,
+   "<5M": 1,
+   "5M-20M": 1,
+   "50M-200M": 1
+  },
+  "ETF:KR": {
+   "uncomputable": 1
+  }
+ },
+ "spread": {
+  "regular": {
+   "population": 305,
+   "valid": 305,
+   "samples": 89421,
+   "median_of_medians": "0.001884422110552763819095477387",
+   "median_of_p90": "0.003104442309113755636041096903",
+   "empty_ratio_median": "0"
+  },
+  "pre": {
+   "population": 305,
+   "valid": 266,
+   "samples": 60653,
+   "median_of_medians": "0.001815431164901664145234493192",
+   "median_of_p90": "0.003072196620583717357910906298",
+   "empty_ratio_median": "0"
+  },
+  "post": {
+   "population": 305,
+   "valid": 266,
+   "samples": 34044,
+   "median_of_medians": "0.001791991177889585774346957061",
+   "median_of_p90": "0.002894887995404939689833429064",
+   "empty_ratio_median": "0"
+  },
+  "overnight": {
+   "population": 305,
+   "valid": 266,
+   "samples": 80731,
+   "median_of_medians": "0.001733402669440110937770844167",
+   "median_of_p90": "0.002525708100306693126465812737",
+   "empty_ratio_median": "0"
+  },
+  "break": {
+   "population": 305,
+   "valid": 23,
+   "samples": 968,
+   "median_of_medians": "0.003291278113000548546352166758",
+   "median_of_p90": "0.003773584905660377358490566038",
+   "empty_ratio_median": "0"
+  },
+  "closed": {
+   "population": 305,
+   "valid": 305,
+   "samples": 88738,
+   "median_of_medians": "0.001851351872565279438423265322",
+   "median_of_p90": "0.002562200795630773380082260131",
+   "empty_ratio_median": "0"
+  },
+  "unknown": {
+   "population": 305,
+   "valid": 0,
+   "samples": 0,
+   "median_of_medians": null,
+   "median_of_p90": null,
+   "empty_ratio_median": null
+  }
+ },
+ "stale_top_total": 0,
+ "depth": {
+  "break": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 23,
+    "median_of_medians": "0.002700823001103162347235283571",
+    "unfilled": 0
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 23,
+    "median_of_medians": "0.00369646656748374942219662959",
+    "unfilled": 0
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 22,
+    "median_of_medians": "0.003997056867812740532387575835",
+    "unfilled": 7
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 23,
+    "median_of_medians": "0.007283357354734292243036167328",
+    "unfilled": 5
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 15,
+    "median_of_medians": "0.01102400424829276583466280996",
+    "unfilled": 38
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 18,
+    "median_of_medians": "0.01266845157260332714832489183",
+    "unfilled": 37
+   }
+  },
+  "closed": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.001729216640774865373278031838",
+    "unfilled": 2
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.001959585192062533774233114323",
+    "unfilled": 3
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 304,
+    "median_of_medians": "0.003725312390527647605320206696",
+    "unfilled": 392
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 304,
+    "median_of_medians": "0.004344750354035356537675410787",
+    "unfilled": 347
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 269,
+    "median_of_medians": "0.008815275293717465054033882157",
+    "unfilled": 2510
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 264,
+    "median_of_medians": "0.009036020181940943172528961462",
+    "unfilled": 2730
+   }
+  },
+  "overnight": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.001781869326728199613167974252",
+    "unfilled": 42
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.001808607830543005944455709256",
+    "unfilled": 12
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.003419494053630156382604889153",
+    "unfilled": 502
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.003820036273090104400424037999",
+    "unfilled": 479
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 256,
+    "median_of_medians": "0.008417629435134907816876030413",
+    "unfilled": 2495
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 250,
+    "median_of_medians": "0.008102641070097584299417392679",
+    "unfilled": 2634
+   }
+  },
+  "post": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.002063086922175814834424064177",
+    "unfilled": 14
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.00206280901258568416871187882",
+    "unfilled": 13
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.004157639874246632314623480953",
+    "unfilled": 202
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 265,
+    "median_of_medians": "0.004300618414304231874114207767",
+    "unfilled": 199
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 244,
+    "median_of_medians": "0.008884828093367886136931549285",
+    "unfilled": 968
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 237,
+    "median_of_medians": "0.008118743166983453191330933231",
+    "unfilled": 1073
+   }
+  },
+  "pre": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.001902079385089333979143736981",
+    "unfilled": 27
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.002028193729801469026312059572",
+    "unfilled": 8
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.003930683497273632425302913308",
+    "unfilled": 355
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 266,
+    "median_of_medians": "0.003954464555852617160984500738",
+    "unfilled": 341
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 258,
+    "median_of_medians": "0.009200267395562475877622837277",
+    "unfilled": 1863
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 251,
+    "median_of_medians": "0.008810710102043834232598573399",
+    "unfilled": 1973
+   }
+  },
+  "regular": {
+   "buy:1000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.001913595851349538481353313182",
+    "unfilled": 29
+   },
+   "sell:1000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.001979549473470565320906523997",
+    "unfilled": 35
+   },
+   "buy:5000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.003416437876014375580213990577",
+    "unfilled": 398
+   },
+   "sell:5000": {
+    "population": 305,
+    "valid": 305,
+    "median_of_medians": "0.003768452806159277507830735271",
+    "unfilled": 330
+   },
+   "buy:20000": {
+    "population": 305,
+    "valid": 287,
+    "median_of_medians": "0.008165798609781859077808030951",
+    "unfilled": 1989
+   },
+   "sell:20000": {
+    "population": 305,
+    "valid": 286,
+    "median_of_medians": "0.008199902789625055022317173245",
+    "unfilled": 2104
+   }
+  }
+ },
+ "stale_depth_total": 0,
+ "empty_depth_by_session": {
+  "regular": 0,
+  "pre": 0,
+  "post": 0,
+  "overnight": 0,
+  "break": 0,
+  "closed": 0,
+  "unknown": 0
+ },
+ "multiples_vs_regular": {
+  "pre": {
+   "spread": {
+    "median": "1.013602137478746660189458343",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:1000": {
+    "median": "1.035333641503743387123811335",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:1000": {
+    "median": "1.036537293349372319249908177",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:5000": {
+    "median": "1.071286203407003482066322389",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:5000": {
+    "median": "1.057637561685182431381769121",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:20000": {
+    "median": "1.047879215073334776652341339",
+    "population": 305,
+    "not_applicable": 47,
+    "excluded": 6,
+    "valid": 252
+   },
+   "sell:20000": {
+    "median": "1.041245280528037363022483064",
+    "population": 305,
+    "not_applicable": 54,
+    "excluded": 5,
+    "valid": 246
+   }
+  },
+  "post": {
+   "spread": {
+    "median": "0.9946736886202459678625931357",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:1000": {
+    "median": "1.061863579251747608811345779",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:1000": {
+    "median": "1.052804772852797048782901346",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:5000": {
+    "median": "1.092613259334786173235622713",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:5000": {
+    "median": "1.111100460334867017010686628",
+    "population": 305,
+    "not_applicable": 40,
+    "excluded": 0,
+    "valid": 265
+   },
+   "buy:20000": {
+    "median": "1.119699034086462871362854803",
+    "population": 305,
+    "not_applicable": 61,
+    "excluded": 2,
+    "valid": 242
+   },
+   "sell:20000": {
+    "median": "1.075675221642700250658839170",
+    "population": 305,
+    "not_applicable": 68,
+    "excluded": 3,
+    "valid": 234
+   }
+  },
+  "overnight": {
+   "spread": {
+    "median": "0.9557003118646954263392619559",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:1000": {
+    "median": "1.008961431827037582125507933",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:1000": {
+    "median": "1.002039654233979113938638163",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:5000": {
+    "median": "1.009403059483541734238460652",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "sell:5000": {
+    "median": "1.029899229998778698603095009",
+    "population": 305,
+    "not_applicable": 39,
+    "excluded": 0,
+    "valid": 266
+   },
+   "buy:20000": {
+    "median": "1.011837608436922679852658936",
+    "population": 305,
+    "not_applicable": 49,
+    "excluded": 6,
+    "valid": 250
+   },
+   "sell:20000": {
+    "median": "1.007567868686104287152604241",
+    "population": 305,
+    "not_applicable": 55,
+    "excluded": 8,
+    "valid": 242
+   }
+  },
+  "break": {
+   "spread": {
+    "median": "0.9967087218869994514536478332",
+    "population": 305,
+    "not_applicable": 282,
+    "excluded": 0,
+    "valid": 23
+   },
+   "buy:1000": {
+    "median": "0.9117815090866029712299442136",
+    "population": 305,
+    "not_applicable": 282,
+    "excluded": 0,
+    "valid": 23
+   },
+   "sell:1000": {
+    "median": "0.9404929888660497509512574079",
+    "population": 305,
+    "not_applicable": 282,
+    "excluded": 0,
+    "valid": 23
+   },
+   "buy:5000": {
+    "median": "0.8879765951870714592640728789",
+    "population": 305,
+    "not_applicable": 283,
+    "excluded": 0,
+    "valid": 22
+   },
+   "sell:5000": {
+    "median": "1.011040102655954883726362315",
+    "population": 305,
+    "not_applicable": 282,
+    "excluded": 0,
+    "valid": 23
+   },
+   "buy:20000": {
+    "median": "1.039207771089932948285480336",
+    "population": 305,
+    "not_applicable": 290,
+    "excluded": 0,
+    "valid": 15
+   },
+   "sell:20000": {
+    "median": "0.9666406303093840314192142803",
+    "population": 305,
+    "not_applicable": 287,
+    "excluded": 0,
+    "valid": 18
+   }
+  },
+  "closed": {
+   "spread": {
+    "median": "0.9630400347858496133180109947",
+    "population": 305,
+    "not_applicable": 0,
+    "excluded": 0,
+    "valid": 305
+   },
+   "buy:1000": {
+    "median": "0.9760489835161073486605726084",
+    "population": 305,
+    "not_applicable": 0,
+    "excluded": 0,
+    "valid": 305
+   },
+   "sell:1000": {
+    "median": "0.9636815364461006248669304750",
+    "population": 305,
+    "not_applicable": 0,
+    "excluded": 0,
+    "valid": 305
+   },
+   "buy:5000": {
+    "median": "0.9833542077736456020540989084",
+    "population": 305,
+    "not_applicable": 1,
+    "excluded": 0,
+    "valid": 304
+   },
+   "sell:5000": {
+    "median": "1.038869613439169963553203735",
+    "population": 305,
+    "not_applicable": 1,
+    "excluded": 0,
+    "valid": 304
+   },
+   "buy:20000": {
+    "median": "1.037457184141143292348415290",
+    "population": 305,
+    "not_applicable": 36,
+    "excluded": 7,
+    "valid": 262
+   },
+   "sell:20000": {
+    "median": "1.077753221318472182499859367",
+    "population": 305,
+    "not_applicable": 41,
+    "excluded": 7,
+    "valid": 257
+   }
+  },
+  "unknown": {
+   "spread": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "buy:1000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "sell:1000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "buy:5000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "sell:5000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "buy:20000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   },
+   "sell:20000": {
+    "median": null,
+    "population": 305,
+    "not_applicable": 305,
+    "excluded": 0,
+    "valid": 0
+   }
+  }
+ },
+ "cost_by_tier": {
+  "50M-200M": {
+   "symbols": 5,
+   "sessions": {
+    "closed": {
+     "spread": {
+      "population": 5,
+      "valid": 5,
+      "samples": 1773,
+      "median_of_medians": "0.00007222563287710808565960059225",
+      "median_of_p90": "0.0001443209698369173040842834464",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.00009101665604805679439337416947",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.00008693402999767999058300851874",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0001622757283444387367451590488",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0001409304597040718833897324572",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0002631673680505740435085723127",
+      "unfilled": 1
+     },
+     "sell:20000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0002519685564923892677731892572",
+      "unfilled": 0
+     }
+    },
+    "overnight": {
+     "spread": {
+      "population": 5,
+      "valid": 3,
+      "samples": 911,
+      "median_of_medians": "0.0001212900408747437747886521038",
+      "median_of_p90": "0.0001963816677713135478803053735",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001009571810758719121794847158",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.000102258226789542705178748799",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001676878056768362607470509946",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001551689024112316619104182918",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0002794328729954266726871665435",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.000309553788855616030363334039",
+      "unfilled": 0
+     }
+    },
+    "post": {
+     "spread": {
+      "population": 5,
+      "valid": 3,
+      "samples": 384,
+      "median_of_medians": "0.0001228305061845159863903799148",
+      "median_of_p90": "0.000235970615448623608239100331",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001025325540859222803240026658",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001054774790355979353317416149",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.000132569169780198250625195682",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0002029058181962701944492442598",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0002850117169157166364210317662",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0003817423751645228779863142246",
+      "unfilled": 0
+     }
+    },
+    "pre": {
+     "spread": {
+      "population": 5,
+      "valid": 3,
+      "samples": 684,
+      "median_of_medians": "0.0001284164116174047043212122509",
+      "median_of_p90": "0.000214431221185804653157499732",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001063195468863039816267958378",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.00009700261907071490930255097488",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001759294276535834801202363449",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0001725605283350409892452655445",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.000297085811691813753025957734",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 5,
+      "valid": 3,
+      "median_of_medians": "0.0002690680049457283588403194778",
+      "unfilled": 1
+     }
+    },
+    "regular": {
+     "spread": {
+      "population": 5,
+      "valid": 5,
+      "samples": 2062,
+      "median_of_medians": "0.0001402131239484015703869882221",
+      "median_of_p90": "0.0002169589585969987344060748508",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0000998502246630054917623564653",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0001000700490343240268187729411",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0000998502246630054917623564653",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0001059658789869661968846035816",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0003018488455520271014374605253",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 5,
+      "valid": 5,
+      "median_of_medians": "0.0002666473222895886081490656942",
+      "unfilled": 0
+     }
+    }
+   }
+  },
+  "20M-50M": {
+   "symbols": 7,
+   "sessions": {
+    "closed": {
+     "spread": {
+      "population": 7,
+      "valid": 7,
+      "samples": 1499,
+      "median_of_medians": "0.0001139795976520202883683820596",
+      "median_of_p90": "0.0002102828304068972768373462307",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001251044450007944455006099518",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001054597500717786827028789682",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001780931414843759874724597534",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001721220709708606230471296153",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0003125707902932435309468095332",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0002767975332377119453121430031",
+      "unfilled": 0
+     }
+    },
+    "overnight": {
+     "spread": {
+      "population": 7,
+      "valid": 5,
+      "samples": 1518,
+      "median_of_medians": "0.0001487320591953595597531047817",
+      "median_of_p90": "0.0002220823925676425954028944738",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0001283917851208892355488802574",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0001213156764746114214374300542",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0002331910536513314985082788366",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.000232520929960621385227832986",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0003476628908810529514091885142",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0003857414697713407776746069494",
+      "unfilled": 0
+     }
+    },
+    "post": {
+     "spread": {
+      "population": 7,
+      "valid": 5,
+      "samples": 640,
+      "median_of_medians": "0.0001546431609062089229103842883",
+      "median_of_p90": "0.0002405291641611545399879735418",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0001519633883499620935830372216",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0001506429160839379907051054288",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0002955273561366032018734452757",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0003138147544694831997914913817",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0004420973436640312156660197475",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0005223545503695404341759749816",
+      "unfilled": 0
+     }
+    },
+    "pre": {
+     "spread": {
+      "population": 7,
+      "valid": 5,
+      "samples": 1140,
+      "median_of_medians": "0.0001426330052774211952645842248",
+      "median_of_p90": "0.0002148304629596476780407461778",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0001088458740523497562223917869",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.000119803522223553372469150593",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0002042397264781036320394005346",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0002268567080822132608296103072",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0003918314760852622775872714014",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 7,
+      "valid": 5,
+      "median_of_medians": "0.0003950381810816125340725026179",
+      "unfilled": 0
+     }
+    },
+    "regular": {
+     "spread": {
+      "population": 7,
+      "valid": 7,
+      "samples": 3340,
+      "median_of_medians": "0.0001455392228205501382622616795",
+      "median_of_p90": "0.0002139815547899771039736374724",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001129463945445308205150716325",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0001050364705161857283864186424",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0002274835667420365406188174123",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0002083462463682613788157067653",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.000366100224578384289180658069",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 7,
+      "valid": 7,
+      "median_of_medians": "0.0003331737178797066425158391344",
+      "unfilled": 0
+     }
+    }
+   }
+  },
+  "5M-20M": {
+   "symbols": 14,
+   "sessions": {
+    "closed": {
+     "spread": {
+      "population": 14,
+      "valid": 14,
+      "samples": 3762,
+      "median_of_medians": "0.0001281558374983980520312700243",
+      "median_of_p90": "0.0002068038465515458587529728053",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0001565346243647394622835769967",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0001587338162687147035632770885",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0002511703133128453264287889608",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0002762336967835458370908182947",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0004141219084728769594670105009",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0004411627421293735034561437993",
+      "unfilled": 0
+     }
+    },
+    "overnight": {
+     "spread": {
+      "population": 14,
+      "valid": 12,
+      "samples": 3641,
+      "median_of_medians": "0.0001033618439752965192899041319",
+      "median_of_p90": "0.0002023062917256726684199878616",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0001390123981885371629601288429",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0001374535903996377532368012971",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0002827200427696335926283731454",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0002833851427922505249664948179",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0004561938072539312121415884436",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0004402968811827811011346374074",
+      "unfilled": 0
+     }
+    },
+    "post": {
+     "spread": {
+      "population": 14,
+      "valid": 12,
+      "samples": 1535,
+      "median_of_medians": "0.00009980537950995558660611806976",
+      "median_of_p90": "0.0002032107295265190002032107295",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.000146923085888113651366617861",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0001834418203800440228297674061",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0003281584845190946785081412474",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0003409460601692648691893393404",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0005266511995483534297576909175",
+      "unfilled": 0
+     },
+     "sell:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0005489277776488294407519354213",
+      "unfilled": 0
+     }
+    },
+    "pre": {
+     "spread": {
+      "population": 14,
+      "valid": 12,
+      "samples": 2737,
+      "median_of_medians": "0.0001631055292774425053009297015",
+      "median_of_p90": "0.0001972386587771203155818540434",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0001256755058439110217418622596",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0001297681836148679326925672706",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0002661124226780402512375114754",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0002616723970066203772107238687",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0004873765544014158424958617162",
+      "unfilled": 1
+     },
+     "sell:20000": {
+      "population": 14,
+      "valid": 12,
+      "median_of_medians": "0.0004355142013617023000377271338",
+      "unfilled": 0
+     }
+    },
+    "regular": {
+     "spread": {
+      "population": 14,
+      "valid": 14,
+      "samples": 4597,
+      "median_of_medians": "0.0001362954886193267002862205261",
+      "median_of_p90": "0.0002611989029646075486482956772",
+      "empty_ratio_median": "0"
+     },
+     "buy:1000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0001241773252204147522662361853",
+      "unfilled": 0
+     },
+     "sell:1000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.000125738714950333207594618383",
+      "unfilled": 0
+     },
+     "buy:5000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0002666162731794534701753865722",
+      "unfilled": 0
+     },
+     "sell:5000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0002637429079637381014809845919",
+      "unfilled": 0
+     },
+     "buy:20000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0004702182997701006368020484197",
+      "unfilled": 2
+     },
+     "sell:20000": {
+      "population": 14,
+      "valid": 14,
+      "median_of_medians": "0.0004501114944507985554216006825",
+      "unfilled": 1
+     }
+    }
+   }
+  }
+ },
+ "reopen": {
+  "break->regular": {
+   "ETF:HK": {
+    "valid": 2,
+    "count": 28,
+    "median_of_medians": "0.008113590263691683569979716",
+    "median_of_p95": "0.021926910299003322259136213",
+    "max_of_max": "0.037871956717763751127141569"
+   },
+   "all": {
+    "valid": 15,
+    "count": 261,
+    "median_of_medians": "0.0040516586477589263104583439",
+    "median_of_p95": "0.015196868524061708496431038",
+    "max_of_max": "0.0931847968545216251638269987"
+   },
+   "stock:CN": {
+    "valid": 2,
+    "count": 46,
+    "median_of_medians": "0.003944065973467192542129796",
+    "median_of_p95": "0.015196868524061708496431038",
+    "max_of_max": "0.0931847968545216251638269987"
+   },
+   "stock:HK": {
+    "valid": 11,
+    "count": 187,
+    "median_of_medians": "0.0030105368790767686904164576",
+    "median_of_p95": "0.010958904109589041095890411",
+    "max_of_max": "0.052559593591246580695584213"
+   }
+  },
+  "closed->overnight": {
+   "ETF:US": {
+    "valid": 45,
+    "count": 322,
+    "median_of_medians": "0.004965776405851563548516978",
+    "median_of_p95": "0.014476818764889133223382811",
+    "max_of_max": "0.064006024096385542168674699"
+   },
+   "all": {
+    "valid": 194,
+    "count": 1639,
+    "median_of_medians": "0.004667764964305326743547501",
+    "median_of_p95": "0.0146039940225512837929629126",
+    "max_of_max": "0.064006024096385542168674699"
+   },
+   "stock:US": {
+    "valid": 149,
+    "count": 1317,
+    "median_of_medians": "0.0043217897293938195582170499",
+    "median_of_p95": "0.01468949447877621314963023",
+    "max_of_max": "0.059280031302986826659710447"
+   }
+  },
+  "closed->regular": {
+   "ETF:HK": {
+    "valid": 2,
+    "count": 28,
+    "median_of_medians": "0.0082996382208980634177484571",
+    "median_of_p95": "0.034356882112948249946317372",
+    "max_of_max": "0.0386624869383490073145245559"
+   },
+   "ETF:KR": {
+    "valid": 1,
+    "count": 10,
+    "median_of_medians": "0.003855545559696697082637193",
+    "median_of_p95": "0.0271592225511648860857253186",
+    "max_of_max": "0.0271592225511648860857253186"
+   },
+   "all": {
+    "valid": 27,
+    "count": 586,
+    "median_of_medians": "0.0094117647058823529411764706",
+    "median_of_p95": "0.033855464321049172750973128",
+    "max_of_max": "0.1105322763306908267270668177"
+   },
+   "commodity": {
+    "valid": 4,
+    "count": 93,
+    "median_of_medians": "0.005511811023622047244094488",
+    "median_of_p95": "0.0184285714285714285714285714",
+    "max_of_max": "0.0243697478991596638655462185"
+   },
+   "stock:CN": {
+    "valid": 2,
+    "count": 45,
+    "median_of_medians": "0.005576649264356905552918842",
+    "median_of_p95": "0.0314427379368726569113556657",
+    "max_of_max": "0.046939014397752545944047758"
+   },
+   "stock:HK": {
+    "valid": 11,
+    "count": 187,
+    "median_of_medians": "0.0113432835820895522388059701",
+    "median_of_p95": "0.037037037037037037037037037",
+    "max_of_max": "0.1105322763306908267270668177"
+   },
+   "stock:KR": {
+    "valid": 7,
+    "count": 223,
+    "median_of_medians": "0.013861252571582745944487538",
+    "median_of_p95": "0.033855464321049172750973128",
+    "max_of_max": "0.069104167376563192149112345"
+   }
+  },
+  "overnight->pre": {
+   "ETF:US": {
+    "valid": 45,
+    "count": 1503,
+    "median_of_medians": "0.002457577530719719133996489",
+    "median_of_p95": "0.00863344844597927972372965",
+    "max_of_max": "0.0520656479909451046972269383"
+   },
+   "all": {
+    "valid": 194,
+    "count": 7628,
+    "median_of_medians": "0.002517834662190516156105749",
+    "median_of_p95": "0.009891573140574472132394902",
+    "max_of_max": "0.066521528785679729075955491"
+   },
+   "stock:US": {
+    "valid": 149,
+    "count": 6125,
+    "median_of_medians": "0.002524713747244150487163075",
+    "median_of_p95": "0.0101613637735310739113020482",
+    "max_of_max": "0.066521528785679729075955491"
+   }
+  },
+  "pre->regular": {
+   "ETF:US": {
+    "valid": 46,
+    "count": 1549,
+    "median_of_medians": "0.0052465897166841552990556139",
+    "median_of_p95": "0.0173602709895959351560609727",
+    "max_of_max": "0.138790035587188612099644128"
+   },
+   "all": {
+    "valid": 197,
+    "count": 7817,
+    "median_of_medians": "0.009655315614617940199335548",
+    "median_of_p95": "0.029131915893339598261482439",
+    "max_of_max": "0.162498033663677835456976561"
+   },
+   "stock:US": {
+    "valid": 151,
+    "count": 6268,
+    "median_of_medians": "0.0105005607095524518299520848",
+    "median_of_p95": "0.032285471537807986406117247",
+    "max_of_max": "0.162498033663677835456976561"
+   }
+  }
+ },
+ "reopen_missing_total": 12,
+ "reopen_halted_total": 0,
+ "flat": {
+  "index": {
+   "ETF:HK": {
+    "runs": 2,
+    "valid": 1,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 1
+   },
+   "ETF:KR": {
+    "runs": 0,
+    "valid": 0,
+    "median_of_medians": null,
+    "median_of_p95": null,
+    "max_of_max": 0
+   },
+   "ETF:US": {
+    "runs": 302,
+    "valid": 35,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 48
+   },
+   "all": {
+    "runs": 1336,
+    "valid": 121,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 48
+   },
+   "commodity": {
+    "runs": 12,
+    "valid": 2,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 4
+   },
+   "forex": {
+    "runs": 0,
+    "valid": 0,
+    "median_of_medians": null,
+    "median_of_p95": null,
+    "max_of_max": 0
+   },
+   "stock:CN": {
+    "runs": 0,
+    "valid": 0,
+    "median_of_medians": null,
+    "median_of_p95": null,
+    "max_of_max": 0
+   },
+   "stock:HK": {
+    "runs": 158,
+    "valid": 8,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 9
+   },
+   "stock:KR": {
+    "runs": 1,
+    "valid": 1,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 1
+   },
+   "stock:US": {
+    "runs": 861,
+    "valid": 74,
+    "median_of_medians": "1",
+    "median_of_p95": "3",
+    "max_of_max": 48
+   }
+  },
+  "mark": {
+   "ETF:HK": {
+    "runs": 3,
+    "valid": 1,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 1
+   },
+   "ETF:KR": {
+    "runs": 1,
+    "valid": 1,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 1
+   },
+   "ETF:US": {
+    "runs": 250,
+    "valid": 32,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 6
+   },
+   "all": {
+    "runs": 1080,
+    "valid": 140,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 25
+   },
+   "commodity": {
+    "runs": 1,
+    "valid": 1,
+    "median_of_medians": "1",
+    "median_of_p95": "1",
+    "max_of_max": 1
+   },
+   "forex": {
+    "runs": 0,
+    "valid": 0,
+    "median_of_medians": null,
+    "median_of_p95": null,
+    "max_of_max": 0
+   },
+   "stock:CN": {
+    "runs": 0,
+    "valid": 0,
+    "median_of_medians": null,
+    "median_of_p95": null,
+    "max_of_max": 0
+   },
+   "stock:HK": {
+    "runs": 119,
+    "valid": 6,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 5
+   },
+   "stock:KR": {
+    "runs": 19,
+    "valid": 4,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 3
+   },
+   "stock:US": {
+    "runs": 687,
+    "valid": 95,
+    "median_of_medians": "1",
+    "median_of_p95": "2",
+    "max_of_max": 25
+   }
+  }
+ },
+ "funding": {
+  "ETF": {
+   "valid": 49,
+   "excluded": 10,
+   "abs_median": "0",
+   "abs_p95": "0.00084342",
+   "cap_ratio": "0"
+  },
+  "commodity": {
+   "valid": 4,
+   "excluded": 0,
+   "abs_median": "0",
+   "abs_p95": "0.00030609",
+   "cap_ratio": "0.003791469194312796208530805687"
+  },
+  "forex": {
+   "valid": 0,
+   "excluded": 4,
+   "abs_median": null,
+   "abs_p95": null,
+   "cap_ratio": null
+  },
+  "stock": {
+   "valid": 171,
+   "excluded": 67,
+   "abs_median": "0",
+   "abs_p95": "0.00055697",
+   "cap_ratio": "0"
+  }
+ }
+}
