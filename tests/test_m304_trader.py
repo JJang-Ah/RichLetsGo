@@ -79,7 +79,7 @@ async def runtime(tmp_path, backend="memory"):
         fallback = True
         account_reads = 0
 
-        async def warmup(self):
+        async def warmup(self, earliest):
             return ()
 
         async def bar(self, symbol, interval, at):
@@ -609,7 +609,7 @@ def test_initial_tracker_waits_for_funding_and_failed_reconnect_stays_closed(tmp
         assert await trader.process(T)
         assert trader.gate.tracker.state.baseline == D(999)
 
-        async def broken_warmup():
+        async def broken_warmup(earliest):
             raise OSError("synthetic unavailable history")
 
         inputs.warmup = broken_warmup

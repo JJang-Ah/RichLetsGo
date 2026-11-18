@@ -75,7 +75,7 @@ class LiveInputs(Protocol):
         figures: dict[StrategyId, StrategyRiskInput],
     ) -> Admission: ...
     async def check_liquidation(self) -> None: ...
-    async def warmup(self) -> tuple[Bar, ...]: ...
+    async def warmup(self, earliest: datetime) -> tuple[Bar, ...]: ...
     async def bar(self, symbol: Symbol, interval: Interval, at: datetime) -> Bar | None: ...
     async def funding(self, since: datetime) -> tuple[FundingPayment, ...]: ...
     async def account(self) -> AccountSnapshot: ...
@@ -219,7 +219,13 @@ class Trader:
                     return (
                         False  # Includes stabilization limit and out-of-range watermark failures.
                     )
-                for bar in await self.inputs.warmup():
+                first = (
+                    self.last_boundary + Interval.HOUR.duration
+                    if self.last_boundary
+                    else Interval.HOUR.floor(self.clock.now())
+                )
+                earliest = min(self._boundaries | {first, Interval.HOUR.floor(self.clock.now())})
+                for bar in await self.inputs.warmup(earliest):
                     self._bars[bar.end, bar.symbol, bar.interval] = bar
                 # Expired entries and protective actions run before opening the memory gate.
                 await self.sync.tick()
@@ -412,13 +418,6 @@ class Trader:
                                 DATA_PAUSE_REASON,
                                 self.clock.now(),
                                 symbol=symbol,
-                            )
-                        )
-                        self.alert(
-                            Notice(
-                                "missing confirmed candle: " + symbol.value,
-                                code="candle_missing",
-                                symbol=symbol.value,
                             )
                         )
                     elif bar.end != at or bar.symbol is not symbol or bar.interval is not interval:
