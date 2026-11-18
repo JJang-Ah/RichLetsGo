@@ -93,9 +93,11 @@ class OrderSender:
         self.proven_entries: set[str] = set()
 
     def pause(self, reason: str, symbol: Symbol | None = None) -> None:
-        self.pauses.add(
+        added = self.pauses.add(
             Pause(PauseKind.ENTRY_PAUSED_SYSTEM, reason, self.clock.now(), symbol=symbol)
         )
+        if not added and reason in {"query", "boundary_query", "history_out_of_range"}:
+            return
         if reason not in self.alerts:
             from richletsgo.notify.events import Notice
 

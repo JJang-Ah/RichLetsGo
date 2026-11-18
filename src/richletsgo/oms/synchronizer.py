@@ -104,6 +104,7 @@ class Synchronizer:
         self._booted = False
         self._transient_sync = False
         self.preserve_created_entries: set[str] = set()
+        self._unstable_reported = False
         self._generation = 0
         self.account: AccountSnapshot | None = None
         self.sender.pause("sync")
@@ -137,9 +138,10 @@ class Synchronizer:
         """Serialize boundary replay with periodic reconciliation and queue consumption."""
         async with self._lock:
             for symbol in self.symbols:
-                if await self._refresh(symbol, since) is None:
+                if await self._refresh(symbol, since, failure="boundary_query") is None:
                     return False
             await self._drain()
+            self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason="boundary_query")
             return True
 
     async def discard_unsent(self, order_key: str) -> None:
@@ -210,7 +212,9 @@ class Synchronizer:
                     uow.recovery.put(gap_key, "unresolved")
                     gap = True
                 starts.append(
-                    checked - self.policy.overlap if checked else now - self.policy.history_window
+                    checked - self.policy.overlap
+                    if checked is not None and checked <= now
+                    else now - self.policy.history_window
                 )
             await uow.commit()
         if gap:
@@ -321,13 +325,15 @@ class Synchronizer:
             await uow.commit()
         self.journal.archive({r.key for r in records})
 
-    async def _refresh(self, symbol: Symbol, since: datetime) -> tuple[OrderEvent, ...] | None:
+    async def _refresh(
+        self, symbol: Symbol, since: datetime, *, failure: str = "query"
+    ) -> tuple[OrderEvent, ...] | None:
         started = self.clock.now()
         history = await self.gateway.get_order_history(symbol, since)
         executions = await self.gateway.get_executions(symbol, since)
         opened = await self.gateway.get_open_orders(symbol)
         if any(isinstance(r, ExchangeError) for r in (history, executions, opened)):
-            self.sender.pause("query")
+            self.sender.pause(failure)
             return None
         assert (
             not isinstance(history, ExchangeError)
@@ -887,9 +893,13 @@ class Synchronizer:
                 ):
                     self.pauses.clear(PauseKind.ENTRY_PAUSED_SYSTEM, reason=reason)
                 await self._persist_pauses()
+                self._unstable_reported = False
                 return True
-            self.sender.pause("sync")
-            self.alerts.append(Notice("synchronization did not stabilize", code="sync_unstable"))
+            if not self._unstable_reported:
+                self.alerts.append(
+                    Notice("synchronization did not stabilize", code="sync_unstable")
+                )
+                self._unstable_reported = True
             await self._persist_pauses()
             return False
         except (OSError, JournalCorrupt):
