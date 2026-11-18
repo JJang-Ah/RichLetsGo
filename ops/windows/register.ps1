@@ -51,7 +51,9 @@ foreach ($role in $roles) {
     Invoke-Nssm @('set', $name, 'Start', 'SERVICE_DISABLED')
     Invoke-Nssm @('set', $name, 'AppParameters', (Arguments-For 'richletsgo_watchdog.service' $role))
     Invoke-Nssm @('set', $name, 'AppDirectory', (Split-Path -Parent $Config))
-    Invoke-Nssm @('set', $name, 'AppKillProcessTree', '0')
+    # NSSM 2.24 has no AppKillProcessTree. Keep its default: on forced stop it ends only this
+    # service's own descendants. The venv python.exe is a launcher with the real interpreter as
+    # its child, so killing only the launcher PID could orphan a second Trader.
     Invoke-Nssm @('set', $name, 'AppStopMethodConsole', '30000')
     Invoke-Nssm @('set', $name, 'AppExit', 'Default', 'Restart')
     Invoke-Nssm @('set', $name, 'AppExit', '0', 'Exit')
@@ -72,7 +74,9 @@ $backupArgs = Arguments-For 'richletsgo.storage' 'backup'
 $action = New-ScheduledTaskAction -Execute $Python -Argument $backupArgs -WorkingDirectory (Split-Path -Parent $Config)
 $trigger = New-ScheduledTaskTrigger -Daily -At $BackupTime
 # Local SQLite backup needs no network credentials. Run even when the user is logged out.
-$principal = New-ScheduledTaskPrincipal -UserId $ServiceUser -LogonType S4U -RunLevel Limited
+# Task Scheduler cannot resolve the SCM form '.\user'; use 'COMPUTER\user'.
+$TaskUser = if ($ServiceUser.StartsWith('.\')) { "$env:COMPUTERNAME\" + $ServiceUser.Substring(2) } else { $ServiceUser }
+$principal = New-ScheduledTaskPrincipal -UserId $TaskUser -LogonType S4U -RunLevel Limited
 $settings = New-ScheduledTaskSettingsSet -StartWhenAvailable -MultipleInstances IgnoreNew
 Register-ScheduledTask -TaskName 'RichLetsGo-SQLiteBackup' -Action $action -Trigger $trigger -Principal $principal -Settings $settings | Out-Null
 Write-Host 'Registered only; inspect settings, then start services manually. Backup retains 14 days via storage.backup.'
