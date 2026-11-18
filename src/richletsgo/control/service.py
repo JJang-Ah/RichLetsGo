@@ -188,6 +188,7 @@ class CommandService:
                     books = [u.portfolio.book(s, symbol) for s in StrategyId for symbol in Symbol]
                     record["status"] = {
                         "equity": str(self.tracker.equity),
+                        "equity_confirmed": self.tracker.equity_confirmed,
                         "daily_pnl": str(self.tracker.daily_pnl),
                         "day_start": self.tracker.day_start.isoformat(),
                         "pauses": self.pauses.to_json(),

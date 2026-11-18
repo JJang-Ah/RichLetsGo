@@ -13,6 +13,7 @@ import aiohttp
 
 from richletsgo.keystore import Secret
 from richletsgo.notify.bot import Bot, BotError
+from richletsgo.notify.wording import watchdog
 
 from .config import Settings
 
@@ -82,12 +83,15 @@ class Monitor:
         self.retry_at = 0.0
         self.episodes: dict[tuple[str, int], Episode] = {}
 
-    async def update(self, active: set[str], now: float) -> None:
+    async def update(
+        self, active: set[str], now: float, details: dict[str, str] | None = None
+    ) -> None:
         for cause in active:
             for user in self.settings.users:
                 self.episodes.setdefault((cause, user), Episode(now))
         if now < self.retry_at:
             return
+        due: dict[tuple[int, str, bool], list[tuple[str, int]]] = {}
         for key, episode in list(self.episodes.items()):
             cause, user = key
             recovered = cause not in active
@@ -99,12 +103,19 @@ class Monitor:
                 or (episode.sent is not None and now - episode.sent < self.settings.repeat)
             ):
                 continue
-            message = f"[Watchdog][{self.settings.environment}] {cause}: " + (
-                "recovered"
-                if recovered
-                else "fault persists"
-                if episode.sent is not None
-                else "fault"
+            group = "connection" if cause in {"ready", "private_ws"} else cause
+            due.setdefault((user, group, recovered), []).append(key)
+        for (user, _, recovered), keys in due.items():
+            message = "\n".join(
+                watchdog(
+                    self.settings.environment,
+                    k[0],
+                    recovered,
+                    int((now - self.episodes[k].since) // 60),
+                    self.episodes[k].sent is not None,
+                )
+                + (" · " + details[k[0]] if details and k[0] in details and not recovered else "")
+                for k in sorted(keys)
             )
             try:
                 await self.bot.call("sendMessage", {"chat_id": user, "text": message})
@@ -116,20 +127,24 @@ class Monitor:
                 # Never include remote exception text, token URLs or health bodies.
                 print("[Watchdog] notification unavailable", flush=True)
                 continue
-            if recovered:
-                del self.episodes[key]
-            else:
-                episode.sent = now
+            for key in keys:
+                if recovered:
+                    del self.episodes[key]
+                else:
+                    self.episodes[key].sent = now
 
 
-async def local_faults(settings: Settings) -> set[str]:
+async def local_faults(settings: Settings, details: dict[str, str] | None = None) -> set[str]:
     result: set[str] = set()
     if not await asyncio.to_thread(
         database_ok, settings.db, settings.timeout, settings.environment
     ):
         result.add("database")
     try:
-        if shutil.disk_usage(settings.disk).free < settings.minimum_free:
+        free = shutil.disk_usage(settings.disk).free
+        if free < settings.minimum_free:
+            if details is not None:
+                details["disk_low"] = f"{free / 10**9:.1f} GB 남음"
             result.add("disk_low")
     except OSError:
         result.add("disk_unavailable")

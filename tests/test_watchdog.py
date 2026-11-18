@@ -68,8 +68,8 @@ def test_grace_repeat_recovery(settings, cause):
         assert len(bot.calls) == 2
         await monitor.update(set(), 201 + settings.grace + settings.repeat)
         await monitor.update(set(), 202 + settings.grace + settings.repeat)
-        assert len(bot.calls) == 3 and "recovered" in bot.calls[-1]["text"]
-        assert all(v["text"].startswith("[Watchdog][demo]") for v in bot.calls)
+        assert len(bot.calls) == 3 and bot.calls[-1]["text"].startswith("🟢")
+        assert all("[데모 감시]" in v["text"] for v in bot.calls)
 
     asyncio.run(run())
 
@@ -253,3 +253,18 @@ def test_http_denial_and_exception_are_sanitized(settings):
             asyncio.run(health(session, settings, Secret("secret-marker")))
         assert str(error.value) == "Trader health unavailable"
         assert error.value.__suppress_context__
+
+
+def test_connection_faults_share_delivery_without_merging_recovery(settings):
+    async def run():
+        bot = Bot()
+        monitor = Monitor(settings, bot)
+        await monitor.update({"ready", "private_ws"}, 0)
+        await monitor.update({"ready", "private_ws"}, settings.grace)
+        assert len(bot.calls) == 1
+        assert all(code in bot.calls[0]["text"] for code in ("코드 ready", "코드 private_ws"))
+        await monitor.update({"ready"}, settings.grace + 1)
+        assert len(bot.calls) == 2 and "연결 복구" in bot.calls[-1]["text"]
+        assert "코드 ready" not in bot.calls[-1]["text"]
+
+    asyncio.run(run())

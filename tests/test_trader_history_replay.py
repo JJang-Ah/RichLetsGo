@@ -128,7 +128,7 @@ def test_failed_boundary_query_not_cleared_by_shorter_successful_comparison(tmp_
             assert await sync.confirm_fills(since)
             await tg.scheduled_once()
             await tg.send_once()
-            assert len(bot.sent) == 2 and "정지 해소" in bot.sent[-1]["text"]
+            assert len(bot.sent) == 2 and "멈춤 원인 해결" in bot.sent[-1]["text"]
         finally:
             await trader.close()
 

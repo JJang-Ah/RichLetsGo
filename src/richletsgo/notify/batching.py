@@ -70,10 +70,9 @@ class WarningBatcher:
 
     def _summary(self, episode: _Episode) -> None:
         if episode.repeated:
-            message = (
-                f"{episode.message} (repeated {episode.repeated}; "
-                f"{episode.start.isoformat()} .. {episode.last.isoformat()})"
-            )
+            seconds = int(self.window.total_seconds())
+            window = f"{seconds // 60}분" if seconds % 60 == 0 else f"{seconds}초"
+            message = f"{episode.message} ({window} 동안 {episode.repeated}번)"
             self.emit(
                 episode.message.with_text(message)
                 if isinstance(episode.message, Notice)

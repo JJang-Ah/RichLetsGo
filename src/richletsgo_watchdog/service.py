@@ -17,6 +17,7 @@ import aiohttp
 
 from richletsgo.keystore import KeyStore, windows_backend
 from richletsgo.notify.bot import BotClient
+from richletsgo.notify.wording import watchdog
 
 from .config import Settings, load
 
@@ -61,7 +62,7 @@ async def stopped(settings: Settings, role: str) -> None:
                         "sendMessage",
                         {
                             "chat_id": user,
-                            "text": f"[Watchdog][{settings.environment}] {role} restart limit: stopped; manual recovery required",
+                            "text": watchdog(settings.environment, "restart_limit_" + role),
                         },
                     )
                 except Exception:

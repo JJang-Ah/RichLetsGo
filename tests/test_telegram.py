@@ -116,7 +116,7 @@ def test_pause_status_dedup_and_completed_receipts_not_in_working_set(tmp_path, 
         assert service.pauses.revision == revision and len(bot.sent) == 1
         await receive(bot, tg, message(11, "/status"))
         await tg.send_once()
-        assert len(bot.sent) == 2 and "daily_pnl" in bot.sent[-1]["text"]
+        assert len(bot.sent) == 2 and "오늘 손익" in bot.sent[-1]["text"]
         assert "키 만료까지" in bot.sent[-1]["text"]
         async with db.unit_of_work() as u:
             assert not u.recovery.active("telegram_inbox:")
@@ -322,11 +322,11 @@ def test_persistent_warning_batching_resolution_and_secret_redaction(tmp_path):
         clock.advance(timedelta(seconds=60))
         await tg.notices_once()  # restore durable aggregation state
         await tg.send_once()
-        assert len(bot.sent) == 2 and "repeated 4" in bot.sent[-1]["text"]
+        assert len(bot.sent) == 2 and "1분 동안 4번" in bot.sent[-1]["text"]
         tg.capture(Notice("recovered", code="clock", symbol="BTC", resolved=True))
         await tg.notices_once()
         await tg.send_once()
-        assert bot.sent[-1]["text"].endswith("recovered")
+        assert bot.sent[-1]["text"].startswith("🟢")
         c = open_readonly(db.path)
         try:
             content = str(c.execute("SELECT payload FROM alerts").fetchall())
@@ -408,8 +408,8 @@ def test_daily_summary_waits_for_midnight_commit_and_sends_once(tmp_path):
         summaries = [m for m in bot.sent if "일일 요약" in m["text"]]
         assert (
             len(summaries) == 1
-            and "비활성" in summaries[0]["text"]
-            and '"pnl_d81":"-1"' in summaries[0]["text"]
+            and "꺼짐" in summaries[0]["text"]
+            and "손익 -1 USDT" in summaries[0]["text"]
         )
         await tg.scheduled_once()
         await tg.send_once()
@@ -514,7 +514,7 @@ def test_fill_alert_idempotent_after_restart_and_pending_deadline_resolution(tmp
             await u.commit()
         await tg.scheduled_once()
         await tg.send_once()
-        assert len(bot.sent) == 2 and any("기한 초과" in m["text"] for m in bot.sent)
+        assert len(bot.sent) == 2 and any("장부에 아직 안 맞춘 체결" in m["text"] for m in bot.sent)
         tg.boot = "restart"
         await tg.scheduled_once()
         await tg.send_once()
@@ -526,7 +526,7 @@ def test_fill_alert_idempotent_after_restart_and_pending_deadline_resolution(tmp
             await u.commit()
         await tg.scheduled_once()
         await tg.send_once()
-        assert len(bot.sent) == 3 and "보류 해소" in bot.sent[-1]["text"]
+        assert len(bot.sent) == 3 and "장부 맞춤 완료" in bot.sent[-1]["text"]
 
     asyncio.run(run())
 
@@ -542,7 +542,7 @@ def test_bounded_notice_overflow_keeps_delivery_progress(tmp_path):
         await tg.send_once()
         await tg.notices_once()
         await tg.send_once()
-        assert len(bot.sent) == 2 and "상한 초과" in bot.sent[-1]["text"]
+        assert len(bot.sent) == 2 and "대기 목록이 가득" in bot.sent[-1]["text"]
 
     asyncio.run(run())
 
@@ -677,7 +677,7 @@ def test_critical_first_alert_precedes_older_warning_summary(tmp_path):
         tg.capture(Notice("uncertain", code="storage_uncertain", related="txn1"))
         await tg.notices_once()
         await tg.send_once()
-        assert "uncertain" in bot.sent[1]["text"] and "repeated 1" in bot.sent[2]["text"]
+        assert "uncertain" in bot.sent[1]["text"] and "1분 동안 1번" in bot.sent[2]["text"]
 
     asyncio.run(run())
 
@@ -721,7 +721,7 @@ def test_restart_replays_committed_cancel_result_instead_of_regenerating_prompt(
         service.prompts.clear()
         await tg.process_once()
         await tg.send_once()
-        assert len(bot.sent) == 1 and "accepted" in bot.sent[0]["text"]
+        assert len(bot.sent) == 1 and "접수됨" in bot.sent[0]["text"]
         assert not service.prompts and "새 확인 요청" not in bot.sent[0]["text"]
 
     asyncio.run(run())
