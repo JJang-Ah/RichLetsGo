@@ -30,6 +30,7 @@ M1·M2의 순수 로직에 실제 외부 연결(Bybit 데모, SQLite 저장소, 
 | [M3-05](M3-05-telegram.md) | 텔레그램 알림·명령(`/status` `/pause` `/resume` `/cancel` `/resolve`), 키 만료 알림 | M3-04 |
 | [M3-06](M3-06-watchdog-and-services.md) | Watchdog, Windows 서비스 등록·자동 재시작, 운영 체크 | M3-04, M3-05 |
 | [M3-07](M3-07-demo-run.md) | 데모 1주 운영, Bybit 실제 동작 확인 기록, M3 완료 판정 | M3-01~06, PASS한 V1 보고서 + 사용자 전략 선택 |
+| [M3-08](M3-08-telegram-wording.md) | 텔레그램 문구를 사람이 읽기 쉽게(D108) | M3-05, M3-06 |
 
 ## M3 공통 규칙
 
