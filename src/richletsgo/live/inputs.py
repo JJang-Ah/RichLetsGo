@@ -11,7 +11,6 @@ from richletsgo.domain import Environment, Price, StrategyId, Symbol
 from richletsgo.exchange.bybit.gateway import BybitGateway
 from richletsgo.exchange.contracts import ExchangeError
 from richletsgo.marketdata.models import Bar, Interval, from_ms, to_ms
-from richletsgo.notify.events import Notice
 from richletsgo.portfolio.funding import snapshot_key
 from richletsgo.portfolio.signals import MarketSignal, SignalRouter
 from richletsgo.risk.checks import StrategyRiskInput
@@ -94,7 +93,7 @@ class BybitInputs:
         self.remember(ordered)
         return ordered
 
-    async def warmup(self) -> tuple[Bar, ...]:
+    async def warmup(self, earliest: datetime) -> tuple[Bar, ...]:
         result: list[Bar] = []
         now = self.gateway.clock.now()
         for symbol in self.config.bybit.symbols:
@@ -105,16 +104,14 @@ class BybitInputs:
                     for s in self.config.strategies.values()
                 )
                 end = interval.floor(now)
-                bars = await self.fetch(symbol, interval, end - count * interval.duration, end)
-                ClosedBars(symbol, interval, bars, end).through(end, lookback=count)
-                if len(bars) != count or bars[-1].end != end:
+                anchor = interval.floor(max(now - timedelta(days=7), min(earliest, now)))
+                bars = await self.fetch(symbol, interval, anchor - count * interval.duration, end)
+                latest = tuple(b for b in bars if b.start >= end - count * interval.duration)
+                ClosedBars(symbol, interval, latest, end).through(end, lookback=count)
+                if len(latest) != count or latest[-1].end != end:
                     raise ValueError("incomplete warmup history")
                 result.extend(bars)
         await self.maintain()
-        for symbol in self.config.bybit.symbols:
-            self.gateway.pauses.clear(
-                PauseKind.ENTRY_PAUSED_SYSTEM, reason=DATA_PAUSE_REASON, symbol=symbol
-            )
         return tuple(result)
 
     async def bar(self, symbol: Symbol, interval: Interval, at: datetime) -> Bar | None:
@@ -368,12 +365,14 @@ class BybitInputs:
         for symbol in available:
             try:
                 day = self.closed(symbol, Interval.DAY, at, candidates.required_bars(s1))
-                if len(day.bars) < candidates.required_bars(s1):
+                if len(day.bars) < candidates.required_bars(s1) or day.bars[
+                    -1
+                ].end != Interval.DAY.floor(at):
                     raise ValueError("short daily history")
                 if s2 is not None:
                     n = candidates.required_bars(s2) * (4 if isinstance(s2, S2PParams) else 1)
                     hour = self.closed(symbol, Interval.HOUR, at, n)
-                    if len(hour.bars) < n:
+                    if len(hour.bars) < n or hour.bars[-1].end != at:
                         raise ValueError("short hourly history")
             except ValueError:
                 valid.discard(symbol)
@@ -385,12 +384,10 @@ class BybitInputs:
                         symbol=symbol,
                     )
                 )
-                self.gateway.alert(
-                    Notice(
-                        "missing strategy history: " + symbol.value,
-                        code="strategy_history",
-                        symbol=symbol.value,
-                    )
+            else:
+                # Telegram observes the pause transition; do not enqueue a second alert.
+                self.gateway.pauses.clear(
+                    PauseKind.ENTRY_PAUSED_SYSTEM, reason=DATA_PAUSE_REASON, symbol=symbol
                 )
         available = frozenset(valid)
 

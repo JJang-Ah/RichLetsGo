@@ -163,3 +163,63 @@ def test_live_signal_serialization_and_history_gap_is_per_symbol(tmp_path):
         assert len(gateway.pauses.active()) == 2
 
     asyncio.run(run())
+
+
+def test_restart_across_midnight_recovers_only_complete_symbol_history(tmp_path):
+    from richletsgo.strategy import candidates
+
+    async def run():
+        db, clock, trader, stub, _, alerts = await runtime(tmp_path)
+        gateway = SimpleNamespace(clock=clock, pauses=trader.gate.pauses, alert=alerts.append)
+        config = load_config(config_file(tmp_path))
+        inputs = BybitInputs(
+            replace(config, strategies={StrategyId.S1: config.strategies[StrategyId.S1]}),
+            gateway,
+            None,
+        )
+        last = T - timedelta(hours=19)
+        first = last + timedelta(hours=1)
+        clock.set(T + timedelta(hours=12))
+        async with db.unit_of_work() as u:
+            u.recovery.put("trader:last_boundary", last.isoformat())
+            await u.commit()
+
+        async def fetch(symbol, interval, start, end):
+            rows = tuple(
+                candle(symbol, interval, start + interval.duration * (i + 1))
+                for i in range((end - start) // interval.duration)
+            )
+            inputs.remember(rows)
+            return rows
+
+        async def maintain():
+            pass
+
+        inputs.fetch, inputs.maintain = fetch, maintain
+        stub.warmup = inputs.warmup
+        assert await trader.boot()
+        count = candidates.required_bars(config.strategies[StrategyId.S1].params)
+        cache = inputs.history[SYMBOLS[0], Interval.DAY]
+        # Previous warmup had only this many bars relative to the restart.
+        old = sorted(cache.values(), key=lambda b: b.start)[-count:]
+        assert len([b for b in old if b.end <= first]) < count
+        assert len(inputs.closed(SYMBOLS[0], Interval.DAY, first, count).bars) == count
+        async with db.unit_of_work() as u:
+            await inputs.signals(u, first, (), frozenset(SYMBOLS))
+            assert not gateway.pauses.active()
+            removed = []
+            for symbol in SYMBOLS:
+                series = inputs.history[symbol, Interval.DAY]
+                removed.append(series.pop(Interval.DAY.floor(first) - Interval.DAY.duration))
+            for _ in range(2):
+                await inputs.signals(u, first, (), frozenset(SYMBOLS))
+            assert not alerts and len(gateway.pauses.active()) == 2
+            revision = gateway.pauses.revision
+            inputs.remember((removed[0],))
+            for _ in range(2):
+                await inputs.signals(u, first + timedelta(hours=1), (), frozenset(SYMBOLS))
+            assert [p.symbol for p in gateway.pauses.active()] == [SYMBOLS[1]]
+            assert not alerts and gateway.pauses.revision == revision + 1
+        await trader.close()
+
+    asyncio.run(run())
