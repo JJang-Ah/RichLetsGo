@@ -15,6 +15,7 @@ from richletsgo.config import TelegramConfig
 from richletsgo.control.models import Context
 from richletsgo.control.service import CommandDenied, CommandService
 from richletsgo.domain import Clock
+from richletsgo.notify import wording as w
 from richletsgo.ops.logging import Redactor
 from richletsgo.risk.pause import Pause
 from richletsgo.storage.contracts import FillStatus, UnitOfWork
@@ -73,6 +74,9 @@ class Telegram:
         self._initialized = False
         self.username = ""
         self.boot = uuid4().hex
+        self.startup_ready: Callable[[], bool] | None = None
+        self.started_at = clock.now()
+        self.startup_grace = timedelta(minutes=2)
         self.restart_probe = True
         self.health = {"poll": "starting", "process": "starting", "send": "starting"}
         self._notices: deque[tuple[str, Notice]] = deque()
@@ -108,6 +112,11 @@ class Telegram:
 
     def capture(self, notice: Notice) -> None:
         """Thread-safe, bounded enqueue only; no Bot/DB I/O on the Trader path."""
+        base = notice.code.split(":")[-1]
+        if (notice.resolved and notice.code in {"bybit:clock", "bybit:bybit_stream"}) or (
+            self.startup_ready is not None and base in w.STARTUP
+        ):
+            return
         clean = Notice(**self.redactor.clean(notice.record()))
         with self._notice_lock:
             if len(self._notices) >= self.policy.queue_limit:
@@ -166,28 +175,37 @@ class Telegram:
             await u.commit()
 
     def format_result(self, record: dict[str, Any]) -> str:
-        if record.get("reason_code") in {"invalid", "expired"}:
-            return f"[{self.service.environment.value}] {record['message']}"
-        text = f"[{self.service.environment.value}] /{record['command']} {record['state']}\n{record['message']}"
-        if record.get("resume"):
-            text += "\n재개 확인 (기록용 최고점·평가액·낙폭·다음 정지 수준·허용 폭):\n" + dumps(
-                record["resume"]
-            )
-        if record.get("resume_record"):
-            text += "\n실제 적용값: " + dumps(record["resume_record"])
+        prefix = "ℹ️ " + w.env(self.service.environment.value)
+        state = record["state"]
+        text = (
+            f"{prefix} /{record['command']} · {w.STATES.get(state, '처리 중')}\n{record['message']}"
+        )
+        if prompt := record.get("resume"):
+            text += "\n재개 확인" + w.resume_fields(prompt)
+        if applied := record.get("resume_record"):
+            text += "\n실제 적용값" + w.resume_fields(applied.get("peak_reset") or {})
+            text += "\n확정 시각: " + w.stamp(applied.get("confirmed_at")) + " KST"
         if record.get("targets") is not None:
-            text += "\n고정 취소 대상: " + dumps(record["targets"])
+            text += "\n고정 취소 대상: " + (
+                ", ".join(
+                    t
+                    if isinstance(t, str)
+                    else f"{t['order_key']} ({w.STATES.get(t['state'], '처리 중')})"
+                    for t in record["targets"]
+                )
+                or "없음"
+            )
         if record.get("status"):
             text += (
                 "\n"
-                + dumps(record["status"])
+                + w.status(record["status"])
                 + "\n키 만료까지: "
                 + expiry_text(self.clock.now(), self.expires_at)
             )
-        if record["command"] == "resolve":
-            text += "\nBybit에서 해당 주문/체결을 직접 확인했고 주문이 없음을 확인합니다."
+        if record["command"] == "resolve" and state == "confirmation_required":
+            text += "\nBybit에서 주문과 체결을 직접 확인해 해당 주문이 없음을 확인한 경우에만 실행하세요."
         if record.get("expires_at"):
-            text += "\n확인 만료: " + record["expires_at"]
+            text += "\n확인 만료: " + w.stamp(record["expires_at"]) + " KST"
         return text
 
     def _normalize(self, update: Any) -> dict[str, Any]:
@@ -422,7 +440,11 @@ class Telegram:
                                     **context.identity(),
                                     "command": command,
                                     "state": "rejected",
-                                    "message": "명령 대상/상태 확인: 새 요청 필요",
+                                    "message": (
+                                        "결과 미확인(UNKNOWN) 주문만 처리할 수 있습니다. 주문 번호와 현재 상태를 확인하세요."
+                                        if command == "resolve"
+                                        else "명령 대상/상태 확인: 새 요청 필요"
+                                    ),
                                 }
                             )
                         )
@@ -588,7 +610,7 @@ class Telegram:
                 ):
                     row["markup"] = None
                     row["text"] += "\n확인 만료/재시작: 새 요청 필요"
-            params = {"chat_id": row["chat_id"], "text": row["text"]}
+            params = {"chat_id": row["chat_id"], "text": row["text"][:4096]}
             if row["markup"]:
                 params["reply_markup"] = row["markup"]
             # Commit the attempt before the external effect. A crash/cancellation
@@ -686,7 +708,7 @@ class Telegram:
                         "id": "notice:" + uuid4().hex,
                         "notice": n.record(),
                         "priority": 3
-                        if "(repeated " in n
+                        if " 동안 " in n
                         else 0
                         if n.code.startswith(
                             ("storage", "protection", "portfolio", "unknown", "funding_off_hour")
@@ -708,7 +730,7 @@ class Telegram:
                         u,
                         item["id"],
                         user,
-                        f"[{self.service.environment.value}] {item['notice']['message']}",
+                        w.warning(self.service.environment.value, item["notice"]),
                         priority=item.get("priority", 1),
                     )
                 free -= len(self.users)
@@ -750,8 +772,11 @@ class Telegram:
                             u,
                             identity,
                             user,
-                            "Bybit API 키 만료까지: "
-                            + expiry_text(self.clock.now(), self.expires_at),
+                            f"⚠️ {w.env(self.service.environment.value)} Bybit API 키 만료까지: "
+                            + expiry_text(self.clock.now(), self.expires_at)
+                            + " ("
+                            + w.stamp(self.expires_at, "%m-%d")
+                            + ")",
                             priority=3,
                         )
                 for summary_key, raw in u.recovery.active("daily_summary:"):
@@ -766,7 +791,11 @@ class Telegram:
                         continue
                     for user in self.users:
                         self._enqueue(
-                            u, summary_key, user, "일일 요약\n" + dumps(summary), priority=3
+                            u,
+                            summary_key,
+                            user,
+                            w.summary(self.service.environment.value, summary),
+                            priority=3,
                         )
                     u.recovery.archive(summary_key)
                 saved = json.loads(u.recovery.get(observation) or '{"values":{},"sequence":0}')
@@ -779,16 +808,44 @@ class Telegram:
                             p.symbol.value if p.symbol else "",
                             p.strategy.value if p.strategy else "",
                         ]
-                    ): "정지: " + p.kind.value + " " + p.reason
+                    ): p.since.isoformat()
                     for p in self.service.pauses.active()
                     if self.pause_visible(p)
                 }
-                transitions = [
-                    ("pause:", k, current[k]) for k in current.keys() - previous.keys()
-                ] + [
-                    ("unpause:", k, "정지 해소: " + previous[k])
-                    for k in previous.keys() - current.keys()
-                ]
+                environment = w.env(self.service.environment.value)
+
+                def name(k: str) -> str:
+                    return w.pause_name(*json.loads(k))
+
+                booting = self.startup_ready is not None
+                started = False
+                if self.startup_ready is not None and capacity():
+                    elapsed = self.clock.now() - self.started_at
+                    ready = self.startup_ready()
+                    if ready or elapsed >= self.startup_grace:
+                        message = (
+                            f"▶️ {environment} 프로그램 시작 완료 — 거래소 연결·장부 대조 끝 ({int(elapsed.total_seconds())}초)"
+                            if ready
+                            else f"⚠️ {environment} 프로그램 시작했지만 아직 준비 안 됨"
+                        )
+                        message += "\n남은 멈춤: " + (
+                            ", ".join(name(k) for k in sorted(current)) or "없음"
+                        )
+                        for user in self.users:
+                            self._enqueue(u, "startup:" + self.boot, user, message)
+                        started = True
+                transitions = []
+                for k in sorted(previous.keys() ^ current.keys()):
+                    adding = k in current
+                    if booting and json.loads(k)[1] in w.STARTUP:
+                        continue
+                    if adding:
+                        text = f"🔴 {environment} 새 진입 멈춤 — {name(k)}"
+                    else:
+                        text = f"🟢 {environment} 멈춤 원인 해결 — {name(k)}" + w.duration(
+                            previous[k], self.clock.now()
+                        )
+                    transitions.append(("pause:" if adding else "unpause:", k, text))
                 transition_output: list[str] = []
                 transition_batch = WarningBatcher(
                     self.clock, self.warning_window, transition_output.append
@@ -811,10 +868,25 @@ class Telegram:
                 ):
                     sequence = saved["sequence"] + bool(transitions)
                     for text in transition_output:
+                        if isinstance(text, Notice):
+                            # A batch can flush after another cause changed. Describe the
+                            # current pause set, not the set at the first suppressed event.
+                            _, pk, reason = text.code.split(":", 2)
+                            own = dumps([pk, reason, text.symbol, text.strategy])
+                            remaining = ", ".join(
+                                name(k) for k in sorted(current) if k != own or text.resolved
+                            )
+                            rendered = str(text)
+                            if remaining:
+                                rendered += "\n남은 멈춤: " + remaining
+                            elif text.resolved:
+                                rendered += "\n새 진입 가능"
+                        else:
+                            rendered = text
                         emission = "pause_transition:" + uuid4().hex
                         for user in self.users:
                             self._enqueue(
-                                u, emission, user, text, priority=3 if "(repeated " in text else 0
+                                u, emission, user, rendered, priority=3 if " 동안 " in text else 0
                             )
                     u.recovery.put(transition_key, dumps(transition_batch.snapshot()))
                     u.recovery.put(observation, dumps({"values": current, "sequence": sequence}))
@@ -824,7 +896,13 @@ class Telegram:
                     if not capacity():
                         break
                     event = fill.event
-                    text = f"체결/손절: {event.exec_id} {event.symbol.value} 수량 {event.qty.value} 체결가 {event.price.value}"
+                    order = u.orders.get(fill.order_key) if fill.order_key else None
+                    action = (
+                        "손절 체결"
+                        if order and order.purpose.value in {"P", "ATTACHED_SL"}
+                        else "체결"
+                    )
+                    text = f"💰 {environment} {action} — {event.symbol.value} {'매수' if event.qty.value > 0 else '매도'} {abs(event.qty.value)} @ {event.price.value:,} (체결 ID {event.exec_id[:8]})"
                     for user in self.users:
                         self._enqueue(u, "execution:" + event.exec_id, user, text)
                     if not capacity():
@@ -839,7 +917,7 @@ class Telegram:
                                 u,
                                 "pending:" + event.exec_id,
                                 user,
-                                "귀속 보류 기한 초과: " + event.exec_id,
+                                f"⚠️ {environment} 장부에 아직 안 맞춘 체결 — {event.symbol.value} ({event.exec_id[:8]})",
                             )
                     elif fill.status is FillStatus.BOOKED:
                         for user in self.users:
@@ -848,7 +926,7 @@ class Telegram:
                                     u,
                                     "pending_resolved:" + event.exec_id,
                                     user,
-                                    "귀속 보류 해소: " + event.exec_id,
+                                    f"🟢 {environment} 장부 맞춤 완료 — {event.symbol.value} ({event.exec_id[:8]})",
                                 )
                 for confirm_key, raw in u.recovery.active("telegram_confirm:"):
                     binding = json.loads(raw)
@@ -858,6 +936,8 @@ class Telegram:
                     ):
                         u.recovery.archive(confirm_key)
                 await u.commit()
+                if started:
+                    self.startup_ready = None
 
     async def supervise(
         self, name: str, operation: Callable[[], Awaitable[None]], stop: asyncio.Event

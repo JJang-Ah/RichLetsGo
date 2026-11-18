@@ -30,11 +30,11 @@ def test_warning_windows_latest_values_resolution_and_idle_cleanup():
         clock.advance(timedelta(seconds=1))
     assert notices == ["offset 0"]
     batch.flush()
-    assert len(notices) == 2 and "offset 59 (repeated 59;" in notices[-1]
+    assert len(notices) == 2 and "offset 59 (1분 동안 59번" in notices[-1]
     batch.warn(("clock", "ETH"), "other")
     batch.warn(("clock", "BTC"), "offset 60")
     batch.resolve(("clock", "BTC"), "recovered")
-    assert "repeated 1;" in notices[-2] and notices[-1] == "recovered"
+    assert "1분 동안 1번" in notices[-2] and notices[-1] == "recovered"
     batch.warn(("clock", "BTC"), "new episode")
     assert notices[-1] == "new episode"
     clock.advance(timedelta(minutes=2))
@@ -54,7 +54,7 @@ def test_warning_sink_can_be_called_from_sqlite_worker_threads():
     assert notices == ["warning"]
     clock.advance(timedelta(seconds=60))
     batch.flush()
-    assert len(notices) == 2 and "repeated 199;" in notices[1]
+    assert len(notices) == 2 and "1분 동안 199번" in notices[1]
 
 
 @pytest.mark.parametrize("delta", [timedelta(seconds=1), timedelta(microseconds=1)])

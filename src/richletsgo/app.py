@@ -298,6 +298,8 @@ async def serve(config: AppConfig, policy: LoopPolicy, account_id: str, keys: Ke
                         )
                 await asyncio.sleep(policy.tick.total_seconds())
 
+        telegram.startup_ready = lambda: trader.ready and public_ready and gateway.connected
+        telegram.startup_grace = sync.policy.unknown_alert_after
         await control.service.startup()  # Restore before private WS or any new account observation.
         if not await gateway.initialize():
             raise OSError("Bybit startup checks failed")

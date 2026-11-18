@@ -208,8 +208,8 @@ def test_pause_on_off_transitions_share_one_window_and_latest_state(tmp_path):
         clock.advance(timedelta(minutes=1))
         await tg.scheduled_once()
         await tg.send_once()
-        assert len(bot.sent) == 2 and "repeated 19" in bot.sent[-1]["text"]
-        assert "정지 해소" in bot.sent[-1]["text"]
+        assert len(bot.sent) == 2 and "1분 동안 19번" in bot.sent[-1]["text"]
+        assert "멈춤 원인 해결" in bot.sent[-1]["text"]
         assert not service.pauses.active()
         service.pauses.add(Pause(PauseKind.HALTED, "drawdown", clock.now()))
         await tg.scheduled_once()
@@ -250,8 +250,8 @@ def test_pause_batch_survives_notifier_restart_and_full_delivery_queue(tmp_path)
         await restarted.scheduled_once()
         await restarted.send_once()
         assert len(bot.sent) == 2
-        assert "정지 해소" in bot.sent[-1]["text"]
-        assert "repeated 1" in bot.sent[-1]["text"]
+        assert "멈춤 원인 해결" in bot.sent[-1]["text"]
+        assert "1분 동안 1번" in bot.sent[-1]["text"]
         await restarted.scheduled_once()
         await restarted.send_once()
         assert len(bot.sent) == 2

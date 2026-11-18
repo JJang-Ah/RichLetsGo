@@ -10,6 +10,7 @@ import aiohttp
 
 from richletsgo.keystore import KeyStore, windows_backend
 from richletsgo.notify.bot import BotClient
+from richletsgo.notify.wording import stamp
 
 from .config import load
 from .monitor import Monitor, faults, health, local_faults
@@ -27,8 +28,11 @@ async def run(path: Path) -> None:
             except OSError:
                 value = None
             active = faults(value, datetime.now(UTC), settings.stale)
-            active.update(await local_faults(settings))
-            await monitor.update(active, time.monotonic())
+            details = {}
+            if value and "boundary_stale" in active:
+                details["boundary_stale"] = "마지막 " + stamp(value.get("last_boundary")) + " KST"
+            active.update(await local_faults(settings, details))
+            await monitor.update(active, time.monotonic(), details)
             await asyncio.sleep(settings.interval)
 
 
