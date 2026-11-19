@@ -129,13 +129,17 @@ def test_verdict_precedence_and_day_grouping():
         for k in range(100)
     ]
 
-    def design(ts=trades, e=150, valid=True, ruined=False):
-        return v.design(ts, e, first, until, valid=valid, ruined=ruined)
+    def design(ts=trades, e=150, slots=100, valid=True, ruined=False):
+        return v.design(ts, e, first, until, slot_capacity=slots, valid=valid, ruined=ruined)
 
-    assert [v.minimum(k) for k in (150, 250, 251, 256)] == [100, 100, 101, 103]
+    assert [v.minimum(k) for k in (249, 250, 251, 282, 283)] == [100, 100, 101, 113, 114]
     with pytest.raises(ValueError, match="INVALID_INPUT"):
         design([v.Trade(until, 0, "MUUSDT", D(1), D(1))], e=0)
-    assert design() == "GO" and design(e=251) == "NO_GO"
+    assert (
+        design() == "GO"
+        and design(e=300, slots=250) == "GO"
+        and design(e=300, slots=251) == "NO_GO"
+    )
     assert design(e=149) == "INDETERMINATE" and design(e=149, valid=False) == "INVALID_INPUT"
     assert design([v.Trade(first, k, "MUUSDT", D(1), D(1)) for k in range(100)]) == "NO_GO"
 
@@ -192,7 +196,15 @@ def test_shared_cash_replay_hash_and_stressed_drawdown():
     assert rejected.entries == rejected.trades == ()
     assert rejected.cost_rejections == {(f.session.symbol, D(".0015")): 1 for f in fixtures}
     assert (
-        v.design(rejected.trades, 150, date(2026, 6, 1), date(2026, 9, 1), valid=True, ruined=False)
+        v.design(
+            rejected.trades,
+            150,
+            date(2026, 6, 1),
+            date(2026, 9, 1),
+            slot_capacity=100,
+            valid=True,
+            ruined=False,
+        )
         == "NO_GO"
     )
     assert result.minimum_equity <= result.equity

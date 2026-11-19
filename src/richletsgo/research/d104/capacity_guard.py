@@ -20,7 +20,7 @@ PINS = {
     STOCK: "d90396f8590e33ea0c24e5114197b31a9e5cf007966da5d441deb73ed5b1da42",
     SESSIONS: "386ea41cb50792af7322d19223b05204baf796213986dc7fb3cb21bd98cfbd07",
 }
-TASK_HASH = "335d5553be2de97d584dc5cb49a4ec147dcb84a9e4431104e093236354de2d75"
+TASK_HASH = "e1839b5b6463360c9198717f5a11217fd81a1c1baf673cc5e71b254b3bdaf9be"
 PAGE = 30
 MAX_BYTES = 65536
 
@@ -158,13 +158,25 @@ def collect(reports: Path, get: Callable[[str], bytes] = _public_get) -> dict[st
             line = json.dumps([sym, at, number(values[at])], separators=(",", ":"))
             digest.update((line + "\n").encode())
     eligible = dict.fromkeys(CALENDAR, 0)
-    by_day: dict[int, set[str]] = {}
+    groups: dict[tuple[int, str], set[str]] = {}
     for session in eligible_sessions(sessions, launches, daily):
         eligible[session.symbol] += 1
-        by_day.setdefault(session.start // DAY, set()).add(session.symbol)
+        utc_day = session.start // DAY * DAY
+        groups.setdefault((utc_day, session.calendar), set()).add(session.symbol)
+    eligible_by_day: dict[int, int] = {}
+    slot_capacity = 0
+    calendar_days = []
+    for (utc_day, calendar), symbols in sorted(groups.items()):
+        count = len(symbols)
+        slots = min(3, count)
+        slot_capacity += slots
+        eligible_by_day[utc_day] = eligible_by_day.get(utc_day, 0) + count
+        calendar_days.append(
+            dict(utc_day_ms=utc_day, calendar=calendar, eligible=count, slots=slots)
+        )
     total = sum(eligible.values())
     return {
-        "schema": "d104-capacity-v2",
+        "schema": "d104-capacity-v3",
         "task_sha256": TASK_HASH,
         "boundary_exclusive": B,
         "input_sha256": PINS,
@@ -172,8 +184,10 @@ def collect(reports: Path, get: Callable[[str], bytes] = _public_get) -> dict[st
         "daily_count": {s: len(v) for s, v in daily.items()},
         "upper": upper,
         "eligible": eligible,
-        "multi_symbol_dates": sum(len(symbols) >= 2 for symbols in by_day.values()),
+        "multi_symbol_dates": sum(count >= 2 for count in eligible_by_day.values()),
         "E": total,
+        "E_slot": slot_capacity,
+        "calendar_days": calendar_days,
         "status": "SUFFICIENT" if total >= 150 else "INDETERMINATE",
-        "N_min": minimum(total) if total >= 150 else None,
+        "N_min": minimum(slot_capacity) if total >= 150 else None,
     }

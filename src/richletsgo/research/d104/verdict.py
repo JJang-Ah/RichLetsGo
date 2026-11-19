@@ -23,22 +23,29 @@ class Trade:
         return self.pnl / self.risk
 
 
-def minimum(capacity: int) -> int:
-    if capacity < 0:
+def minimum(slot_capacity: int) -> int:
+    if slot_capacity < 0:
         raise ValueError("negative capacity")
-    return max(100, (2 * capacity + 4) // 5)
+    return max(100, (2 * slot_capacity + 4) // 5)
 
 
 def design(
-    trades: Sequence[Trade], capacity: int, first: date, until: date, *, valid: bool, ruined: bool
+    trades: Sequence[Trade],
+    capacity: int,
+    first: date,
+    until: date,
+    *,
+    slot_capacity: int,
+    valid: bool,
+    ruined: bool,
 ) -> str:
     if first >= until or any(not first <= t.day < until for t in trades):
         raise ValueError("INVALID_INPUT: trade date outside design range")
-    if not valid:
+    if not valid or not 0 <= slot_capacity <= capacity:
         return "INVALID_INPUT"
     if capacity < 150:
         return "INDETERMINATE"
-    if ruined or len(trades) < minimum(capacity):
+    if ruined or len(trades) < minimum(slot_capacity):
         return "NO_GO"
     daily = {first + timedelta(days=i): D(0) for i in range((until - first).days)}
     monthly = dict.fromkeys(((d.year, d.month) for d in daily), D(0))

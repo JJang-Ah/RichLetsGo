@@ -77,13 +77,14 @@ def test_empty_retry_and_missing_or_conflicting_rows():
             g.page("MUUSDT", DAY, B - 2 * DAY, B, lambda _, raw=data: raw)
 
 
-def test_synthetic_capacity_paging_projection_and_digest(monkeypatch, tmp_path):
-    launch = B - 36 * DAY
+@pytest.mark.parametrize("days", [6, 20])
+def test_synthetic_capacity_paging_projection_and_digest(monkeypatch, tmp_path, days):
+    launch = B - (30 + days) * DAY
     launches = dict.fromkeys(CALENDAR, launch)
     sessions = [
         Session(sym, cal, day, day + 24 * BAR)
         for sym, cal in CALENDAR.items()
-        for day in range(B - 6 * DAY, B, DAY)
+        for day in range(B - days * DAY, B, DAY)
     ]
     monkeypatch.setattr(g, "read_scope", lambda _: (launches, sessions))
     calls = []
@@ -101,8 +102,16 @@ def test_synthetic_capacity_paging_projection_and_digest(monkeypatch, tmp_path):
 
     result = g.collect(tmp_path, get)
     assert len(calls) == 2 * len(CALENDAR)
-    assert result["upper"] == result["eligible"] == dict.fromkeys(CALENDAR, 6)
-    assert result["multi_symbol_dates"] == 6 and result["E"] == 90 and result["N_min"] is None
+    assert result["upper"] == result["eligible"] == dict.fromkeys(CALENDAR, days)
+    assert result["multi_symbol_dates"] == days and result["E"] == 15 * days
+    assert result["calendar_days"] == [
+        dict(utc_day_ms=day, calendar=cal, eligible=count, slots=slots)
+        for day in range(B - days * DAY, B, DAY)
+        for cal, count, slots in (("XKRX", 2, 2), ("XNYS", 13, 3))
+    ]
+    assert result["E_slot"] == 5 * days
+    assert result["N_min"] == (None if days == 6 else 100)
+    assert result["status"] == ("INDETERMINATE" if days == 6 else "SUFFICIENT")
     assert "never-publish" not in json.dumps(result)
     assert g.collect(tmp_path, get) == result
     # A published calendar hash mismatch must block network access.
