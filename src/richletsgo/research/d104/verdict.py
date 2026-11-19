@@ -32,6 +32,8 @@ def minimum(capacity: int) -> int:
 def design(
     trades: Sequence[Trade], capacity: int, first: date, until: date, *, valid: bool, ruined: bool
 ) -> str:
+    if first >= until or any(not first <= t.day < until for t in trades):
+        raise ValueError("INVALID_INPUT: trade date outside design range")
     if not valid:
         return "INVALID_INPUT"
     if capacity < 150:

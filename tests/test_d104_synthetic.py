@@ -127,6 +127,8 @@ def test_verdict_precedence_and_day_grouping():
         return v.design(ts, e, first, until, valid=valid, ruined=ruined)
 
     assert [v.minimum(k) for k in (150, 250, 251, 256)] == [100, 100, 101, 103]
+    with pytest.raises(ValueError, match="INVALID_INPUT"):
+        design([v.Trade(until, 0, "MUUSDT", D(1), D(1))], e=0)
     assert design() == "GO" and design(e=251) == "NO_GO"
     assert design(e=149) == "INDETERMINATE" and design(e=149, valid=False) == "INVALID_INPUT"
     assert design([v.Trade(first, k, "MUUSDT", D(1), D(1)) for k in range(100)]) == "NO_GO"
@@ -141,7 +143,7 @@ def test_verdict_precedence_and_day_grouping():
 def test_shared_cash_replay_hash_and_stressed_drawdown():
     from dataclasses import replace
 
-    from richletsgo.research.d104.replay import Fixture, replay
+    from richletsgo.research.d104.replay import Fixture, FundingPeriod, replay
 
     fixtures = []
     for sym in list(i.CALENDAR)[:4]:
@@ -168,6 +170,7 @@ def test_shared_cash_replay_hash_and_stressed_drawdown():
                 days,
                 x.Terms(D(".0015"), D(".01"), D(".01"), D(0), D(0)),
                 {at + 8 * i.BAR: (D(".001"), D(102))},
+                (FundingPeriod(at, s.end, i.DAY, at + 8 * i.BAR),),
             )
         )
     result = replay(fixtures)
@@ -177,6 +180,9 @@ def test_shared_cash_replay_hash_and_stressed_drawdown():
     assert result == replay(
         replace(f, trade=f.trade[::-1], mark=f.mark[::-1]) for f in reversed(fixtures)
     )
+    assert result.minimum_equity <= result.equity
+    with pytest.raises(ValueError, match="settlement"):
+        replay([replace(fixtures[0], settlements={})])
     bad = replace(fixtures[0], settlements={at + 8 * i.BAR: None})
     with pytest.raises(ValueError, match="settlement"):
         replay([bad])
