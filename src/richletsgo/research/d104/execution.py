@@ -1,5 +1,6 @@
 """Offline breakout, reservation and bar-event contracts for synthetic tests."""
 
+from collections import Counter
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, ROUND_FLOOR
@@ -45,7 +46,7 @@ class Terms:
 
     def __post_init__(self) -> None:
         if (
-            self.slip not in {D(".0015"), D(".001"), D(".0005")}
+            self.slip not in {D(".0025"), D(".0015"), D(".001"), D(".0005")}
             or min(self.tick, self.step) <= 0
             or min(self.min_qty, self.min_value) < 0
         ):
@@ -69,7 +70,11 @@ class Reservation:
 
 
 def reserve(
-    signals: Iterable[tuple[Signal, Terms]], equity: D, held: Mapping[str, D]
+    signals: Iterable[tuple[Signal, Terms]],
+    equity: D,
+    held: Mapping[str, D],
+    *,
+    cost_rejections: Counter[tuple[str, D]] | None = None,
 ) -> list[Reservation]:
     """One signal boundary; held values are absolute previous-mark notionals."""
     left = equity * D(".75") - sum(held.values())
@@ -80,11 +85,17 @@ def reserve(
         raise ValueError("mixed boundaries")
     for s, terms in batch:
         require_symbol(s.symbol)
-        if s.symbol in seen or len(seen) >= 3 or left <= 0:
-            continue
         price = terms.price(s.close, s.side)
         stop = terms.price(s.stop, -s.side)
-        unit = abs(price - stop) + FEE * (price + stop)
+        fees = FEE * (price + stop)
+        expected_cost = abs(price - s.close) + abs(stop - s.stop) + fees
+        if expected_cost > D(".30") * abs(s.close - s.stop):
+            if cost_rejections is not None:
+                cost_rejections[s.symbol, terms.slip] += 1
+            continue
+        if s.symbol in seen or len(seen) >= 3 or left <= 0:
+            continue
+        unit = abs(price - stop) + fees
         cap = min(equity * D(".25"), left)
         q = (min(equity * D(".0025") / unit, cap / price) // terms.step) * terms.step
         if q <= 0 or q < terms.min_qty or q * price < terms.min_value:

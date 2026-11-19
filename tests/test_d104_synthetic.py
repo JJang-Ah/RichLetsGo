@@ -74,8 +74,13 @@ def test_midnight_window_and_thresholds():
     del days[i.DAY]
     with pytest.raises(ValueError):
         i.turnover(30 * i.DAY, 0, days)
-    assert [i.slip(D(n)) for n in (19_999_999, 20_000_000, 50_000_000, 200_000_000)] == [
+    assert [
+        i.slip(D(n))
+        for n in (4_999_999, 5_000_000, 19_999_999, 20_000_000, 50_000_000, 200_000_000)
+    ] == [
         None,
+        D(".0025"),
+        D(".0025"),
         D(".0015"),
         D(".001"),
         D(".0005"),
@@ -83,8 +88,9 @@ def test_midnight_window_and_thresholds():
 
 
 @pytest.mark.parametrize("side", [1, -1])
-def test_reservation_funding_gap_and_intrabar_stop(side):
-    terms = x.Terms(D(".001"), D(".01"), D(".01"), D(".01"), D(1))
+@pytest.mark.parametrize("slip", [D(".001"), D(".0025")])
+def test_reservation_funding_gap_and_intrabar_stop(side, slip):
+    terms = x.Terms(slip, D(".01"), D(".01"), D(".01"), D(1))
     signals = [
         (x.Signal(symbol, 7 * i.BAR, side, D(100), D(100 - 5 * side)), terms)
         for symbol in reversed(list(i.CALENDAR))
@@ -123,13 +129,17 @@ def test_verdict_precedence_and_day_grouping():
         for k in range(100)
     ]
 
-    def design(ts=trades, e=150, valid=True, ruined=False):
-        return v.design(ts, e, first, until, valid=valid, ruined=ruined)
+    def design(ts=trades, e=150, slots=100, valid=True, ruined=False):
+        return v.design(ts, e, first, until, slot_capacity=slots, valid=valid, ruined=ruined)
 
-    assert [v.minimum(k) for k in (150, 250, 251, 256)] == [100, 100, 101, 103]
+    assert [v.minimum(k) for k in (249, 250, 251, 282, 283)] == [100, 100, 101, 113, 114]
     with pytest.raises(ValueError, match="INVALID_INPUT"):
         design([v.Trade(until, 0, "MUUSDT", D(1), D(1))], e=0)
-    assert design() == "GO" and design(e=251) == "NO_GO"
+    assert (
+        design() == "GO"
+        and design(e=300, slots=250) == "GO"
+        and design(e=300, slots=251) == "NO_GO"
+    )
     assert design(e=149) == "INDETERMINATE" and design(e=149, valid=False) == "INVALID_INPUT"
     assert design([v.Trade(first, k, "MUUSDT", D(1), D(1)) for k in range(100)]) == "NO_GO"
 
@@ -180,6 +190,23 @@ def test_shared_cash_replay_hash_and_stressed_drawdown():
     assert result == replay(
         replace(f, trade=f.trade[::-1], mark=f.mark[::-1]) for f in reversed(fixtures)
     )
+    # Coarse tick turns the first signal into a cost rejection. Later closes
+    # still outside the opening range cannot create a second attempt.
+    rejected = replay(replace(f, terms=replace(f.terms, tick=D(2))) for f in fixtures)
+    assert rejected.entries == rejected.trades == ()
+    assert rejected.cost_rejections == {(f.session.symbol, D(".0015")): 1 for f in fixtures}
+    assert (
+        v.design(
+            rejected.trades,
+            150,
+            date(2026, 6, 1),
+            date(2026, 9, 1),
+            slot_capacity=100,
+            valid=True,
+            ruined=False,
+        )
+        == "NO_GO"
+    )
     assert result.minimum_equity <= result.equity
     with pytest.raises(ValueError, match="settlement"):
         replay([replace(fixtures[0], settlements={})])
@@ -200,3 +227,30 @@ def test_capacity_is_price_blind_and_deduplicates_calendar_rows():
     del days[0]
     with pytest.raises(ValueError, match="daily turnover"):
         i.capacity([s], {"MUUSDT": 0}, {"MUUSDT": days})
+
+
+@pytest.mark.parametrize("side", [-1, 1])
+@pytest.mark.parametrize("slip", list(map(D, [".0025", ".0015", ".001", ".0005"])))
+@pytest.mark.parametrize("width_change", list(map(D, ["-.000001", "0", ".000001"])))
+def test_signal_cost_boundary(side, slip, width_change):
+    from collections import Counter
+
+    # At fixed midpoint M and half-width W, cost = 2*M*(slip+fee) + 2*W*slip*fee.
+    # These prices put the unrounded cost exactly on the boundary for W = slip+fee.
+    midpoint = D(".30") - slip * x.FEE
+    half_width = slip + x.FEE + width_change
+    signal = x.Signal(
+        "AAPLUSDT", i.BAR, side, midpoint + side * half_width, midpoint - side * half_width
+    )
+    terms = x.Terms(slip, D("1e-16"), D(".01"), D(0), D(0))
+    rejected = Counter()
+    orders = x.reserve([(signal, terms)], D(10000), {}, cost_rejections=rejected)
+    assert bool(orders) == (width_change >= 0)
+    assert rejected == ({("AAPLUSDT", slip): 1} if width_change < 0 else {})
+
+
+def test_registered_calendars():
+    us = "AAPL CRCL GOOGL INTC MRVL MSFT MSTR MU NBIS NVDA SNDK SPCX TSLA".split()
+    expected = {s + "USDT": "XNYS" for s in us}
+    expected.update({"SAMSUNGUSDT": "XKRX", "SKHYNIXUSDT": "XKRX"})
+    assert i.CALENDAR == expected

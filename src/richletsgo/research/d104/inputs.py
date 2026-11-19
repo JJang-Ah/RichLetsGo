@@ -9,8 +9,25 @@ from decimal import Decimal as D
 BAR = 300_000
 DAY = 86_400_000
 B = 1788220800000
-CALENDAR = {s: "XNYS" for s in ("MUUSDT", "NVDAUSDT", "SNDKUSDT", "SPCXUSDT")}
-CALENDAR["SKHYNIXUSDT"] = "XKRX"
+CALENDAR = {
+    s: "XNYS"
+    for s in (
+        "MUUSDT",
+        "NVDAUSDT",
+        "SNDKUSDT",
+        "SPCXUSDT",
+        "AAPLUSDT",
+        "CRCLUSDT",
+        "GOOGLUSDT",
+        "INTCUSDT",
+        "MRVLUSDT",
+        "MSFTUSDT",
+        "MSTRUSDT",
+        "NBISUSDT",
+        "TSLAUSDT",
+    )
+}
+CALENDAR.update(dict.fromkeys(("SKHYNIXUSDT", "SAMSUNGUSDT"), "XKRX"))
 
 
 def fetch(*args: object, **kwargs: object) -> None:
@@ -59,8 +76,10 @@ def turnover(at: int, launch: int, days: Mapping[int, D]) -> D | None:
 
 
 def slip(value: D | None) -> D | None:
-    if value is None or value < 20_000_000:
+    if value is None or value < 5_000_000:
         return None
+    if value < 20_000_000:
+        return D(".0025")
     if value >= 200_000_000:
         return D(".0005")
     return D(".001") if value >= 50_000_000 else D(".0015")
@@ -122,11 +141,10 @@ def digest(rows: Iterable[Candle]) -> str:
     return h.hexdigest()
 
 
-def capacity(
+def eligible_sessions(
     sessions: Iterable[Session], launches: Mapping[str, int], daily: Mapping[str, Mapping[int, D]]
-) -> dict[str, int]:
-    """Count eligible regular sessions, without accepting any price or signal."""
-    counts = dict.fromkeys(CALENDAR, 0)
+) -> Iterable[Session]:
+    """Yield eligible regular sessions, without accepting any price or signal."""
     end_by_symbol: dict[str, int] = {}
     for session in sorted(set(sessions), key=lambda s: (s.symbol, s.start)):
         sym = session.symbol
@@ -137,5 +155,13 @@ def capacity(
         if session.start // DAY != (session.end - 1) // DAY:
             raise ValueError("cross-date session")
         if slip(turnover(session.start, launches[sym], daily[sym])) is not None:
-            counts[sym] += 1
+            yield session
+
+
+def capacity(
+    sessions: Iterable[Session], launches: Mapping[str, int], daily: Mapping[str, Mapping[int, D]]
+) -> dict[str, int]:
+    counts = dict.fromkeys(CALENDAR, 0)
+    for session in eligible_sessions(sessions, launches, daily):
+        counts[session.symbol] += 1
     return counts
