@@ -1,0 +1,143 @@
+"""Replay fully supplied synthetic sessions. No loaders, sockets or registration."""
+
+import hashlib
+import json
+from collections import defaultdict
+from collections.abc import Iterable, Mapping
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from decimal import Decimal as D
+
+from .execution import FEE, Position, Signal, Terms, breakout, reserve, step
+from .inputs import BAR, Candle, Session, number, series, slip, turnover
+from .verdict import Trade
+
+
+@dataclass(frozen=True)
+class Fixture:
+    session: Session
+    trade: tuple[Candle, ...]
+    mark: tuple[Candle, ...]
+    launch: int
+    daily: Mapping[int, D]
+    terms: Terms
+    # Explicit scheduled settlements; missing required mark/rate is invalid.
+    settlements: Mapping[int, tuple[D, D] | None]
+
+
+@dataclass(frozen=True)
+class Replay:
+    equity: D
+    mdd: D
+    entries: tuple[tuple[int, str], ...]
+    trades: tuple[Trade, ...]
+    digest: str
+
+
+def replay(fixtures: Iterable[Fixture]) -> Replay:
+    bars: dict[int, dict[str, tuple[Fixture, Candle, Candle]]] = defaultdict(dict)
+    signals: dict[int, list[tuple[Signal, Terms]]] = defaultdict(list)
+    for f in fixtures:
+        s = f.session
+        trade = series(s, f.trade)
+        marks = series(s, f.mark)
+        if any(t % BAR or not s.start <= t < s.end for t in f.settlements):
+            raise ValueError("unexpected settlement boundary")
+        # Both admitted calendars fit within one UTC date (including early closes).
+        if s.start // 86_400_000 != (s.end - 1) // 86_400_000:
+            raise ValueError("cross-date session")
+        tier = slip(turnover(s.start, f.launch, f.daily))
+        for b, m in zip(trade, marks, strict=True):
+            if s.symbol in bars[b.at]:
+                raise ValueError("overlapping sessions")
+            bars[b.at][s.symbol] = (f, b, m)
+        if tier is not None:
+            signal = breakout(s, trade)
+            if signal:
+                signals[signal.at].append((signal, replace(f.terms, slip=tier)))
+    cash = equity = peak = D(10000)
+    mdd = D(0)
+    holdings: dict[str, Position] = {}
+    last: dict[str, D] = {}
+    entries: list[tuple[int, str]] = []
+    trades: list[Trade] = []
+    episode: dict[str, D] = {}
+    transcript = hashlib.sha256()
+    for at, group in sorted(bars.items()):
+        if holdings.keys() - group.keys():
+            raise ValueError("unmarked open position")
+
+        def notional() -> dict[str, D]:
+            return {sym: pos.reservation.qty * last[sym] for sym, pos in holdings.items()}
+
+        pending = {r.signal.symbol: r for r in reserve(signals[at], equity, notional())}
+        # Pending quantities were fixed at the previous close. An intrabar exit
+        # must not create capacity for another order at this bar's open.
+        used = notional()
+        for sym, existing in holdings.items():
+            f, bar, _ = group[sym]
+            sig = existing.reservation.signal
+            if at == f.session.end - BAR or (bar.op - sig.stop) * sig.side <= 0:
+                del used[sym]
+        stress = cash
+        for sym in sorted(group):
+            f, b, m = group[sym]
+            pos = holdings.get(sym)
+            settlement = f.settlements.get(at)
+            if pos and at in f.settlements and settlement is None:
+                raise ValueError("missing settlement input")
+            r = pending.get(sym)
+            result = step(b, f.session, pos, r, settlement, equity * D(".75") - sum(used.values()))
+            opened = r is not None and (
+                result.position is not None or result.exit_price is not None
+            )
+            if opened and r:
+                entries.append((at, sym))
+                pos = Position(r, r.terms.price(b.op, r.signal.side))
+                used[sym] = pos.entry * r.qty
+            if pos:
+                pr = pos.reservation
+                adverse = m.low if pr.signal.side == 1 else m.high
+                stress += pr.qty * (adverse - pos.entry) * pr.signal.side
+                if opened:
+                    stress -= pr.qty * pos.entry * FEE
+                elif settlement:
+                    stress -= pr.qty * pr.signal.side * settlement[0] * settlement[1]
+                if result.exit_price is not None:
+                    stress -= pr.qty * result.exit_price * FEE
+            if pos:
+                episode[sym] = episode.get(sym, D(0)) + result.cash_change
+                if result.exit_price is not None:
+                    trades.append(
+                        Trade(
+                            datetime.fromtimestamp(at // 1000, UTC).date(),
+                            at,
+                            sym,
+                            episode.pop(sym),
+                            pos.reservation.risk,
+                        )
+                    )
+            cash += result.cash_change
+            if result.position:
+                holdings[sym] = result.position
+            else:
+                holdings.pop(sym, None)
+            last[sym] = m.close
+            line = [
+                at,
+                sym,
+                opened,
+                number(result.cash_change),
+                number(result.exit_price) if result.exit_price is not None else None,
+            ]
+            transcript.update((json.dumps(line, separators=(",", ":")) + "\n").encode())
+        equity = cash + sum(
+            p.reservation.qty * (last[k] - p.entry) * p.reservation.signal.side
+            for k, p in holdings.items()
+        )
+        mdd = max(mdd, (peak - min(stress, equity)) / peak)
+        peak = max(peak, equity)
+        transcript.update((number(equity) + " " + number(mdd) + "\n").encode())
+    if holdings:
+        raise ValueError("non-flat terminal account")
+    return Replay(equity, mdd, tuple(entries), tuple(trades), transcript.hexdigest())
