@@ -2,7 +2,7 @@
 
 import hashlib
 import json
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, replace
 from datetime import UTC, datetime
@@ -67,6 +67,7 @@ class Replay:
     minimum_equity: D
     entries: tuple[tuple[int, str], ...]
     trades: tuple[Trade, ...]
+    cost_rejections: Mapping[tuple[str, D], int]
     digest: str
 
 
@@ -98,6 +99,7 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
     entries: list[tuple[int, str]] = []
     trades: list[Trade] = []
     episode: dict[str, D] = {}
+    cost_rejections: Counter[tuple[str, D]] = Counter()
     transcript = hashlib.sha256()
     for at, group in sorted(bars.items()):
         if holdings.keys() - group.keys():
@@ -106,7 +108,10 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
         def notional() -> dict[str, D]:
             return {sym: pos.reservation.qty * last[sym] for sym, pos in holdings.items()}
 
-        pending = {r.signal.symbol: r for r in reserve(signals[at], equity, notional())}
+        pending = {
+            r.signal.symbol: r
+            for r in reserve(signals[at], equity, notional(), cost_rejections=cost_rejections)
+        }
         # Pending quantities were fixed at the previous close. An intrabar exit
         # must not create capacity for another order at this bar's open.
         used = notional()
@@ -178,5 +183,11 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
     if holdings:
         raise ValueError("non-flat terminal account")
     return Replay(
-        equity, mdd, minimum_equity, tuple(entries), tuple(trades), transcript.hexdigest()
+        equity,
+        mdd,
+        minimum_equity,
+        tuple(entries),
+        tuple(trades),
+        dict(sorted(cost_rejections.items())),
+        transcript.hexdigest(),
     )

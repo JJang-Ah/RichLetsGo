@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from .inputs import CALENDAR, DAY, B, Session, capacity, number
+from .inputs import CALENDAR, DAY, B, Session, eligible_sessions, number
 from .verdict import minimum
 
 STOCK = "D103-instruments-2026-11-10/stock.json"
@@ -20,7 +20,7 @@ PINS = {
     STOCK: "d90396f8590e33ea0c24e5114197b31a9e5cf007966da5d441deb73ed5b1da42",
     SESSIONS: "386ea41cb50792af7322d19223b05204baf796213986dc7fb3cb21bd98cfbd07",
 }
-TASK_HASH = "3f841282644cd9872246d3874a53c2ece50cc8e7304450decfb36c1212ae9f1e"
+TASK_HASH = "335d5553be2de97d584dc5cb49a4ec147dcb84a9e4431104e093236354de2d75"
 PAGE = 30
 MAX_BYTES = 65536
 
@@ -157,10 +157,14 @@ def collect(reports: Path, get: Callable[[str], bytes] = _public_get) -> dict[st
         for at in days:
             line = json.dumps([sym, at, number(values[at])], separators=(",", ":"))
             digest.update((line + "\n").encode())
-    eligible = capacity(sessions, launches, daily)
+    eligible = dict.fromkeys(CALENDAR, 0)
+    by_day: dict[int, set[str]] = {}
+    for session in eligible_sessions(sessions, launches, daily):
+        eligible[session.symbol] += 1
+        by_day.setdefault(session.start // DAY, set()).add(session.symbol)
     total = sum(eligible.values())
     return {
-        "schema": "d104-capacity-v1",
+        "schema": "d104-capacity-v2",
         "task_sha256": TASK_HASH,
         "boundary_exclusive": B,
         "input_sha256": PINS,
@@ -168,6 +172,7 @@ def collect(reports: Path, get: Callable[[str], bytes] = _public_get) -> dict[st
         "daily_count": {s: len(v) for s, v in daily.items()},
         "upper": upper,
         "eligible": eligible,
+        "multi_symbol_dates": sum(len(symbols) >= 2 for symbols in by_day.values()),
         "E": total,
         "status": "SUFFICIENT" if total >= 150 else "INDETERMINATE",
         "N_min": minimum(total) if total >= 150 else None,

@@ -14,7 +14,7 @@ def response(rows, symbol="MUUSDT"):
     ).encode()
 
 
-def row(at, value="20000000"):
+def row(at, value="5000000"):
     return [str(at), *(["never-publish"] * 5), value]
 
 
@@ -102,7 +102,7 @@ def test_synthetic_capacity_paging_projection_and_digest(monkeypatch, tmp_path):
     result = g.collect(tmp_path, get)
     assert len(calls) == 2 * len(CALENDAR)
     assert result["upper"] == result["eligible"] == dict.fromkeys(CALENDAR, 6)
-    assert result["E"] == 30 and result["N_min"] is None
+    assert result["multi_symbol_dates"] == 6 and result["E"] == 90 and result["N_min"] is None
     assert "never-publish" not in json.dumps(result)
     assert g.collect(tmp_path, get) == result
     # A published calendar hash mismatch must block network access.
@@ -135,3 +135,15 @@ def test_us_regular_session_contains_1600_utc_settlement():
     hour = 12 * BAR
     session = Session("MUUSDT", "XNYS", DAY + 13 * hour + 6 * BAR, DAY + 20 * hour)
     assert expected_settlements(session, (FundingPeriod(0, B, 8 * hour, 0),)) == {DAY + 16 * hour}
+
+
+def test_partial_daily_page_is_invalid_without_retry():
+    calls = []
+
+    def partial(path):
+        calls.append(path)
+        return response([row(B - DAY)])
+
+    with pytest.raises(ValueError, match="INVALID_INPUT incomplete"):
+        g.page("MUUSDT", DAY, B - 2 * DAY, B, partial)
+    assert len(calls) == 1
