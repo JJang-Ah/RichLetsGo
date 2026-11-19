@@ -14,6 +14,40 @@ from .verdict import Trade
 
 
 @dataclass(frozen=True)
+class FundingPeriod:
+    """Historical validity [start, end), cadence and a known settlement on that cadence."""
+
+    start: int
+    end: int
+    interval: int
+    anchor: int
+
+
+def expected_settlements(session: Session, history: tuple[FundingPeriod, ...]) -> set[int]:
+    cursor = session.start
+    expected: set[int] = set()
+    for period in sorted(history, key=lambda p: p.start):
+        if (
+            period.start >= period.end
+            or period.interval <= 0
+            or period.interval % BAR
+            or period.anchor % BAR
+        ):
+            raise ValueError("invalid settlement history")
+        start, end = max(session.start, period.start), min(session.end, period.end)
+        if start >= end:
+            continue
+        if start != cursor:
+            raise ValueError("incomplete or overlapping settlement history")
+        first = start + (period.anchor - start) % period.interval
+        expected.update(range(first, end, period.interval))
+        cursor = end
+    if cursor != session.end:
+        raise ValueError("incomplete settlement history")
+    return expected
+
+
+@dataclass(frozen=True)
 class Fixture:
     session: Session
     trade: tuple[Candle, ...]
@@ -23,12 +57,14 @@ class Fixture:
     terms: Terms
     # Explicit scheduled settlements; missing required mark/rate is invalid.
     settlements: Mapping[int, tuple[D, D] | None]
+    funding_history: tuple[FundingPeriod, ...]
 
 
 @dataclass(frozen=True)
 class Replay:
     equity: D
     mdd: D
+    minimum_equity: D
     entries: tuple[tuple[int, str], ...]
     trades: tuple[Trade, ...]
     digest: str
@@ -41,7 +77,7 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
         s = f.session
         trade = series(s, f.trade)
         marks = series(s, f.mark)
-        if any(t % BAR or not s.start <= t < s.end for t in f.settlements):
+        if expected_settlements(s, f.funding_history) != f.settlements.keys():
             raise ValueError("unexpected settlement boundary")
         # Both admitted calendars fit within one UTC date (including early closes).
         if s.start // 86_400_000 != (s.end - 1) // 86_400_000:
@@ -55,7 +91,7 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
             signal = breakout(s, trade)
             if signal:
                 signals[signal.at].append((signal, replace(f.terms, slip=tier)))
-    cash = equity = peak = D(10000)
+    cash = equity = peak = minimum_equity = D(10000)
     mdd = D(0)
     holdings: dict[str, Position] = {}
     last: dict[str, D] = {}
@@ -136,8 +172,11 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
             for k, p in holdings.items()
         )
         mdd = max(mdd, (peak - min(stress, equity)) / peak)
+        minimum_equity = min(minimum_equity, stress, equity)
         peak = max(peak, equity)
         transcript.update((number(equity) + " " + number(mdd) + "\n").encode())
     if holdings:
         raise ValueError("non-flat terminal account")
-    return Replay(equity, mdd, tuple(entries), tuple(trades), transcript.hexdigest())
+    return Replay(
+        equity, mdd, minimum_equity, tuple(entries), tuple(trades), transcript.hexdigest()
+    )
