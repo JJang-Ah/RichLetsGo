@@ -1,0 +1,74 @@
+# D104 1단계 실행 사전 등록
+
+기준은 #89 병합 e70e47f와 [M2-11 §2~4.1](../tasks/M2-11-d104-tradfi-strategy.md)이다. 코드 C는 `2c48bcd1276cd2db70f07dbb8f7d70bb2946cf60`. [등록 JSON](D104-stage1-registration.json)의 SHA-256은 `f7ba8bf8e089454626274fa32030a5adbbe3213ffe42fb02761231683227a015`이다. Claude의 검토·병합 뒤 설계 구간을 수집하고 입력 manifest를 게시한 뒤 딱 한 번 재생한다. 조합은 하나, 초기 현금 10,000 USDT, 용량 E=491, E_slot=232, N_min=100이다. 운영 경로와 독립된 연구다.
+
+## 수집 범위
+
+B=2026-09-01T00:00:00Z(1788220800000 ms)는 배타 끝이다. 등록 파일에 고정한 15종목의 상장 시각과 XNYS/XKRX regular 행에서 완전히 포함된 [O,C) 1,181개를 먼저 열거한다. 워밍업 세션도 가격 입력 무결성 검사에 포함한다. 등록 JSON에 세션표와 일별 요청 계획 각각의 SHA-256이 있다. 이후 단계의 B 인자화(#85 P3-4)는 보류한다.
+
+| 입력 | 허용 요청과 보존 필드 | 완전성 기준 |
+|---|---|---|
+| 거래 5분봉 | 공개 linear GET /v5/market/kline, interval=5, start=O, end=C−1. UTC 시작 ms, OHLC, 수량, USDT 거래대금 | 세션당 한 페이지. [O,C) 안 모든 5분 시작 키와 일치 |
+| mark 5분봉 | /v5/market/mark-price-kline, 같은 경계와 주기. UTC 시작 ms, mark OHLC | 거래봉과 같은 키, 봉 전체가 B 이전에 완결 |
+| 정산율 | /v5/market/funding/history, startTime=O, endTime=C−1, limit=200. 심볼·정산 ms·부호 있는 율 | 유효기간별 과거 주기·위상으로 먼저 구한 정산 키와 일치. 빈 페이지도 기대 키가 없을 때만 유효 |
+| 일별 거래대금 | 등록된 30일 창 합집합, 공개 거래 일봉 D, 연속 최대 30일 | #89의 일별 정규 행 SHA-256과 전수 일치. 용량 판정 재선택 없음 |
+| 정산 mark·규격·사건 근거 | 아래의 시점별 근거 파일 | 정산 시각의 실제 mark가 필요한 보유분에 증빙 필수 |
+
+모든 요청은 고정 호스트 api.bybit.com의 HTTPS GET만 쓴다. 각 명시 범위가 한 페이지에 들어가며 최신값 폴백·리디렉션·무범위 조회는 없다. 5분봉·펀딩은 전송 실패에만 같은 요청 최대 3회, 일봉은 #87의 정책을 따른다. 동일 키·동일값 중복은 한 번만 센다. 충돌·범위 이탈·부분 페이지·잘못된 심볼은 원문을 보존하지 않고 중단한다. 중단 시 재실행 전 사고 시각·요청 범위와 이미 완료한 파일을 검토한다. [거래봉](https://bybit-exchange.github.io/docs/v5/market/kline), [mark 봉](https://bybit-exchange.github.io/docs/v5/market/mark-kline), [펀딩 이력](https://bybit-exchange.github.io/docs/v5/market/history-fund-rate)
+
+## 재생 입력과 동결
+
+캠페인 폴더의 daily/funding/mark/trade.jsonl은 각각 심볼·UTC ms 순이다. 각 행은 JSON 배열 [심볼, ms, 위 표의 나머지 필드 순서대로 정규 Decimal 문자열…], UTF-8 LF다. 파일 이름이 종류와 주기를 정한다. 예상·실제·결측 수를 검사하고 파일별 해시와 파일 해시 목록의 정규 JSON SHA-256을 manifest에 고정한다. 정정 이력은 최초 빈 배열이다. 실패한 부분 수집을 정상 manifest로 게시하지 않는다.
+
+evidence.json은 최상위 키가 등록된 15개 심볼이다. 각 값에는 아래 세 필드가 필요하다. 수집된 가격 방향이나 손익을 참고하지 않고, 공개 원자료의 제목·출처 URL·유효기간·확인 시각을 담은 증빙을 보존한다. source는 폴더 안 sources/<sha256> 파일의 실제 바이트 SHA-256이다. 공지와 상품 규격의 과거 효력이 확인된 기간만 사용한다. 11월 상품 스냅샷을 과거에 소급하지 않는다.
+
+- contracts는 [from,until) UTC ms별 tick, step, min_qty, min_value(Decimal 문자열), source, actions_halts 목록 항목으로 구성한다. 각 세션을 온전히 덮는 단 하나의 규격과 기업행위·중단 사실을 확인한 `actions_halts="verified_clear"`가 필요하다. 거래에 영향을 주는 중단·규격 변경이 세션을 가로지르면 그 세션만 버리는 대신 입력 검토에서 중단한다. 이 버전은 별도 보유분 정산이 필요한 예외 사건을 모형화하지 않는다.
+- schedule은 과거 효력 [from,until), interval(ms), anchor(정산 위상 기준 UTC ms), source를 갖는다. 세션 안에서 주기가 바뀌면 경계 양쪽을 따로 열거한다. 공백·겹침·정산 행 불일치는 무효다.
+- settlement_marks는 정산 UTC ms 문자열 → {price, source}다. 해당 시각에 실제 적용된 mark를 입증하는 공개 기록만 사용한다. 주변 봉 OHLC나 현재 mark로 대체하지 않는다. 증빙이 없으면 키를 비워 두며, 재생 중 그 시각 직전 보유가 있으면 INVALID_INPUT이다. 같은 시각 신규 진입분에는 소급 청구하지 않는다. 근거 확보 가능성은 미확인이다.
+
+manifest에 등록 JSON 해시, 증빙·정규 행 파일 각각의 해시, 종목·종류별 수와 data_hash를 게시하고 검토한다. 출력은 manifest.json 한 파일이고 아래 run에는 **게시된 파일 해시**를 넘긴다. 재생은 파일 해시와 기대 키 검사를 다시 수행하며 네트워크 호출 없이 고정된 입력만 사용한다. 계산을 시작하면 run-started를 배타 생성한다. 실패 후 표식 삭제, 다른 폴더 재생, 종목이나 조건 교체를 하지 않는다.
+
+## 병합 후 PowerShell 절차
+
+등록이 병합된 main checkout의 저장소 루트에서 시작한다. 코드 checkout과 캠페인 폴더는 서로 다른 새 경로다. 각 구간에서 명령 하나라도 실패하면 중단한다.
+
+```powershell
+$reg = (Resolve-Path 'docs/reports/D104-stage1-registration.json').Path
+$code = (Get-Content -Raw -Encoding utf8 $reg | ConvertFrom-Json).code
+$parent = Split-Path -Parent (Get-Location).Path
+$checkout = Join-Path $parent 'd104-stage1-code'
+$campaign = Join-Path $parent 'd104-stage1-data'
+git worktree add --detach $checkout $code
+if ($LASTEXITCODE) { throw 'worktree failed' }
+Set-Location $checkout
+py -3.14 -m venv .venv
+if ($LASTEXITCODE) { throw 'venv failed' }
+$python = (Resolve-Path '.venv/Scripts/python.exe').Path
+& $python -m pip install -e .
+if ($LASTEXITCODE) { throw 'install failed' }
+& $python tools/d104_stage1.py collect --registration $reg --folder $campaign
+if ($LASTEXITCODE) { throw 'collection failed' }
+```
+
+위 계약에 맞춘 evidence.json과 sources를 캠페인 폴더에 준비한 뒤, 수집과 분리해 다음 명령을 실행한다.
+
+```powershell
+& $python tools/d104_stage1.py freeze --registration $reg --folder $campaign
+if ($LASTEXITCODE) { throw 'freeze failed' }
+```
+
+freeze가 출력한 SHA-256과 manifest를 먼저 게시한다. 다음 단계에서 확정된 해시를 입력한다.
+
+```powershell
+$manifestHash = Read-Host '게시된 manifest.json SHA-256'
+& $python tools/d104_stage1.py run --registration $reg --folder $campaign --manifest-sha256 $manifestHash
+if ($LASTEXITCODE) { throw 'replay failed' }
+```
+
+## 결과 보고와 1회 판정
+
+- 집계 기간은 최초 상장 종목이 완결 UTC 일 30개를 채운 날짜부터 B 전날까지다. 무거래일의 순 R은 0이다. 공유 계좌 하나의 종료 거래 수, 최종 순자산·순손익·최저 순자산, 스트레스 포함 MDD와 최초 발생 봉 UTC ms, 재생 digest를 게시한다.
+- 모든 GO 조건을 반올림 전 판정한다. N≥100, 거래당 평균 순 R>0, 날짜별 t≥2, 상위 ceil(N×1%) 제거 후 평균 순 R>0, 월별 합이 양수인 달 과반, 양수 심볼 기여 중 최대 비중≤50%다. 월별·심볼별 순손익과 순 R, 현금일, N과 N_min을 함께 표시한다. 유효 입력에서 원금 소진 또는 한 조건이라도 미달이면 NO_GO다. 자료 무효는 INVALID_INPUT으로 별도 보고한다.
+- 전체와 심볼별로 슬리피지·양쪽 수수료·부호 있는 펀딩을 분리한다. 실현 슬리피지+수수료를 비용 전 가격 위험으로 나눈 비율의 nearest-rank p50/p90/p95와 ≥1 비율을 보고한다. 표본 0이면 비율은 null이다.
+- 비용 필터 제외 수는 첫 신호의 예상 비용이 30%를 **초과한 경우**에만 한 번 센다. 전체·심볼·신호 시점 등급과 교차 집계를 보고한다. 이어서 예약 경쟁에서 기존 보유/3슬롯/총 명목 여유 부족으로 탈락하거나, 개장가 기준 개별 예약은 유효하지만 공유 명목 여유를 넘긴 경우를 심볼별 경합 탈락으로 센다. 비용 거절과 중복하지 않는다.
+- 결과가 GO여도 2단계는 별도 등록까지 봉인한다. B는 현재 고정 상수이며 이번 PR은 2단계 실행 권한을 부여하지 않는다.
