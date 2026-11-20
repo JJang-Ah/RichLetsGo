@@ -68,6 +68,9 @@ class Replay:
     entries: tuple[tuple[int, str], ...]
     trades: tuple[Trade, ...]
     cost_rejections: Mapping[tuple[str, D], int]
+    contention: Mapping[str, int]
+    costs: tuple[tuple[str, D, D, D, D], ...]
+    mdd_at: int | None
     digest: str
 
 
@@ -100,6 +103,10 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
     trades: list[Trade] = []
     episode: dict[str, D] = {}
     cost_rejections: Counter[tuple[str, D]] = Counter()
+    contention: Counter[str] = Counter()
+    costs: list[tuple[str, D, D, D, D]] = []
+    entry_cost: dict[str, tuple[D, D, D]] = {}
+    mdd_at = None
     transcript = hashlib.sha256()
     for at, group in sorted(bars.items()):
         if holdings.keys() - group.keys():
@@ -110,7 +117,13 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
 
         pending = {
             r.signal.symbol: r
-            for r in reserve(signals[at], equity, notional(), cost_rejections=cost_rejections)
+            for r in reserve(
+                signals[at],
+                equity,
+                notional(),
+                cost_rejections=cost_rejections,
+                contention=contention,
+            )
         }
         # Pending quantities were fixed at the previous close. An intrabar exit
         # must not create capacity for another order at this bar's open.
@@ -128,7 +141,16 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
             if pos and at in f.settlements and settlement is None:
                 raise ValueError("missing settlement input")
             r = pending.get(sym)
-            result = step(b, f.session, pos, r, settlement, equity * D(".75") - sum(used.values()))
+            free = equity * D(".75") - sum(used.values())
+            if r is not None:
+                opening_notional = r.qty * r.terms.price(b.op, r.signal.side)
+                if (
+                    (b.op - r.signal.stop) * r.signal.side > 0
+                    and r.terms.min_value <= opening_notional <= r.cap
+                    and opening_notional > free
+                ):
+                    contention[sym] += 1
+            result = step(b, f.session, pos, r, settlement, free)
             opened = r is not None and (
                 result.position is not None or result.exit_price is not None
             )
@@ -136,6 +158,7 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
                 entries.append((at, sym))
                 pos = Position(r, r.terms.price(b.op, r.signal.side))
                 used[sym] = pos.entry * r.qty
+                entry_cost[sym] = (abs(pos.entry - b.op) * r.qty, pos.entry * r.qty * FEE, D(0))
             if pos:
                 pr = pos.reservation
                 adverse = m.low if pr.signal.side == 1 else m.high
@@ -147,8 +170,34 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
                 if result.exit_price is not None:
                     stress -= pr.qty * result.exit_price * FEE
             if pos:
+                paid_slip, fees, funding_cash = entry_cost[sym]
+                if settlement and not opened:
+                    funding_cash -= (
+                        pos.reservation.qty
+                        * pos.reservation.signal.side
+                        * settlement[0]
+                        * settlement[1]
+                    )
+                entry_cost[sym] = paid_slip, fees, funding_cash
                 episode[sym] = episode.get(sym, D(0)) + result.cash_change
                 if result.exit_price is not None:
+                    qty = pos.reservation.qty
+                    sig = pos.reservation.signal
+                    base = (
+                        b.op
+                        if at == f.session.end - BAR or (b.op - sig.stop) * sig.side <= 0
+                        else sig.stop
+                    )
+                    costs.append(
+                        (
+                            sym,
+                            paid_slip + qty * abs(result.exit_price - base),
+                            fees + qty * FEE * result.exit_price,
+                            funding_cash,
+                            qty * abs(sig.close - sig.stop),
+                        )
+                    )
+                    del entry_cost[sym]
                     trades.append(
                         Trade(
                             datetime.fromtimestamp(at // 1000, UTC).date(),
@@ -176,7 +225,9 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
             p.reservation.qty * (last[k] - p.entry) * p.reservation.signal.side
             for k, p in holdings.items()
         )
-        mdd = max(mdd, (peak - min(stress, equity)) / peak)
+        drawdown = (peak - min(stress, equity)) / peak
+        if drawdown > mdd:
+            mdd, mdd_at = drawdown, at
         minimum_equity = min(minimum_equity, stress, equity)
         peak = max(peak, equity)
         transcript.update((number(equity) + " " + number(mdd) + "\n").encode())
@@ -189,5 +240,8 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
         tuple(entries),
         tuple(trades),
         dict(sorted(cost_rejections.items())),
+        dict(sorted(contention.items())),
+        tuple(costs),
+        mdd_at,
         transcript.hexdigest(),
     )

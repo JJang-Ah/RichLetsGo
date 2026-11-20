@@ -74,6 +74,7 @@ def reserve(
     equity: D,
     held: Mapping[str, D],
     *,
+    contention: Counter[str] | None = None,
     cost_rejections: Counter[tuple[str, D]] | None = None,
 ) -> list[Reservation]:
     """One signal boundary; held values are absolute previous-mark notionals."""
@@ -94,6 +95,8 @@ def reserve(
                 cost_rejections[s.symbol, terms.slip] += 1
             continue
         if s.symbol in seen or len(seen) >= 3 or left <= 0:
+            if contention is not None:
+                contention[s.symbol] += 1
             continue
         unit = abs(price - stop) + fees
         cap = min(equity * D(".25"), left)
