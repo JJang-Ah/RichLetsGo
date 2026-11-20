@@ -1,0 +1,662 @@
+{
+  "E": 491,
+  "E_slot": 232,
+  "N_min": 100,
+  "boundary_exclusive": 1788220800000,
+  "calendar_days": [
+    {
+      "calendar": "XNYS",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1780876800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1780963200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781049600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781136000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781222400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781481600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781568000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 3,
+      "slots": 3,
+      "utc_day_ms": 1781654400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1781740800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782086400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1782172800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1782259200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1782345600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782432000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782691200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782777600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782864000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 4,
+      "slots": 3,
+      "utc_day_ms": 1782950400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783296000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783296000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783382400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783382400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783468800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783468800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783555200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783555200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783641600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783641600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783900800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783900800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1783987200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1783987200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784073600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 5,
+      "slots": 3,
+      "utc_day_ms": 1784073600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784160000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784160000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784246400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784246400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784505600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784505600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784592000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784592000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784678400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784678400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784764800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 6,
+      "slots": 3,
+      "utc_day_ms": 1784764800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1784851200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 7,
+      "slots": 3,
+      "utc_day_ms": 1784851200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785110400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 8,
+      "slots": 3,
+      "utc_day_ms": 1785110400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785196800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 9,
+      "slots": 3,
+      "utc_day_ms": 1785196800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785283200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1785283200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785369600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 11,
+      "slots": 3,
+      "utc_day_ms": 1785369600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785456000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1785456000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785715200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 9,
+      "slots": 3,
+      "utc_day_ms": 1785715200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785801600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 9,
+      "slots": 3,
+      "utc_day_ms": 1785801600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785888000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 9,
+      "slots": 3,
+      "utc_day_ms": 1785888000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 1,
+      "slots": 1,
+      "utc_day_ms": 1785974400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1785974400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786060800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1786060800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786320000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 9,
+      "slots": 3,
+      "utc_day_ms": 1786320000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786406400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1786406400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786492800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 10,
+      "slots": 3,
+      "utc_day_ms": 1786492800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786579200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 11,
+      "slots": 3,
+      "utc_day_ms": 1786579200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1786665600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 11,
+      "slots": 3,
+      "utc_day_ms": 1786665600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 12,
+      "slots": 3,
+      "utc_day_ms": 1786924800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787011200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 12,
+      "slots": 3,
+      "utc_day_ms": 1787011200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787097600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 12,
+      "slots": 3,
+      "utc_day_ms": 1787097600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787184000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787184000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787270400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787270400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787529600000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787529600000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787616000000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787616000000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787702400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787702400000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787788800000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787788800000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1787875200000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1787875200000
+    },
+    {
+      "calendar": "XKRX",
+      "eligible": 2,
+      "slots": 2,
+      "utc_day_ms": 1788134400000
+    },
+    {
+      "calendar": "XNYS",
+      "eligible": 13,
+      "slots": 3,
+      "utc_day_ms": 1788134400000
+    }
+  ],
+  "daily_count": {
+    "AAPLUSDT": 124,
+    "CRCLUSDT": 114,
+    "GOOGLUSDT": 125,
+    "INTCUSDT": 127,
+    "MRVLUSDT": 107,
+    "MSFTUSDT": 125,
+    "MSTRUSDT": 121,
+    "MUUSDT": 114,
+    "NBISUSDT": 96,
+    "NVDAUSDT": 114,
+    "SAMSUNGUSDT": 86,
+    "SKHYNIXUSDT": 86,
+    "SNDKUSDT": 124,
+    "SPCXUSDT": 76,
+    "TSLAUSDT": 131
+  },
+  "daily_sha256": "79d5a596e575d63567eba9a5cde7d665032c4f8f4b71ef1e9f4a9f3c020426fc",
+  "eligible": {
+    "AAPLUSDT": 13,
+    "CRCLUSDT": 19,
+    "GOOGLUSDT": 26,
+    "INTCUSDT": 49,
+    "MRVLUSDT": 51,
+    "MSFTUSDT": 11,
+    "MSTRUSDT": 28,
+    "MUUSDT": 59,
+    "NBISUSDT": 27,
+    "NVDAUSDT": 38,
+    "SAMSUNGUSDT": 16,
+    "SKHYNIXUSDT": 40,
+    "SNDKUSDT": 58,
+    "SPCXUSDT": 33,
+    "TSLAUSDT": 23
+  },
+  "input_sha256": {
+    "D103-instruments-2026-11-10/stock.json": "d90396f8590e33ea0c24e5114197b31a9e5cf007966da5d441deb73ed5b1da42",
+    "D103-sessions.json": "386ea41cb50792af7322d19223b05204baf796213986dc7fb3cb21bd98cfbd07"
+  },
+  "multi_symbol_dates": 59,
+  "schema": "d104-capacity-v3",
+  "status": "SUFFICIENT",
+  "task_sha256": "e1839b5b6463360c9198717f5a11217fd81a1c1baf673cc5e71b254b3bdaf9be",
+  "upper": {
+    "AAPLUSDT": 65,
+    "CRCLUSDT": 59,
+    "GOOGLUSDT": 66,
+    "INTCUSDT": 68,
+    "MRVLUSDT": 54,
+    "MSFTUSDT": 66,
+    "MSTRUSDT": 64,
+    "MUUSDT": 59,
+    "NBISUSDT": 46,
+    "NVDAUSDT": 59,
+    "SAMSUNGUSDT": 40,
+    "SKHYNIXUSDT": 40,
+    "SNDKUSDT": 65,
+    "SPCXUSDT": 33,
+    "TSLAUSDT": 69
+  }
+}
