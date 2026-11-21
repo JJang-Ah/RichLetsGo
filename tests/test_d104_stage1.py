@@ -7,9 +7,10 @@ from richletsgo.research.d104 import stage1 as g
 from richletsgo.research.d104.stage1_report import report
 
 
-def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
-    day = g.B - g.DAY
-    start = day + 16 * 3_600_000 - 8 * g.BAR
+@pytest.mark.parametrize("regime", ["pre", "cross", "post"])
+def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch, regime):
+    day = g.CUTOVER // g.DAY * g.DAY + {"pre": -g.DAY, "cross": 0, "post": g.DAY}[regime]
+    start = day + 16 * 3_600_000 - 8 * g.BAR - (g.BAR if regime == "pre" else 0)
     symbols = sorted(g.CALENDAR)[:4]
     sessions = [g.Session(s, g.CALENDAR[s], start, start + 12 * g.BAR) for s in symbols]
     launch = day - 30 * g.DAY
@@ -36,7 +37,12 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
                     retCode=0,
                     result=dict(
                         category="linear",
-                        list=[
+                        list=(
+                            [dict(symbol=sym, fundingRateTimestamp=str(start), fundingRate=".002")]
+                            if regime == "cross"
+                            else []
+                        )
+                        + [
                             dict(
                                 symbol=sym, fundingRateTimestamp=str(settlement), fundingRate=".001"
                             )
@@ -66,14 +72,16 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     source = g.sha(b"fixture")
     (folder / "sources").mkdir()
     (folder / "sources" / source).write_bytes(b"fixture")
-    period = {"from": start, "until": sessions[0].end, "source": source}
-    evidence = {
-        s: dict(
-            actions_halts=[dict(period, status="verified_clear")],
-            schedule=[dict(period, interval=g.DAY, anchor=settlement)],
-        )
-        for s in symbols
-    }
+    raw_halts = g.packed({"halts": {}})
+    halt_pin = g.sha(raw_halts)
+    (folder / "sources" / halt_pin).write_bytes(raw_halts)
+    monkeypatch.setattr(g, "NOTICE_HASH", source)
+    monkeypatch.setattr(g, "HALTS_HASH", halt_pin)
+    evidence = dict(
+        schedule=dict(source=source, from_ms=g.CUTOVER, interval_ms=g.EIGHT_HOURS),
+        halts_source=halt_pin,
+        additional_events=[],
+    )
     snapshot = tmp_path / g.STOCK
     snapshot.parent.mkdir()
     snapshot.write_bytes(
@@ -106,11 +114,11 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
 
     with pytest.raises(ValueError, match="published evidence hash"):
         g.collect(folder, tmp_path, "0" * 64, forbidden)
-    bad_schedule = evidence[symbols[0]]["schedule"][0]
+    bad_schedule = evidence["schedule"]
     bad_schedule["source"] = ""
     invalid = g.packed(evidence)
     (folder / "evidence.json").write_bytes(invalid)
-    with pytest.raises(ValueError, match="schedule evidence source"):
+    with pytest.raises(ValueError, match="invalid funding schedule"):
         g.collect(folder, tmp_path, g.sha(invalid), forbidden)
     assert not (folder / "collect-started").exists()
     bad_schedule["source"] = source
@@ -124,12 +132,14 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="snapshot hash"):
         g.collect(folder, tmp_path, pin, forbidden)
     snapshot.write_bytes(original)
-    evidence[symbols[0]]["actions_halts"] = []
+    evidence["additional_events"] = [
+        dict(symbol=symbols[0], source=source, start=start, end=start + 1)
+    ]
     partial = g.packed(evidence)
     (folder / "evidence.json").write_bytes(partial)
-    with pytest.raises(ValueError, match="halt coverage"):
+    with pytest.raises(ValueError, match="announced event"):
         g.collect(folder, tmp_path, g.sha(partial), forbidden)
-    evidence[symbols[0]]["actions_halts"] = [dict(period, status="verified_clear")]
+    evidence["additional_events"] = []
     (folder / "evidence.json").write_bytes(g.packed(evidence))
     g.collect(folder, tmp_path, pin, get)
     inputs, manifest = g.fixtures(folder, tmp_path, pin)
@@ -149,6 +159,18 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     assert result["costs"]["ALL"]["funding_cash"] == -3 * g.D("3.28") * g.D(".001") * 107
     with pytest.raises(ValueError, match="published evidence hash"):
         g.fixtures(folder, tmp_path, "0" * 64)
+    if regime == "cross":
+        assert all(set(f.settlements) == {start, settlement} for f in inputs)
+    funding = folder / "funding.jsonl"
+    original_funding = funding.read_bytes()
+    funding.write_bytes(b"")
+    if regime == "pre":
+        empty_inputs, _ = g.fixtures(folder, tmp_path, pin)
+        assert all(not f.settlements for f in empty_inputs)
+    else:
+        with pytest.raises(ValueError, match="funding schedule mismatch"):
+            g.fixtures(folder, tmp_path, pin)
+    funding.write_bytes(original_funding)
     mark = folder / "mark.jsonl"
     mark.write_bytes(
         b"".join(
@@ -231,3 +253,39 @@ def test_cli_report_error_preserves_once_marker_and_writes_invalid(tmp_path, mon
     }
     with pytest.raises(FileExistsError):
         cli.main()
+
+
+@pytest.mark.parametrize("offsets", [[0, 0], [2, 0, 1], [-1], [12]])
+def test_invalid_funding_records(offsets):
+    s = g.Session("MUUSDT", "XNYS", g.CUTOVER - 8 * g.BAR, g.CUTOVER + 4 * g.BAR)
+    records = [
+        dict(symbol=s.symbol, fundingRateTimestamp=str(s.start + i * g.BAR), fundingRate=str(n))
+        for n, i in enumerate(offsets)
+    ]
+
+    def payload():
+        return g.packed(dict(retCode=0, result=dict(category="linear", list=records)))
+
+    with pytest.raises(ValueError):
+        g.parse_rows("funding", s, payload())
+    records[:] = [dict(symbol=s.symbol, fundingRateTimestamp=str(s.start + 1), fundingRate="0")]
+    with pytest.raises(ValueError):
+        g.parse_rows("funding", s, payload())
+
+
+def test_funding_api_descending_and_identical_duplicate():
+    s = g.Session("MUUSDT", "XNYS", g.CUTOVER - 12 * g.BAR, g.CUTOVER)
+    records = [
+        dict(symbol=s.symbol, fundingRateTimestamp=str(s.start + i * g.BAR), fundingRate=".01")
+        for i in (9, 6)
+    ]
+
+    def parse():
+        return g.parse_rows(
+            "funding", s, g.packed(dict(retCode=0, result=dict(category="linear", list=records)))
+        )
+
+    assert [row[1] for row in parse()] == [s.start + 6 * g.BAR, s.start + 9 * g.BAR]
+    records.append(records[-1])
+    with pytest.raises(ValueError, match="duplicate"):
+        parse()

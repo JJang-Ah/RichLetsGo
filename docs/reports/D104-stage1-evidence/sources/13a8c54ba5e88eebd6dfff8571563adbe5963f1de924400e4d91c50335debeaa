@@ -1,0 +1,68 @@
+{
+  "checked_at": "2026-11-18T14:20:14Z",
+  "halts": {
+    "SOXXUSDT": [
+      {
+        "start": 1793858400000,
+        "end": 1793889000000,
+        "source": "https://announcements.bybit.com/en-US/article/important-soxxusdt-perpetual-contract-size-adjustment-due-to-stock-split--art97fc5da0bf31/",
+        "note": "3-for-1 split; TRADING_HALT 06:00 UTC, resume no later than 14:30 UTC (latest bound used)"
+      }
+    ],
+    "BITOUSDT": [
+      {
+        "start": 1795068000000,
+        "end": 1795098600000,
+        "source": "https://announcements.bybit.com/en-US/article/important-bitousdt-contract-size-adjustment-due-to-a-1-for-2-reverse-stock-split--art43ee2b0cf622/",
+        "note": "1-for-2 reverse split, scheduled after collection; latest resume bound used"
+      }
+    ],
+    "SNDKUSDT": [
+      {
+        "start": 1795154400000,
+        "end": 1795185000000,
+        "source": "https://announcements.bybit.com/en-US/article/sndk-perpetual-perp-options-stock-split-adjustment--art00e88bcfa944/",
+        "note": "8-for-1 split, scheduled after collection; latest resume bound used"
+      }
+    ]
+  },
+  "procedure": "Bybit public announcements API /v5/announcements/index (locale=en-US, all types) fetched back to the earliest allowlist launchTime 1773022440000 (1,500 items). Titles filtered for suspension/halt/split/corporate action/delisting/maintenance on TradFi perpetuals; each candidate article read in full. No suspensions inferred from prices or data gaps.",
+  "sources_checked": [
+    {
+      "url": "https://announcements.bybit.com/en-US/article/important-soxxusdt-perpetual-contract-size-adjustment-due-to-stock-split--art97fc5da0bf31/",
+      "result": "halt recorded (SOXXUSDT)"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/important-bitousdt-contract-size-adjustment-due-to-a-1-for-2-reverse-stock-split--art43ee2b0cf622/",
+      "result": "halt recorded (BITOUSDT)"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/sndk-perpetual-perp-options-stock-split-adjustment--art00e88bcfa944/",
+      "result": "halt recorded (SNDKUSDT)"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/notice-of-delisting-and-relisting-of-spcxusdt-pre-ipo-perpetual-contract-blte48557ba3cae4f5d/",
+      "result": "SPCXUSDT pre-IPO contract delisted 2026-06-10 07:30 UTC; current SPCXUSDT relisted 2026-06-15 (= metadata launchTime 1781510821000). Interval precedes current listing, so no halt inside the observed range"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/delisting-of-4stockusdt-perpetual-contract--art52c4cf790adc/",
+      "result": "4STOCKUSDT not in allowlist"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/important-anthropicusdt-split-and-rename-nov-16--artfe526916e960/",
+      "result": "ANTHROPICUSDT not in allowlist"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/bybit-tradfi-system-maintenance-notice-blt277c6f699b60f78a/",
+      "result": "TradFi CFD account maintenance; 'Existing TradFi positions and ongoing trading activities will not be affected' - no halt"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/bybit-tradfi-system-maintenance-notice-may-22--bltae21c30f896a8a4f/",
+      "result": "same series as May 15/29 (account services only); title-level check"
+    },
+    {
+      "url": "https://announcements.bybit.com/en-US/article/bybit-tradfi-system-maintenance-notice-may-29--bltf087730c0e6ad099/",
+      "result": "TradFi CFD account maintenance; trading not affected - no halt"
+    }
+  ]
+}

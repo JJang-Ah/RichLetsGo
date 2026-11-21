@@ -2,7 +2,6 @@
 
 import hashlib
 import json
-import re
 from collections.abc import Callable, Iterable
 from datetime import UTC, datetime
 from decimal import Decimal as D
@@ -16,7 +15,11 @@ from .execution import Terms
 from .inputs import BAR, CALENDAR, DAY, B, Candle, Session, number
 from .replay import Fixture, FundingPeriod, expected_settlements
 
-MODEL_LABEL = "2026-11-10 주문 규격을 소급 적용한 탐색 모형 결과"
+CUTOVER = 1786118400000
+EIGHT_HOURS = 28_800_000
+NOTICE_HASH = "89ce07ba511175c89633312ee50d284e636f82b68539331f1d2e640fedffd34d"
+HALTS_HASH = "13a8c54ba5e88eebd6dfff8571563adbe5963f1de924400e4d91c50335debeaa"
+MODEL_LABEL = "2026-11-10 주문 규격 소급 적용, 8/7 16:00 UTC 이전 펀딩 시각은 API 기록 사용, 중단은 D103 조사·공지 사건과 5분봉 완전성 검사로 갈음"
 CAP_HASH = "f1138f734d9c63cdff061ee2e89484098dffe862514138d593604c988e66e6f4"
 DAILY_HASH = "79d5a596e575d63567eba9a5cde7d665032c4f8f4b71ef1e9f4a9f3c020426fc"
 KINDS = ("daily", "funding", "mark", "trade")
@@ -62,7 +65,10 @@ def registration(code: str, reports: Path) -> dict[str, Any]:
     launches, sessions = scope(reports)
     plan = [[s.symbol, s.calendar, s.start, s.end] for s in sessions]
     return dict(
-        schema="D104-stage1-v3",
+        schema="D104-stage1-v4",
+        funding_cutover_ms=CUTOVER,
+        funding_notice_sha256=NOTICE_HASH,
+        halts_sha256=HALTS_HASH,
         order_terms_model=MODEL_LABEL,
         settlement_mark="same_timestamp_mark_5m_open",
         evidence_pin="pre_collection_evidence_json_sha256",
@@ -111,7 +117,12 @@ def parse_rows(kind: str, s: Session, raw: bytes) -> list[Row]:
         if kind == "funding":
             if item["symbol"] != s.symbol:
                 raise ValueError("foreign funding symbol")
-            at = int(item["fundingRateTimestamp"])
+            timestamp = item["fundingRateTimestamp"]
+            if not isinstance(timestamp, str) or not timestamp.isascii() or not timestamp.isdigit():
+                raise ValueError("invalid funding timestamp")
+            at = int(timestamp)
+            if at in unique:
+                raise ValueError("duplicate funding timestamp")
             vals = [number(dec(item["fundingRate"]))]
         else:
             if not isinstance(item, list) or len(item) != (7 if kind == "trade" else 5):
@@ -127,6 +138,8 @@ def parse_rows(kind: str, s: Session, raw: bytes) -> list[Row]:
         row = [s.symbol, at, *vals]
         if unique.setdefault(at, row) != row:
             raise ValueError("conflict")
+    if kind == "funding" and list(unique) not in (sorted(unique), sorted(unique, reverse=True)):
+        raise ValueError("unordered funding timestamps")
     if kind != "funding" and set(unique) != set(range(s.start, s.end, BAR)):
         raise ValueError("incomplete session")
     return [unique[t] for t in sorted(unique)]
@@ -188,7 +201,7 @@ def read_candles(rows: dict[tuple[str, int], Row], session: Session) -> tuple[Ca
     )
 
 
-SessionEvidence = tuple[Terms, tuple[FundingPeriod, ...], set[int]]
+SessionEvidence = tuple[Terms, tuple[FundingPeriod, ...]]
 
 
 def check_evidence(
@@ -198,8 +211,13 @@ def check_evidence(
     if sha(raw) != published:
         raise ValueError("published evidence hash mismatch")
     evidence = json.loads(raw)
-    if set(evidence) != set(launches):
-        raise ValueError("missing symbol evidence")
+    if (
+        set(evidence) != {"schedule", "halts_source", "additional_events"}
+        or evidence["schedule"]
+        != dict(source=NOTICE_HASH, from_ms=CUTOVER, interval_ms=EIGHT_HOURS)
+        or evidence["halts_source"] != HALTS_HASH
+    ):
+        raise ValueError("invalid funding schedule or halt source")
     snapshot = (reports / STOCK).read_bytes()
     if sha(snapshot) != PINS[STOCK]:
         raise ValueError("order terms snapshot hash mismatch")
@@ -220,40 +238,38 @@ def check_evidence(
     if terms_by_symbol.keys() != launches.keys():
         raise ValueError("missing snapshot order terms")
     files = {"evidence.json": published}
-    for meta in evidence.values():
-        if set(meta) != {"actions_halts", "schedule"}:
-            raise ValueError("unexpected evidence fields")
-        for kind in ("actions_halts", "schedule"):
-            for record in meta[kind]:
-                source = record.get("source")
-                if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{64}", source):
-                    raise ValueError(f"{kind} evidence source digest required")
-                if not 0 <= record["from"] < record["until"] <= B:
-                    raise ValueError(f"invalid {kind} validity period")
-                name = "sources/" + source
-                if name not in files:
-                    if sha((folder / name).read_bytes()) != source:
-                        raise ValueError("evidence source mismatch")
-                    files[name] = source
-    plan = {}
+
+    def source(digest: str) -> bytes:
+        if len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+            raise ValueError("invalid evidence source")
+        name = "sources/" + digest
+        data = (folder / name).read_bytes()
+        if sha(data) != digest:
+            raise ValueError("evidence source mismatch")
+        files[name] = digest
+        return data
+
+    source(NOTICE_HASH)
+    events = json.loads(source(HALTS_HASH))["halts"]
+    for event in evidence["additional_events"]:
+        source(event["source"])
+        events.setdefault(event["symbol"], []).append(event)
+    for records in events.values():
+        for event in records:
+            if (
+                type(event["start"]) is not int
+                or type(event["end"]) is not int
+                or not 0 <= event["start"] < event["end"]
+            ):
+                raise ValueError("invalid announced halt")
+    history = (FundingPeriod(CUTOVER, B, EIGHT_HOURS, CUTOVER),)
+    plan: dict[Session, SessionEvidence] = {}
     for s in sessions:
-        meta = evidence[s.symbol]
-        periods = [p for p in meta["actions_halts"] if p["from"] < s.end and s.start < p["until"]]
-        if len(periods) != 1:
-            raise ValueError("missing or overlapping corporate action/halt coverage")
-        p = periods[0]
-        if (
-            not 0 <= p["from"] <= s.start < s.end <= p["until"] <= B
-            or not p["source"]
-            or p["status"] != "verified_clear"
+        if any(
+            event["start"] < s.end and s.start < event["end"] for event in events.get(s.symbol, [])
         ):
-            raise ValueError("unresolved corporate action, halt or contract evidence")
-        terms = terms_by_symbol[s.symbol]
-        history = tuple(
-            FundingPeriod(h["from"], h["until"], h["interval"], h["anchor"])
-            for h in meta["schedule"]
-        )
-        plan[s] = (terms, history, expected_settlements(s, history))
+            raise ValueError("announced event overlaps registered session")
+        plan[s] = (terms_by_symbol[s.symbol], history)
     return files, plan
 
 
@@ -301,7 +317,11 @@ def fixtures(
     result = []
     for s in sessions:
         sym = s.symbol
-        terms, history, times = plan[s]
+        terms, history = plan[s]
+        observed = {t for t in range(s.start, s.end, BAR) if (sym, t) in rows["funding"]}
+        times = expected_settlements(s, history, CUTOVER, observed)
+        if times != observed:
+            raise ValueError("INVALID_INPUT funding schedule mismatch")
         settlements: dict[int, tuple[D, D]] = {}
         expected["funding"][sym] += len(times)
         for kind in ("trade", "mark"):
@@ -329,6 +349,7 @@ def fixtures(
                 terms,
                 settlements,
                 history,
+                CUTOVER,
             )
         )
     if counts != expected:
