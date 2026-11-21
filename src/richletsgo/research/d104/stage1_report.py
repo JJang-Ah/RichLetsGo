@@ -8,6 +8,7 @@ from typing import Any
 
 from .inputs import CALENDAR, DAY, B
 from .replay import Fixture, replay
+from .stage1 import MODEL_LABEL
 from .verdict import design
 
 
@@ -58,6 +59,8 @@ def report(fixtures: list[Fixture]) -> dict[str, Any]:
         tiers[str(slip)] += count
     return dict(
         verdict=verdict,
+        order_terms_model=MODEL_LABEL,
+        exploratory_only=True,
         first_utc=str(first),
         until_exclusive=str(until),
         E=491,

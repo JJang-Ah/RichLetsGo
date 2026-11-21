@@ -11,11 +11,12 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
-from .capacity_guard import PINS, TASK_HASH, _public_get, page, read_scope
+from .capacity_guard import PINS, STOCK, TASK_HASH, _public_get, page, read_scope
 from .execution import Terms
 from .inputs import BAR, CALENDAR, DAY, B, Candle, Session, number
 from .replay import Fixture, FundingPeriod, expected_settlements
 
+MODEL_LABEL = "2026-11-10 주문 규격을 소급 적용한 탐색 모형 결과"
 CAP_HASH = "f1138f734d9c63cdff061ee2e89484098dffe862514138d593604c988e66e6f4"
 DAILY_HASH = "79d5a596e575d63567eba9a5cde7d665032c4f8f4b71ef1e9f4a9f3c020426fc"
 KINDS = ("daily", "funding", "mark", "trade")
@@ -61,7 +62,8 @@ def registration(code: str, reports: Path) -> dict[str, Any]:
     launches, sessions = scope(reports)
     plan = [[s.symbol, s.calendar, s.start, s.end] for s in sessions]
     return dict(
-        schema="D104-stage1-v2",
+        schema="D104-stage1-v3",
+        order_terms_model=MODEL_LABEL,
         settlement_mark="same_timestamp_mark_5m_open",
         evidence_pin="pre_collection_evidence_json_sha256",
         code=code,
@@ -159,7 +161,7 @@ def collect(
     folder: Path, reports: Path, evidence_sha256: str, get: Callable[[str], bytes] = _public_get
 ) -> None:
     launches, sessions = scope(reports)
-    check_evidence(folder, launches, sessions, evidence_sha256)
+    check_evidence(folder, reports, launches, sessions, evidence_sha256)
     if {p.name for p in folder.iterdir()} != {"evidence.json", "sources"}:
         raise ValueError("expected unused evidence-only campaign folder")
     with (folder / "collect-started").open("xb") as marker:
@@ -190,7 +192,7 @@ SessionEvidence = tuple[Terms, tuple[FundingPeriod, ...], set[int]]
 
 
 def check_evidence(
-    folder: Path, launches: dict[str, int], sessions: list[Session], published: str
+    folder: Path, reports: Path, launches: dict[str, int], sessions: list[Session], published: str
 ) -> tuple[dict[str, str], dict[Session, SessionEvidence]]:
     raw = (folder / "evidence.json").read_bytes()
     if sha(raw) != published:
@@ -198,11 +200,30 @@ def check_evidence(
     evidence = json.loads(raw)
     if set(evidence) != set(launches):
         raise ValueError("missing symbol evidence")
+    snapshot = (reports / STOCK).read_bytes()
+    if sha(snapshot) != PINS[STOCK]:
+        raise ValueError("order terms snapshot hash mismatch")
+    terms_by_symbol = {}
+    for row in json.loads(snapshot)["result"]["list"]:
+        sym = row["symbol"]
+        if sym in launches:
+            lot = row["lotSizeFilter"]
+            if sym in terms_by_symbol:
+                raise ValueError("duplicate order terms")
+            terms_by_symbol[sym] = Terms(
+                D(".0025"),
+                dec(row["priceFilter"]["tickSize"]),
+                dec(lot["qtyStep"]),
+                dec(lot["minOrderQty"]),
+                dec(lot["minNotionalValue"]),
+            )
+    if terms_by_symbol.keys() != launches.keys():
+        raise ValueError("missing snapshot order terms")
     files = {"evidence.json": published}
     for meta in evidence.values():
-        if set(meta) != {"contracts", "schedule"}:
+        if set(meta) != {"actions_halts", "schedule"}:
             raise ValueError("unexpected evidence fields")
-        for kind in ("contracts", "schedule"):
+        for kind in ("actions_halts", "schedule"):
             for record in meta[kind]:
                 source = record.get("source")
                 if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{64}", source):
@@ -217,17 +238,17 @@ def check_evidence(
     plan = {}
     for s in sessions:
         meta = evidence[s.symbol]
-        periods = [p for p in meta["contracts"] if p["from"] < s.end and s.start < p["until"]]
+        periods = [p for p in meta["actions_halts"] if p["from"] < s.end and s.start < p["until"]]
         if len(periods) != 1:
-            raise ValueError("ambiguous contract or intraday change")
+            raise ValueError("missing or overlapping corporate action/halt coverage")
         p = periods[0]
         if (
             not 0 <= p["from"] <= s.start < s.end <= p["until"] <= B
             or not p["source"]
-            or p["actions_halts"] != "verified_clear"
+            or p["status"] != "verified_clear"
         ):
             raise ValueError("unresolved corporate action, halt or contract evidence")
-        terms = Terms(D(".0025"), *(dec(p[k]) for k in ("tick", "step", "min_qty", "min_value")))
+        terms = terms_by_symbol[s.symbol]
         history = tuple(
             FundingPeriod(h["from"], h["until"], h["interval"], h["anchor"])
             for h in meta["schedule"]
@@ -240,7 +261,7 @@ def fixtures(
     folder: Path, reports: Path, evidence_sha256: str
 ) -> tuple[list[Fixture], dict[str, Any]]:
     launches, sessions = scope(reports)
-    files, plan = check_evidence(folder, launches, sessions, evidence_sha256)
+    files, plan = check_evidence(folder, reports, launches, sessions, evidence_sha256)
     if (folder / "collect-started").read_bytes() != packed(evidence_sha256):
         raise ValueError("pre-collection evidence mismatch")
     rows: dict[str, dict[tuple[str, int], Row]] = {}

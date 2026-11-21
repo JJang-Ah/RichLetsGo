@@ -69,20 +69,35 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     period = {"from": start, "until": sessions[0].end, "source": source}
     evidence = {
         s: dict(
-            contracts=[
-                dict(
-                    period,
-                    tick=".01",
-                    step=".01",
-                    min_qty="0",
-                    min_value="0",
-                    actions_halts="verified_clear",
-                )
-            ],
+            actions_halts=[dict(period, status="verified_clear")],
             schedule=[dict(period, interval=g.DAY, anchor=settlement)],
         )
         for s in symbols
     }
+    snapshot = tmp_path / g.STOCK
+    snapshot.parent.mkdir()
+    snapshot.write_bytes(
+        g.packed(
+            {
+                "result": {
+                    "list": [
+                        dict(
+                            symbol=s,
+                            priceFilter={"tickSize": ".01"},
+                            lotSizeFilter=dict(
+                                qtyStep=".01",
+                                minOrderQty="0.01",
+                                minNotionalValue=str(5 + symbols.index(s)),
+                            ),
+                            fundingInterval=123,
+                        )
+                        for s in symbols
+                    ]
+                }
+            }
+        )
+    )
+    monkeypatch.setitem(g.PINS, g.STOCK, g.sha(snapshot.read_bytes()))
     (folder / "evidence.json").write_bytes(g.packed(evidence))
     pin = g.sha((folder / "evidence.json").read_bytes())
 
@@ -104,11 +119,29 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     with pytest.raises(ValueError, match="source mismatch"):
         g.collect(folder, tmp_path, pin, forbidden)
     (folder / "sources" / source).write_bytes(b"fixture")
+    original = snapshot.read_bytes()
+    snapshot.write_bytes(original + b" ")
+    with pytest.raises(ValueError, match="snapshot hash"):
+        g.collect(folder, tmp_path, pin, forbidden)
+    snapshot.write_bytes(original)
+    evidence[symbols[0]]["actions_halts"] = []
+    partial = g.packed(evidence)
+    (folder / "evidence.json").write_bytes(partial)
+    with pytest.raises(ValueError, match="halt coverage"):
+        g.collect(folder, tmp_path, g.sha(partial), forbidden)
+    evidence[symbols[0]]["actions_halts"] = [dict(period, status="verified_clear")]
+    (folder / "evidence.json").write_bytes(g.packed(evidence))
     g.collect(folder, tmp_path, pin, get)
     inputs, manifest = g.fixtures(folder, tmp_path, pin)
     assert all(f.settlements[settlement] == (g.D(".001"), g.D(107)) for f in inputs)
+    assert all(
+        (f.terms.tick, f.terms.step, f.terms.min_qty, f.terms.min_value)
+        == tuple(map(g.D, [".01", ".01", ".01", str(5 + symbols.index(f.session.symbol))]))
+        for f in inputs
+    )
     assert manifest["counts"] == manifest["expected"]
     result = report(inputs)
+    assert result["order_terms_model"] == g.MODEL_LABEL and result["exploratory_only"]
     assert result["N"] == 3 and result["verdict"] == "NO_GO"
     assert result["contention_by_symbol"][symbols[-1]] == 1
     assert result["costs"]["ALL"]["funding_cash"] < 0 and result["costs"]["ALL"]["fees"] > 0
@@ -192,6 +225,8 @@ def test_cli_report_error_preserves_once_marker_and_writes_invalid(tmp_path, mon
     cli.main()
     assert json.loads((tmp_path / "result.json").read_bytes()) == {
         "verdict": "INVALID_INPUT",
+        "order_terms_model": g.MODEL_LABEL,
+        "exploratory_only": True,
         "reason": "ArithmeticError: synthetic report error",
     }
     with pytest.raises(FileExistsError):
