@@ -1,0 +1,16 @@
+{
+  "additional_events": [
+    {
+      "end": 1781510821000,
+      "source": "13a8c54ba5e88eebd6dfff8571563adbe5963f1de924400e4d91c50335debeaa",
+      "start": 1781076600000,
+      "symbol": "SPCXUSDT"
+    }
+  ],
+  "halts_source": "13a8c54ba5e88eebd6dfff8571563adbe5963f1de924400e4d91c50335debeaa",
+  "schedule": {
+    "from_ms": 1786118400000,
+    "interval_ms": 28800000,
+    "source": "89ce07ba511175c89633312ee50d284e636f82b68539331f1d2e640fedffd34d"
+  }
+}
