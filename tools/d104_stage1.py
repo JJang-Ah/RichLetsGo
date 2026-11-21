@@ -16,10 +16,11 @@ def git(*args: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("registration", "collect", "freeze", "run"))
+    parser.add_argument("action", choices=("registration", "evidence", "collect", "freeze", "run"))
     parser.add_argument("--registration", required=True, type=Path)
     parser.add_argument("--folder", type=Path)
     parser.add_argument("--manifest-sha256")
+    parser.add_argument("--evidence-sha256")
     args = parser.parse_args()
     root = Path.cwd().resolve()
     if (
@@ -39,15 +40,23 @@ def main() -> None:
     folder = args.folder.resolve()
     if folder.is_relative_to(root):
         parser.error("campaign folder must be outside the code checkout")
+    if args.action == "evidence":
+        pin = stage1.sha((folder / "evidence.json").read_bytes())
+        launches, sessions = stage1.scope(reports)
+        files, _ = stage1.check_evidence(folder, launches, sessions, pin)
+        print(stage1.packed(dict(evidence_sha256=pin, files=files)).decode().strip())
+        return
+    if not args.evidence_sha256:
+        parser.error("published pre-collection evidence hash required")
     if args.action == "collect":
-        stage1.collect(folder, reports)
+        stage1.collect(folder, reports, args.evidence_sha256)
         return
     path = folder / "manifest.json"
     if args.action == "run" and (
         not args.manifest_sha256 or stage1.sha(path.read_bytes()) != args.manifest_sha256
     ):
         parser.error("published manifest hash required")
-    inputs, manifest = stage1.fixtures(folder, reports)
+    inputs, manifest = stage1.fixtures(folder, reports, args.evidence_sha256)
     manifest["registration_sha256"] = stage1.sha(reg)
     blob = stage1.packed(manifest)
     if args.action == "freeze":
@@ -60,11 +69,15 @@ def main() -> None:
     with (folder / "run-started").open("xb") as marker:
         marker.write(stage1.sha(blob).encode())
     try:
-        result = report(inputs)
-    except ValueError as exc:
-        result = dict(verdict="INVALID_INPUT", reason=str(exc))
+        serialized = json.dumps(report(inputs), default=number, sort_keys=True, indent=2)
+    except Exception as exc:
+        serialized = json.dumps(
+            dict(verdict="INVALID_INPUT", reason=f"{type(exc).__name__}: {exc}"),
+            sort_keys=True,
+            indent=2,
+        )
     with (folder / "result.json").open("xb") as out:
-        out.write((json.dumps(result, default=number, sort_keys=True, indent=2) + "\n").encode())
+        out.write((serialized + "\n").encode())
 
 
 if __name__ == "__main__":

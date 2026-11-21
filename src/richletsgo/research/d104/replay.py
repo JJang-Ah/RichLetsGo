@@ -56,7 +56,7 @@ class Fixture:
     daily: Mapping[int, D]
     terms: Terms
     # Explicit scheduled settlements; missing required mark/rate is invalid.
-    settlements: Mapping[int, tuple[D, D] | None]
+    settlements: Mapping[int, tuple[D, D]]
     funding_history: tuple[FundingPeriod, ...]
 
 
@@ -81,7 +81,9 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
         s = f.session
         trade = series(s, f.trade)
         marks = series(s, f.mark)
-        if expected_settlements(s, f.funding_history) != f.settlements.keys():
+        if expected_settlements(s, f.funding_history) != f.settlements.keys() or any(
+            v is None for v in f.settlements.values()
+        ):
             raise ValueError("unexpected settlement boundary")
         # Both admitted calendars fit within one UTC date (including early closes).
         if s.start // 86_400_000 != (s.end - 1) // 86_400_000:
@@ -138,8 +140,6 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
             f, b, m = group[sym]
             pos = holdings.get(sym)
             settlement = f.settlements.get(at)
-            if pos and at in f.settlements and settlement is None:
-                raise ValueError("missing settlement input")
             r = pending.get(sym)
             free = equity * D(".75") - sum(used.values())
             if r is not None:

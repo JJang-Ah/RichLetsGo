@@ -61,7 +61,9 @@ def registration(code: str, reports: Path) -> dict[str, Any]:
     launches, sessions = scope(reports)
     plan = [[s.symbol, s.calendar, s.start, s.end] for s in sessions]
     return dict(
-        schema="D104-stage1-v1",
+        schema="D104-stage1-v2",
+        settlement_mark="same_timestamp_mark_5m_open",
+        evidence_pin="pre_collection_evidence_json_sha256",
         code=code,
         B_exclusive=B,
         spec_sha256=TASK_HASH,
@@ -153,9 +155,15 @@ def fetch_session(kind: str, s: Session, get: Callable[[str], bytes]) -> list[Ro
     ) from None
 
 
-def collect(folder: Path, reports: Path, get: Callable[[str], bytes] = _public_get) -> None:
+def collect(
+    folder: Path, reports: Path, evidence_sha256: str, get: Callable[[str], bytes] = _public_get
+) -> None:
     launches, sessions = scope(reports)
-    folder.mkdir(exist_ok=False)
+    check_evidence(folder, launches, sessions, evidence_sha256)
+    if {p.name for p in folder.iterdir()} != {"evidence.json", "sources"}:
+        raise ValueError("expected unused evidence-only campaign folder")
+    with (folder / "collect-started").open("xb") as marker:
+        marker.write(packed(evidence_sha256))
     for kind in KINDS:
         with (folder / (kind + ".jsonl")).open("xb") as f:
             if kind == "daily":
@@ -178,26 +186,63 @@ def read_candles(rows: dict[tuple[str, int], Row], session: Session) -> tuple[Ca
     )
 
 
-def fixtures(folder: Path, reports: Path) -> tuple[list[Fixture], dict[str, Any]]:
-    launches, sessions = scope(reports)
-    evidence_raw = (folder / "evidence.json").read_bytes()
-    evidence = json.loads(evidence_raw)
+SessionEvidence = tuple[Terms, tuple[FundingPeriod, ...], set[int]]
+
+
+def check_evidence(
+    folder: Path, launches: dict[str, int], sessions: list[Session], published: str
+) -> tuple[dict[str, str], dict[Session, SessionEvidence]]:
+    raw = (folder / "evidence.json").read_bytes()
+    if sha(raw) != published:
+        raise ValueError("published evidence hash mismatch")
+    evidence = json.loads(raw)
     if set(evidence) != set(launches):
         raise ValueError("missing symbol evidence")
-    files = {"evidence.json": sha(evidence_raw)}
-    for sym, meta in evidence.items():
-        for key in meta["settlement_marks"]:
-            if not key.isdigit() or not launches[sym] <= int(key) < B:
-                raise ValueError("settlement evidence outside scope")
-        for record in [*meta["contracts"], *meta["schedule"], *meta["settlement_marks"].values()]:
-            source = record["source"]
-            if not re.fullmatch(r"[0-9a-f]{64}", source):
-                raise ValueError("evidence source digest required")
-            name = "sources/" + source
-            if name not in files:
-                if sha((folder / name).read_bytes()) != source:
-                    raise ValueError("evidence source mismatch")
-                files[name] = source
+    files = {"evidence.json": published}
+    for meta in evidence.values():
+        if set(meta) != {"contracts", "schedule"}:
+            raise ValueError("unexpected evidence fields")
+        for kind in ("contracts", "schedule"):
+            for record in meta[kind]:
+                source = record.get("source")
+                if not isinstance(source, str) or not re.fullmatch(r"[0-9a-f]{64}", source):
+                    raise ValueError(f"{kind} evidence source digest required")
+                if not 0 <= record["from"] < record["until"] <= B:
+                    raise ValueError(f"invalid {kind} validity period")
+                name = "sources/" + source
+                if name not in files:
+                    if sha((folder / name).read_bytes()) != source:
+                        raise ValueError("evidence source mismatch")
+                    files[name] = source
+    plan = {}
+    for s in sessions:
+        meta = evidence[s.symbol]
+        periods = [p for p in meta["contracts"] if p["from"] < s.end and s.start < p["until"]]
+        if len(periods) != 1:
+            raise ValueError("ambiguous contract or intraday change")
+        p = periods[0]
+        if (
+            not 0 <= p["from"] <= s.start < s.end <= p["until"] <= B
+            or not p["source"]
+            or p["actions_halts"] != "verified_clear"
+        ):
+            raise ValueError("unresolved corporate action, halt or contract evidence")
+        terms = Terms(D(".0025"), *(dec(p[k]) for k in ("tick", "step", "min_qty", "min_value")))
+        history = tuple(
+            FundingPeriod(h["from"], h["until"], h["interval"], h["anchor"])
+            for h in meta["schedule"]
+        )
+        plan[s] = (terms, history, expected_settlements(s, history))
+    return files, plan
+
+
+def fixtures(
+    folder: Path, reports: Path, evidence_sha256: str
+) -> tuple[list[Fixture], dict[str, Any]]:
+    launches, sessions = scope(reports)
+    files, plan = check_evidence(folder, launches, sessions, evidence_sha256)
+    if (folder / "collect-started").read_bytes() != packed(evidence_sha256):
+        raise ValueError("pre-collection evidence mismatch")
     rows: dict[str, dict[tuple[str, int], Row]] = {}
     counts: dict[str, dict[str, int]] = {}
     for kind in KINDS:
@@ -232,43 +277,26 @@ def fixtures(folder: Path, reports: Path) -> tuple[list[Fixture], dict[str, Any]
     expected = {k: dict.fromkeys(launches, 0) for k in KINDS}
     for sym, start, end in windows(launches, sessions):
         expected["daily"][sym] += (end - start) // DAY
-    used_marks: dict[str, set[str]] = {sym: set() for sym in launches}
     result = []
     for s in sessions:
         sym = s.symbol
-        meta = evidence[sym]
-        periods = [p for p in meta["contracts"] if p["from"] < s.end and s.start < p["until"]]
-        if len(periods) != 1:
-            raise ValueError("ambiguous contract or intraday change")
-        p = periods[0]
-        if (
-            not 0 <= p["from"] <= s.start < s.end <= p["until"] <= B
-            or not p["source"]
-            or p["actions_halts"] != "verified_clear"
-        ):
-            raise ValueError("unresolved corporate action, halt or contract evidence")
-        terms = Terms(D(".0025"), *(dec(p[k]) for k in ("tick", "step", "min_qty", "min_value")))
-        history = tuple(
-            FundingPeriod(h["from"], h["until"], h["interval"], h["anchor"])
-            for h in meta["schedule"]
-            if h["source"] and 0 <= h["from"] < h["until"] <= B
-        )
-        marks = meta["settlement_marks"]
-        settlements: dict[int, tuple[D, D] | None] = {}
-        times = expected_settlements(s, history)
+        terms, history, times = plan[s]
+        settlements: dict[int, tuple[D, D]] = {}
         expected["funding"][sym] += len(times)
         for kind in ("trade", "mark"):
             expected[kind][sym] += (s.end - s.start) // BAR
         for t in times:
-            rate = dec(rows["funding"].pop((sym, t))[2])
-            proof = marks.get(str(t))
-            if proof is None:
-                settlements[t] = None
-            elif proof["source"] and dec(proof["price"]) > 0:
-                used_marks[sym].add(str(t))
-                settlements[t] = (rate, dec(proof["price"]))
-            else:
-                raise ValueError("invalid exact settlement mark")
+            key = (sym, t)
+            if (
+                not s.start <= t < s.end
+                or t % BAR
+                or key not in rows["mark"]
+                or key not in rows["funding"]
+            ):
+                raise ValueError(
+                    "INVALID_INPUT: missing or invalid settlement boundary, rate or mark candle"
+                )
+            settlements[t] = (dec(rows["funding"].pop(key)[2]), dec(rows["mark"][key][2]))
 
         result.append(
             Fixture(
@@ -282,9 +310,7 @@ def fixtures(folder: Path, reports: Path) -> tuple[list[Fixture], dict[str, Any]
                 history,
             )
         )
-    if counts != expected or any(
-        keys != set(evidence[sym]["settlement_marks"]) for sym, keys in used_marks.items()
-    ):
+    if counts != expected:
         raise ValueError("unexpected evidence or row counts")
     if any(rows[k] for k in ("funding", "mark", "trade")):
         raise ValueError("unexpected rows")

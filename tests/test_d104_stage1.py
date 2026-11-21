@@ -9,7 +9,7 @@ from richletsgo.research.d104.stage1_report import report
 
 def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
     day = g.B - g.DAY
-    start = day + 12 * g.BAR
+    start = day + 16 * 3_600_000 - 8 * g.BAR
     symbols = sorted(g.CALENDAR)[:4]
     sessions = [g.Session(s, g.CALENDAR[s], start, start + 12 * g.BAR) for s in symbols]
     launch = day - 30 * g.DAY
@@ -51,6 +51,8 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
             rows = []
             for i in range(12):
                 prices = ["100", "101", "96", "100"] if i < 6 else ["102", "104", "101", "103"]
+                if i == 8 and url.path.endswith("/mark-price-kline"):
+                    prices = ["107", "109", "101", "105"]
                 row = [str(start + i * g.BAR), *prices]
                 if url.path.endswith("/kline"):
                     row += ["123", "456"]
@@ -60,7 +62,7 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
         )
 
     folder = tmp_path / "campaign"
-    g.collect(folder, tmp_path, get)
+    folder.mkdir()
     source = g.sha(b"fixture")
     (folder / "sources").mkdir()
     (folder / "sources" / source).write_bytes(b"fixture")
@@ -78,26 +80,53 @@ def test_synthetic_collect_freeze_then_offline_replay(tmp_path, monkeypatch):
                 )
             ],
             schedule=[dict(period, interval=g.DAY, anchor=settlement)],
-            settlement_marks={str(settlement): dict(price="102", source=source)},
         )
         for s in symbols
     }
     (folder / "evidence.json").write_bytes(g.packed(evidence))
-    inputs, manifest = g.fixtures(folder, tmp_path)
+    pin = g.sha((folder / "evidence.json").read_bytes())
+
+    def forbidden(_):
+        pytest.fail("network access before evidence verification")
+
+    with pytest.raises(ValueError, match="published evidence hash"):
+        g.collect(folder, tmp_path, "0" * 64, forbidden)
+    bad_schedule = evidence[symbols[0]]["schedule"][0]
+    bad_schedule["source"] = ""
+    invalid = g.packed(evidence)
+    (folder / "evidence.json").write_bytes(invalid)
+    with pytest.raises(ValueError, match="schedule evidence source"):
+        g.collect(folder, tmp_path, g.sha(invalid), forbidden)
+    assert not (folder / "collect-started").exists()
+    bad_schedule["source"] = source
+    (folder / "evidence.json").write_bytes(g.packed(evidence))
+    (folder / "sources" / source).write_bytes(b"modified")
+    with pytest.raises(ValueError, match="source mismatch"):
+        g.collect(folder, tmp_path, pin, forbidden)
+    (folder / "sources" / source).write_bytes(b"fixture")
+    g.collect(folder, tmp_path, pin, get)
+    inputs, manifest = g.fixtures(folder, tmp_path, pin)
+    assert all(f.settlements[settlement] == (g.D(".001"), g.D(107)) for f in inputs)
     assert manifest["counts"] == manifest["expected"]
     result = report(inputs)
     assert result["N"] == 3 and result["verdict"] == "NO_GO"
     assert result["contention_by_symbol"][symbols[-1]] == 1
     assert result["costs"]["ALL"]["funding_cash"] < 0 and result["costs"]["ALL"]["fees"] > 0
     assert not result["cost_rejections"]
-    del evidence[symbols[0]]["settlement_marks"][str(settlement)]
-    (folder / "evidence.json").write_bytes(g.packed(evidence))
-    inputs, _ = g.fixtures(folder, tmp_path)
-    with pytest.raises(ValueError, match="missing settlement"):
-        report(inputs)
-    (folder / "trade.jsonl").write_bytes(b"")
-    with pytest.raises((KeyError, ValueError)):
-        g.fixtures(folder, tmp_path)
+    assert result["costs"]["ALL"]["funding_cash"] == -3 * g.D("3.28") * g.D(".001") * 107
+    with pytest.raises(ValueError, match="published evidence hash"):
+        g.fixtures(folder, tmp_path, "0" * 64)
+    mark = folder / "mark.jsonl"
+    mark.write_bytes(
+        b"".join(
+            line
+            for line in mark.read_bytes().splitlines(keepends=True)
+            if json.loads(line)[:2] != [symbols[-1], settlement]
+        )
+    )
+    with pytest.raises(ValueError, match="INVALID_INPUT.*mark candle"):
+        g.fixtures(folder, tmp_path, pin)
+    assert not (folder / "run-started").exists()
 
 
 @pytest.mark.parametrize("kind", ["trade", "mark", "funding"])
@@ -119,3 +148,51 @@ def test_reject_exclusive_end_without_retry_or_echo(kind):
     with pytest.raises(ValueError, match="INVALID_INPUT") as exc:
         g.fetch_session(kind, s, get)
     assert len(calls) == 1 and ".123456789" not in str(exc.value)
+
+
+def test_cli_report_error_preserves_once_marker_and_writes_invalid(tmp_path, monkeypatch):
+    import importlib.util
+    import sys
+    from pathlib import Path
+
+    root = Path(__file__).resolve().parents[1]
+    spec = importlib.util.spec_from_file_location("stage1_cli", root / "tools" / "d104_stage1.py")
+    cli = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(cli)
+    monkeypatch.chdir(root)
+    monkeypatch.setattr(cli, "git", lambda *args: str(root) if "--show-toplevel" in args else "")
+    reg = g.packed({})
+    registration = tmp_path / "reg.json"
+    registration.write_bytes(reg)
+    monkeypatch.setattr(g, "registration", lambda *_: {})
+    monkeypatch.setattr(g, "fixtures", lambda *_: ([], {}))
+
+    def fail(_):
+        raise ArithmeticError("synthetic report error")
+
+    monkeypatch.setattr(cli, "report", fail)
+    manifest = g.packed({"registration_sha256": g.sha(reg)})
+    (tmp_path / "manifest.json").write_bytes(manifest)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tool",
+            "run",
+            "--registration",
+            str(registration),
+            "--folder",
+            str(tmp_path),
+            "--manifest-sha256",
+            g.sha(manifest),
+            "--evidence-sha256",
+            "1" * 64,
+        ],
+    )
+    cli.main()
+    assert json.loads((tmp_path / "result.json").read_bytes()) == {
+        "verdict": "INVALID_INPUT",
+        "reason": "ArithmeticError: synthetic report error",
+    }
+    with pytest.raises(FileExistsError):
+        cli.main()
