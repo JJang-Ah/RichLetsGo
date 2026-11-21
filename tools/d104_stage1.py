@@ -43,7 +43,7 @@ def main() -> None:
     if args.action == "evidence":
         pin = stage1.sha((folder / "evidence.json").read_bytes())
         launches, sessions = stage1.scope(reports)
-        files, _ = stage1.check_evidence(folder, launches, sessions, pin)
+        files, _ = stage1.check_evidence(folder, reports, launches, sessions, pin)
         print(stage1.packed(dict(evidence_sha256=pin, files=files)).decode().strip())
         return
     if not args.evidence_sha256:
@@ -72,7 +72,12 @@ def main() -> None:
         serialized = json.dumps(report(inputs), default=number, sort_keys=True, indent=2)
     except Exception as exc:
         serialized = json.dumps(
-            dict(verdict="INVALID_INPUT", reason=f"{type(exc).__name__}: {exc}"),
+            dict(
+                verdict="INVALID_INPUT",
+                order_terms_model=stage1.MODEL_LABEL,
+                exploratory_only=True,
+                reason=f"{type(exc).__name__}: {exc}",
+            ),
             sort_keys=True,
             indent=2,
         )
