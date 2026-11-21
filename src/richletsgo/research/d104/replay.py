@@ -23,9 +23,23 @@ class FundingPeriod:
     anchor: int
 
 
-def expected_settlements(session: Session, history: tuple[FundingPeriod, ...]) -> set[int]:
-    cursor = session.start
+def expected_settlements(
+    session: Session,
+    history: tuple[FundingPeriod, ...],
+    reported_before: int | None = None,
+    observed: Iterable[int] = (),
+) -> set[int]:
+    cursor = (
+        session.start
+        if reported_before is None
+        else min(session.end, max(session.start, reported_before))
+    )
     expected: set[int] = set()
+    for t in observed:
+        if not session.start <= t < session.end or t % BAR:
+            raise ValueError("invalid reported settlement time")
+        if t < cursor:
+            expected.add(t)
     for period in sorted(history, key=lambda p: p.start):
         if (
             period.start >= period.end
@@ -58,6 +72,7 @@ class Fixture:
     # Explicit scheduled settlements; missing required mark/rate is invalid.
     settlements: Mapping[int, tuple[D, D]]
     funding_history: tuple[FundingPeriod, ...]
+    reported_before: int | None = None
 
 
 @dataclass(frozen=True)
@@ -81,9 +96,9 @@ def replay(fixtures: Iterable[Fixture]) -> Replay:
         s = f.session
         trade = series(s, f.trade)
         marks = series(s, f.mark)
-        if expected_settlements(s, f.funding_history) != f.settlements.keys() or any(
-            v is None for v in f.settlements.values()
-        ):
+        if expected_settlements(
+            s, f.funding_history, f.reported_before, f.settlements
+        ) != f.settlements.keys() or any(v is None for v in f.settlements.values()):
             raise ValueError("unexpected settlement boundary")
         # Both admitted calendars fit within one UTC date (including early closes).
         if s.start // 86_400_000 != (s.end - 1) // 86_400_000:
