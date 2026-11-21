@@ -1,6 +1,6 @@
 # D104 1단계 실행 사전 등록
 
-기준은 #89 병합 e70e47f와 [M2-11 §2~4.1](../tasks/M2-11-d104-tradfi-strategy.md)이다. 코드 C는 `f431f32c81ed0ddcf7ca2a1f51c64a55e549ad47`. [등록 JSON](D104-stage1-registration.json)의 SHA-256은 `e4dadde02e53c4863b8227e6c68a70b01942c7203b6d3b88b9d3fd0849409f35`이다. Claude 검토·병합 후 증빙 부록을 먼저 게시하고 설계 구간을 수집한 뒤 입력 manifest를 게시한 뒤 딱 한 번 재생한다. 조합은 하나, 초기 현금 10,000 USDT, 용량 E=491, E_slot=232, N_min=100이다. 운영 경로와 독립된 연구다.
+기준은 #89 병합 e70e47f와 [M2-11 §2~4.1](../tasks/M2-11-d104-tradfi-strategy.md)이다. 코드 C는 `e3a3ced1a1bf420b0b07a892011d28e5eab5f8c3`. [등록 JSON](D104-stage1-registration.json)의 SHA-256은 `7829b9dbff8a05ac58886a26a98a1a98b15fc4055f283e05fbe8ae153a9ca916`이다. Claude 검토·병합 후 증빙 부록을 먼저 게시하고 설계 구간을 수집한 뒤 입력 manifest를 게시한 뒤 딱 한 번 재생한다. 조합은 하나, 초기 현금 10,000 USDT, 용량 E=491, E_slot=232, N_min=100이다. 운영 경로와 독립된 연구다.
 
 ## 수집 범위
 
@@ -20,9 +20,9 @@ B=2026-09-01T00:00:00Z(1788220800000 ms)는 배타 끝이다. 등록 파일에 �
 
 캠페인 폴더의 daily/funding/mark/trade.jsonl은 각각 심볼·UTC ms 순이다. 각 행은 JSON 배열 [심볼, ms, 위 표의 나머지 필드 순서대로 정규 Decimal 문자열…], UTF-8 LF다. 파일 이름이 종류와 주기를 정한다. 예상·실제·결측 수를 검사하고 파일별 해시와 파일 해시 목록의 정규 JSON SHA-256을 manifest에 고정한다. 정정 이력은 최초 빈 배열이다. 실패한 부분 수집을 정상 manifest로 게시하지 않는다.
 
-evidence.json은 최상위 키가 등록된 15개 심볼이다. 각 심볼의 필드는 contracts와 schedule이다. actions_halts는 해당 계약 구간에 기록한다. 수집된 가격 방향이나 손익을 참고하지 않고, 공개 원자료의 제목·출처 URL·유효기간·확인 시각을 담은 증빙을 보존한다. source는 폴더 안 sources/<sha256> 파일의 실제 바이트 SHA-256이다. 공지와 상품 규격의 과거 효력이 확인된 기간만 사용한다. 11월 상품 스냅샷을 과거에 소급하지 않는다.
+evidence.json은 최상위 키가 등록된 15개 심볼이다. 각 심볼의 필드는 actions_halts와 schedule이다. 수집된 가격 방향이나 손익을 참고하지 않고, 공개 원자료의 제목·출처 URL·유효기간·확인 시각을 담은 증빙을 보존한다. source는 폴더 안 sources/<sha256> 파일의 실제 바이트 SHA-256이다. 공지·중단과 펀딩 일정은 해당 기간에 유효한 자료로 입증한다. 주문 규격 네 값은 별도로, 등록에 해시가 고정된 D103-instruments-2026-11-10/stock.json에서 심볼별 tickSize·qtyStep·minOrderQty·minNotionalValue를 읽어 모든 과거 세션에 적용한다. 스냅샷의 fundingInterval은 쓰지 않는다.
 
-- contracts는 [from,until) UTC ms별 tick, step, min_qty, min_value(Decimal 문자열), source, actions_halts 목록 항목으로 구성한다. 각 세션을 온전히 덮는 단 하나의 규격과 기업행위·중단 사실을 확인한 `actions_halts="verified_clear"`가 필요하다. 거래에 영향을 주는 중단·규격 변경이 세션을 가로지르면 그 세션만 버리는 대신 입력 검토에서 중단한다. 이 버전은 별도 보유분 정산이 필요한 예외 사건을 모형화하지 않는다.
+- actions_halts의 각 항목에는 from, until, source, status가 필요하다. 각 세션을 온전히 덮는 단 하나의 [from,until) 구간과 기업행위·중단 사실을 확인한 `status="verified_clear"`를 요구한다. 거래에 영향을 주는 기업행위·중단이 세션을 가로지르면 그 세션만 버리는 대신 입력 검토에서 중단한다. 이 버전은 별도 보유분 정산이 필요한 예외 사건을 모형화하지 않는다.
 - schedule은 과거 효력 [from,until), interval(ms), anchor(정산 위상 기준 UTC ms), source를 갖는다. 세션 안에서 주기가 바뀌면 경계 양쪽을 따로 열거한다. 공백·겹침·정산 행 불일치는 무효다.
 - 펀딩 금액에 쓰는 mark는 정산 시각 t에 시작하는 mark 5분봉 시가다. 실제 거래소 정산 mark와 차이가 있을 수 있는 사전 등록 대용값이며 결과를 보고 바꾸지 않는다. 보유 여부와 무관하게 t가 [O,C)의 5분 경계가 아니거나 해당 봉이 없으면 freeze에서 INVALID_INPUT으로 중단한다. 같은 시각 신규 진입분에는 소급 청구하지 않는다.
 
@@ -48,7 +48,7 @@ $python = (Resolve-Path '.venv/Scripts/python.exe').Path
 if ($LASTEXITCODE) { throw 'install failed' }
 ```
 
-수집 전 별도 증빙 부록을 준비한다. 새 $campaign 폴더에는 evidence.json과 sources/만 둔다. 규격·주기·기업행위·중단의 과거 적용 기간을 확인할 수 없으면 가격 요청 전에 멈추고 사유를 보고한다. 다음 명령은 로컬 파일과 등록 달력만 읽고 모든 세션의 증빙을 검사한다.
+수집 전 별도 증빙 부록을 준비한다. 새 $campaign 폴더에는 evidence.json과 sources/만 둔다. 펀딩 주기·기업행위·중단의 과거 적용 기간을 확인할 수 없으면 가격 요청 전에 멈추고 사유를 보고한다. 다음 명령은 로컬 파일과 등록 달력만 읽고 모든 세션의 증빙을 검사한다.
 
 ```powershell
 & $python tools/d104_stage1.py evidence --registration $reg --folder $campaign
@@ -79,6 +79,8 @@ if ($LASTEXITCODE) { throw 'replay failed' }
 ```
 
 ## 결과 보고와 1회 판정
+
+결과에는 “2026-11-10 주문 규격을 소급 적용한 탐색 모형 결과”와 exploratory_only=true를 표시한다. 당시 주문 허용 여부, 수량·비용 및 거래 수는 모형과 다를 수 있다. GO도 기존 D104 검증 통과나 실거래 자격으로 사용하지 않는다.
 
 - 집계 기간은 최초 상장 종목이 완결 UTC 일 30개를 채운 날짜부터 B 전날까지다. 무거래일의 순 R은 0이다. 공유 계좌 하나의 종료 거래 수, 최종 순자산·순손익·최저 순자산, 스트레스 포함 MDD와 최초 발생 봉 UTC ms, 재생 digest를 게시한다.
 - 모든 GO 조건을 반올림 전 판정한다. N≥100, 거래당 평균 순 R>0, 날짜별 t≥2, 상위 ceil(N×1%) 제거 후 평균 순 R>0, 월별 합이 양수인 달 과반, 양수 심볼 기여 중 최대 비중≤50%다. 월별·심볼별 순손익과 순 R, 현금일, N과 N_min을 함께 표시한다. 유효 입력에서 원금 소진 또는 한 조건이라도 미달이면 NO_GO다. 원금 소진은 불리한 mark 스트레스 평가를 포함한 최저 순자산 ≤0이다. 자료 무효와 계산 중 예외는 INVALID_INPUT으로 기록하고 실행 표식을 유지한다.
