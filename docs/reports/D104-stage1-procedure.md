@@ -1,6 +1,6 @@
 # D104 1단계 실행 사전 등록
 
-기준은 #89 병합 e70e47f와 [M2-11 §2~4.1](../tasks/M2-11-d104-tradfi-strategy.md)이다. 코드 C는 `c45c18f842ed3b1f4761861527951ee6d9639748`. [등록 JSON](D104-stage1-registration.json)의 SHA-256은 `e59f4f5866113679824ef0fe3f1ba02ada54d1cbca9b62a0563b486640e6c831`이다. Claude 검토·병합 후 증빙 부록을 먼저 게시하고 설계 구간을 수집한 뒤 입력 manifest를 게시한 뒤 딱 한 번 재생한다. 조합은 하나, 초기 현금 10,000 USDT, 용량 E=491, E_slot=232, N_min=100이다. 운영 경로와 독립된 연구다.
+기준은 #89 병합 e70e47f와 [M2-11 §2~4.1](../tasks/M2-11-d104-tradfi-strategy.md)이다. 코드 C는 `5dd461a5f99d15f64e2791e6566c68074c77ee3c`. [등록 JSON](D104-stage1-registration.json)의 SHA-256은 `f39ff748e38d8d305982ce23545ca4c313716772b0e6adb5a4877876aac4970c`이다. 재수집 등록을 Claude가 검토·병합하면 #92의 증빙으로 전체 설계 구간을 한 번 수집한다. 성공하면 동결한 manifest를 별도 PR에 게시하고, Claude 검토·병합 뒤 한 번 재생한다. 조합은 하나, 초기 현금 10,000 USDT, 용량 E=491, E_slot=232, N_min=100이다. 운영 경로와 독립된 연구다.
 
 ## 수집 범위
 
@@ -28,6 +28,14 @@ B=2026-09-01T00:00:00Z(1788220800000 ms)는 배타 끝이다. 등록 파일에 �
 
 manifest에 등록 JSON 해시, 증빙·정규 행 파일 각각의 해시, 종목·종류별 수와 data_hash를 게시하고 검토한다. 출력은 manifest.json 한 파일이고 아래 run에는 **게시된 파일 해시**를 넘긴다. 재생은 파일 해시와 기대 키 검사를 다시 수행하며 네트워크 호출 없이 고정된 입력만 사용한다. 계산을 시작하면 run-started를 배타 생성한다. 실패 후 표식 삭제, 다른 폴더 재생, 종목이나 조건 교체를 하지 않는다.
 
+## 첫 수집 중단과 재수집 결정
+
+첫 캠페인은 SKHYNIXUSDT 거래봉의 2026-06-12 00:00~06:30 UTC 요청에서 중단됐다. 당시 실패 유형과 실제 누락 시각은 미상이다. [PR #92의 조사와 사용자 결정](https://github.com/JJang-Ah/RichLetsGo/pull/92#issuecomment-7163001246)에 따라 단건 조회를 생략하고 새 폴더에서 전체를 한 번 재수집한다. 이전 d104-stage1-data와 시작 표식은 보존하며 그 파일을 재사용하거나 결측을 보간하지 않는다.
+
+요청 실패 시 새 캠페인의 `collect-failure.json`에 종류·종목·요청 시작/배타 끝(ms)·기대 행 수와 시도별 원인을 기록한다. transport는 전송 예외, exchange는 HTTP 오류 상태 또는 Bybit의 정수 오류 코드, format은 응답 형식·내용 검증 오류, missing_bars는 정상 해석한 페이지의 기대 키 누락이다. HTTP 오류는 이전과 같이 최대 3회 시도하고 Bybit 오류 응답은 즉시 중단한다. received_rows는 중복을 포함한 응답 목록 길이, received_bars는 완전성 검사를 수행한 페이지의 고유 키 수다. 확인할 수 없는 값은 null이다. 펀딩 기대 키 대조는 기존 동결 절차에서 수행한다.
+
+누락이면 기록에 있는 missing_utc 전체를 게시하고 중단한다. 전송 실패만 반복되면 시도별 기록을 보고하고 수집 명령을 다시 실행하지 않는다. 거래소·형식 오류도 기록을 보고하고 중단한다. 실패 캠페인은 동결하거나 재생하지 않는다.
+
 ## 병합 후 PowerShell 절차
 
 등록이 병합된 main checkout의 저장소 루트에서 시작한다. 코드 checkout과 캠페인 폴더는 서로 다른 새 경로다. 각 구간에서 명령 하나라도 실패하면 중단한다.
@@ -36,10 +44,11 @@ manifest에 등록 JSON 해시, 증빙·정규 행 파일 각각의 해시, 종�
 $reg = (Resolve-Path 'docs/reports/D104-stage1-registration.json').Path
 $bundle = (Resolve-Path 'docs/reports/D104-stage1-evidence').Path
 $evidenceHash = (Get-Content -Raw -Encoding utf8 'docs/reports/D104-stage1-evidence-output.json' | ConvertFrom-Json).evidence_sha256
+if ($evidenceHash -cne '24c9559ad4e07f52c068e8f3e24fc2cf4e1498471810b6104544bfe325d6e287') { throw 'evidence pin mismatch' }
 $code = (Get-Content -Raw -Encoding utf8 $reg | ConvertFrom-Json).code
 $parent = Split-Path -Parent (Get-Location).Path
-$checkout = Join-Path $parent 'd104-stage1-code'
-$campaign = Join-Path $parent 'd104-stage1-data'
+$checkout = Join-Path $parent 'd104-stage1-recollection-code'
+$campaign = Join-Path $parent 'd104-stage1-recollection-data'
 git worktree add --detach $checkout $code
 if ($LASTEXITCODE) { throw 'worktree failed' }
 Set-Location $checkout

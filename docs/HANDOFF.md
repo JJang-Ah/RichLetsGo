@@ -1074,3 +1074,9 @@
 - #91 이후 증빙 부록 준비를 가격 요청 전에 중단했다. 2026-08-07 16:00 UTC 이전 자동 조정 기간의 종목별 펀딩 일정이 미확인이다. [확인 기록](reports/D104-evidence-review.md)과 [2단계 개봉 조건](reports/D104-stage1-procedure.md)을 남겼다. evidence 성공 출력·수집·재생은 없다.
 
 - #92 사용자 결정 (a)로 증빙 공백 처리 방식을 가격 관측 전에 고정했다. C=c45c18f, 8/7 16:00 UTC 전은 API 정산 시각, 이후 8시간 전수 검사, 중단은 공지 사건과 5분봉 키 검사. 등록 및 증빙 출력은 D104-stage1-procedure.md와 D104-evidence-review.md 참조. 합성 67건·Ruff·mypy 및 로컬 evidence 통과. Claude 검토·병합 전 가격 수집 금지.
+
+### D104 · 1단계 전체 재수집 등록
+
+- 첫 캠페인은 SKHYNIXUSDT의 6월 12일 거래봉 수집에서 중단됐다. 원인과 누락 시각은 미확인이다. 원래 캠페인과 시작 표식은 보존했다.
+- 새 C=5dd461a, 등록 SHA-256=f39ff748e38d8d305982ce23545ca4c313716772b0e6adb5a4877876aac4970c. 기존 등록과 비교해 C만 변경됐다. 게시 증빙 해시와 두 출처를 다시 검증했다. D104 합성 테스트 73건, Ruff 및 mypy 통과.
+- Claude 병합 뒤 [절차](reports/D104-stage1-procedure.md)에 따라 새 캠페인에서 전체 수집 1회. 누락·전송 실패는 기록을 게시하고 중단한다. 성공 시 freeze → manifest 별도 PR → Claude 검토·병합 → run 1회.
