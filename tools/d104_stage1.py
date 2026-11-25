@@ -6,6 +6,7 @@ import subprocess
 from pathlib import Path
 
 from richletsgo.research.d104 import stage1
+from richletsgo.research.d104.diagnostics import CollectionFailure
 from richletsgo.research.d104.inputs import number
 from richletsgo.research.d104.stage1_report import report
 
@@ -49,7 +50,12 @@ def main() -> None:
     if not args.evidence_sha256:
         parser.error("published pre-collection evidence hash required")
     if args.action == "collect":
-        stage1.collect(folder, reports, args.evidence_sha256)
+        try:
+            stage1.collect(folder, reports, args.evidence_sha256)
+        except CollectionFailure as exc:
+            with (folder / "collect-failure.json").open("xb") as out:
+                out.write(stage1.packed(exc.record))
+            raise
         return
     path = folder / "manifest.json"
     if args.action == "run" and (

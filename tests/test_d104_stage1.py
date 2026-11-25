@@ -289,3 +289,97 @@ def test_funding_api_descending_and_identical_duplicate():
     records.append(records[-1])
     with pytest.raises(ValueError, match="duplicate"):
         parse()
+
+
+@pytest.mark.parametrize("failure", ["transport", "exchange", "http", "format", "missing_bars"])
+def test_collect_failure_report(tmp_path, monkeypatch, failure):
+    import runpy
+    import sys
+    from pathlib import Path
+
+    from richletsgo.research.d104.diagnostics import CollectionFailure, HttpStatusError
+
+    root = Path(g.__file__).resolve().parents[4]
+    cli = runpy.run_path(str(root / "tools/d104_stage1.py"))["main"]
+    monkeypatch.chdir(root)
+    monkeypatch.setitem(
+        cli.__globals__, "git", lambda *args: str(root) if "--show-toplevel" in args else ""
+    )
+    monkeypatch.setattr(g, "registration", lambda *_: {})
+    reg = tmp_path / "registration.json"
+    reg.write_bytes(g.packed({}))
+    start = g.DAY
+    s = g.Session("MUUSDT", "XNYS", start, start + 12 * g.BAR)
+    requests = []
+
+    def get(path):
+        requests.append(path)
+        if failure == "transport" or len(requests) == 1:
+            raise TimeoutError("private error body")
+        if failure == "http":
+            raise HttpStatusError(503)
+        if failure == "exchange":
+            return g.packed({"retCode": 10006, "retMsg": "private error body"})
+        row = [str(start + g.BAR), *(["1"] * 6)]
+        rows = [row, row] if failure == "missing_bars" else [["private error body"]]
+        return g.packed(dict(retCode=0, result=dict(category="linear", symbol=s.symbol, list=rows)))
+
+    monkeypatch.setattr(g, "collect", lambda *_: g.fetch_session("trade", s, get))
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "tool",
+            "collect",
+            "--registration",
+            str(reg),
+            "--folder",
+            str(tmp_path),
+            "--evidence-sha256",
+            "1" * 64,
+        ],
+    )
+    with pytest.raises(CollectionFailure) as exc:
+        cli()
+    raw = (tmp_path / "collect-failure.json").read_bytes()
+    assert b"private error body" not in raw
+    record = json.loads(raw)
+    assert record == exc.value.record
+    assert (record["start_ms"], record["end_exclusive_ms"], record["expected_rows"]) == (
+        s.start,
+        s.end,
+        12,
+    )
+    attempts = record["attempts"]
+    expected = {"http": ["transport", "exchange", "exchange"], "transport": ["transport"] * 3}
+    assert [a["category"] for a in attempts] == expected.get(failure, ["transport", failure])
+    assert len(requests) == len(attempts) and len(set(requests)) == 1
+    last = attempts[-1]
+    assert last["received_rows"] == {"missing_bars": 2, "format": 1}.get(failure)
+    assert last["received_bars"] == (1 if failure == "missing_bars" else None)
+    assert last["code"] == {"exchange": 10006, "http": 503}.get(failure)
+    assert last["missing_utc"] == (
+        [f"1970-01-02T00:{minute:02d}:00+00:00" for minute in range(0, 60, 5) if minute != 5]
+        if failure == "missing_bars"
+        else None
+    )
+
+
+def test_daily_empty_then_partial_diagnostics():
+    from richletsgo.research.d104.diagnostics import CollectionFailure
+
+    start = g.B - 2 * g.DAY
+    responses = iter([[], [[str(start), *(["0"] * 6)]]])
+
+    def get(_):
+        return g.packed(
+            dict(retCode=0, result=dict(category="linear", symbol="MUUSDT", list=next(responses)))
+        )
+
+    with pytest.raises(CollectionFailure) as exc:
+        g.page("MUUSDT", g.DAY, start, g.B, get)
+    attempts = exc.value.record["attempts"]
+    assert [(a["category"], a["received_rows"], len(a["missing_utc"])) for a in attempts] == [
+        ("missing_bars", 0, 2),
+        ("missing_bars", 1, 1),
+    ]

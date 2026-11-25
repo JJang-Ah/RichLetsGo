@@ -3,14 +3,13 @@
 import hashlib
 import json
 from collections.abc import Callable, Iterable
-from datetime import UTC, datetime
 from decimal import Decimal as D
-from http.client import HTTPException
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
 from .capacity_guard import PINS, STOCK, TASK_HASH, _public_get, page, read_scope
+from .diagnostics import Attempt, CollectionFailure
 from .execution import Terms
 from .inputs import BAR, CALENDAR, DAY, B, Candle, Session, number
 from .replay import Fixture, FundingPeriod, expected_settlements
@@ -101,14 +100,10 @@ def dec(value: object) -> D:
     return n
 
 
-def parse_rows(kind: str, s: Session, raw: bytes) -> list[Row]:
-    msg = json.loads(raw)
-    result = msg["result"]
-    if (
-        msg["retCode"] != 0
-        or result["category"] != "linear"
-        or not isinstance(result["list"], list)
-    ):
+def parse_rows(kind: str, s: Session, raw: bytes, attempt: Attempt | None = None) -> list[Row]:
+    attempt = attempt or Attempt()
+    result = attempt.result(raw)
+    if result["category"] != "linear" or not isinstance(result["list"], list):
         raise ValueError("invalid envelope")
     if kind != "funding" and result["symbol"] != s.symbol:
         raise ValueError("invalid symbol")
@@ -141,6 +136,7 @@ def parse_rows(kind: str, s: Session, raw: bytes) -> list[Row]:
     if kind == "funding" and list(unique) not in (sorted(unique), sorted(unique, reverse=True)):
         raise ValueError("unordered funding timestamps")
     if kind != "funding" and set(unique) != set(range(s.start, s.end, BAR)):
+        attempt.missing(range(s.start, s.end, BAR), unique)
         raise ValueError("incomplete session")
     return [unique[t] for t in sorted(unique)]
 
@@ -156,18 +152,20 @@ def fetch_session(kind: str, s: Session, get: Callable[[str], bytes]) -> list[Ro
     else:
         q.update(interval="5", start=str(s.start), end=str(s.end - 1), limit=str(span))
     path = "/v5/market/" + PATHS[kind] + "?" + urlencode(q)
+    attempts: list[Attempt] = []
     for _ in range(3):
+        attempt = Attempt()
+        attempts.append(attempt)
         try:
-            raw = get(path)
-        except (OSError, HTTPException):
-            continue
-        try:
-            return parse_rows(kind, s, raw)
+            raw = attempt.request(get, path)
+            if raw is None:
+                continue
+            return parse_rows(kind, s, raw, attempt)
         except (ValueError, KeyError, TypeError, ArithmeticError, IndexError):
             break
-    raise ValueError(
-        f"INVALID_INPUT {datetime.now(UTC).isoformat()} {kind} {s.symbol} [{s.start},{s.end})"
-    ) from None
+    raise CollectionFailure(
+        kind, s.symbol, s.start, s.end, None if kind == "funding" else span, attempts
+    )
 
 
 def collect(

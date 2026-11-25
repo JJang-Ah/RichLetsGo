@@ -4,13 +4,13 @@ import hashlib
 import json
 import re
 from collections.abc import Callable
-from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
-from http.client import HTTPException, HTTPSConnection
+from http.client import HTTPSConnection
 from pathlib import Path
 from typing import Any
 from urllib.parse import urlencode
 
+from .diagnostics import Attempt, CollectionFailure, HttpStatusError
 from .inputs import CALENDAR, DAY, B, Session, eligible_sessions, number
 from .verdict import minimum
 
@@ -78,7 +78,7 @@ def _public_get(path: str) -> bytes:
         conn.request("GET", path)
         response = conn.getresponse()
         if response.status != 200:
-            raise OSError("daily request failed")
+            raise HttpStatusError(response.status)
         raw = response.read(MAX_BYTES + 1)
         if len(raw) > MAX_BYTES:
             raise ValueError("oversize response")
@@ -90,17 +90,17 @@ def _public_get(path: str) -> bytes:
 def page(
     symbol: str, launch: int, start: int, end: int, get: Callable[[str], bytes]
 ) -> dict[int, Decimal]:
+    attempts: list[Attempt] = []
+    expected = range(start, end, DAY)
     for _ in range(3):
         path = request_path(symbol, launch, start, end)
+        attempt = Attempt()
+        attempts.append(attempt)
         try:
-            raw = get(path)
-        except (OSError, HTTPException):
-            continue
-        try:
-            response = json.loads(raw)
-            if response["retCode"] != 0:
-                raise ValueError
-            result = response["result"]
+            raw = attempt.request(get, path)
+            if raw is None:
+                continue
+            result = attempt.result(raw)
             if result["symbol"] != symbol or result["category"] != "linear":
                 raise ValueError
             rows = result["list"]
@@ -123,13 +123,13 @@ def page(
                 if not value.is_finite() or value < 0 or daily.setdefault(at, value) != value:
                     raise ValueError
         except (ValueError, TypeError, KeyError, InvalidOperation, UnicodeError):
-            now = datetime.now(UTC).isoformat()
-            raise ValueError(f"INVALID_INPUT {now} {symbol} [{start},{end})") from None
-        if len(daily) == (end - start) // DAY:
+            break
+        if len(daily) == len(expected):
             return daily
+        attempt.missing(expected, daily)
         if rows:
             break
-    raise ValueError(f"INVALID_INPUT incomplete {symbol} [{start},{end})")
+    raise CollectionFailure("daily", symbol, start, end, len(expected), attempts)
 
 
 def collect(reports: Path, get: Callable[[str], bytes] = _public_get) -> dict[str, object]:
